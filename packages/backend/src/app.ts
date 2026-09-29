@@ -101,7 +101,15 @@ app.use(rateLimiter());
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads')));
 
-// Health check
+// Root & Health check
+app.get('/', (_req, res) => {
+  res.json({ name: 'Nevo Live API', status: 'online', health: '/api/health', timestamp: new Date().toISOString() });
+});
+
+app.get('/api', (_req, res) => {
+  res.json({ name: 'Nevo Live API', status: 'online', health: '/api/health', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
