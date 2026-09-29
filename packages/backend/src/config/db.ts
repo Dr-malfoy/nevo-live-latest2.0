@@ -3,14 +3,19 @@ import { env } from './env';
 
 export const connectDB = async (): Promise<void> => {
   try {
-    const conn = await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 3000 });
+    const conn = await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 10000 });
     console.log(`MongoDB connected: ${conn.connection.host}`);
   } catch (error) {
-    console.warn('Could not connect to configured MongoDB. Attempting MongoMemoryServer fallback...');
+    if (env.nodeEnv === 'production') {
+      console.error('MongoDB production connection error:', error);
+      process.exit(1);
+    }
+    console.warn('Could not connect to configured MongoDB. Attempting MongoMemoryServer fallback for development...');
     try {
       const fs = await import('fs');
       const path = await import('path');
-      const { MongoMemoryServer } = await import('mongodb-memory-server');
+      const memPkg = 'mongodb-memory-server';
+      const { MongoMemoryServer }: any = await import(memPkg);
 
       const cacheRoot = path.resolve(__dirname, '../../../../.cache');
       const downloadDir = process.env.MONGOMS_DOWNLOAD_DIR || path.join(cacheRoot, 'mongodb-binaries');
