@@ -15,6 +15,10 @@ import { streamService } from '../services/stream.service';
 let io: Server;
 
 const clintURLs: (string | RegExp)[] = [
+  "capacitor://localhost",
+  "http://localhost",
+  "https://localhost",
+  "https://nevo-live-latest.onrender.com",
   "https://nevo-live.onrender.com",
   "https://nevo-live-app-user.onrender.com",
   "https://nevo-live-app-admin.onrender.com",
@@ -23,6 +27,7 @@ const clintURLs: (string | RegExp)[] = [
   "http://127.0.0.1:3000",
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^https:\/\/.*\.onrender\.com$/,
 ];
 
 export const initSocket = (httpServer: HTTPServer): Server => {
@@ -33,7 +38,14 @@ export const initSocket = (httpServer: HTTPServer): Server => {
         const allowed = clintURLs.some((pattern) =>
           typeof pattern === 'string' ? pattern === origin : pattern.test(origin)
         );
-        if (allowed || process.env.NODE_ENV !== 'production') {
+        if (
+          allowed ||
+          origin.startsWith('capacitor://') ||
+          origin.startsWith('http://localhost') ||
+          origin.startsWith('https://localhost') ||
+          origin.endsWith('.onrender.com') ||
+          process.env.NODE_ENV !== 'production'
+        ) {
           callback(null, true);
         } else {
           callback(new Error('Not allowed by CORS'));

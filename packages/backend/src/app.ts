@@ -49,25 +49,18 @@ const app = express();
 
 
 const allowedOrigins = [
+  "capacitor://localhost",
+  "http://localhost",
+  "https://localhost",
+  "https://nevo-live-latest.onrender.com",
   "https://nevo-live.onrender.com",
   "https://nevo-live-app-user.onrender.com",
   "https://nevo-live-app-admin.onrender.com",
   "https://nevo-live-app-agent.onrender.com",
-
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:3002",
-  "http://localhost:3003",
-  "http://localhost:3004",
-  "http://localhost:3005",
-  "http://localhost:3006",
-  "http://localhost:3007",
-  "http://localhost:3008",
-  "http://localhost:3009",
-  "http://localhost:3010",
 ];
-
-
 
 // Global middleware
 app.use(helmet({
@@ -75,16 +68,20 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-
 app.use(cors({
   origin(origin, callback) {
-
-    // Postman/server-to-server requests
+    // Mobile APK (Capacitor/Cordova) or server-to-server requests
     if (!origin) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.startsWith('capacitor://') ||
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('https://localhost') ||
+      origin.endsWith('.onrender.com')
+    ) {
       return callback(null, true);
     }
 
