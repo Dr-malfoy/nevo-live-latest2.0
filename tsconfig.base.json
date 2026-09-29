@@ -1,0 +1,19 @@
+{
+  "//": "LOCAL VERIFICATION ONLY — this file was missing from the uploaded zip (the monorepo root was not included). Reconstructed so backend/shared can be typechecked. Not part of the delivered packages/ folder.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  }
+}

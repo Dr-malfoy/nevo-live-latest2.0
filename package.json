@@ -1,0 +1,48 @@
+{
+  "name": "bogolive",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/backend",
+    "packages/app-user",
+    "packages/app-admin",
+    "packages/app-coin"
+  ],
+  "scripts": {
+    "dev": "npm run build:shared && concurrently \"npm run dev:backend\" \"npm run dev:user\" \"npm run dev:admin\" \"npm run dev:coin\"",
+    "dev:backend": "npm run dev -w packages/backend",
+    "dev:user": "npm run dev -w packages/app-user",
+    "dev:admin": "npm run dev -w packages/app-admin",
+    "dev:coin": "npm run dev -w packages/app-coin",
+    "build:shared": "npm run build -w packages/shared",
+    "build:backend": "npm run build -w packages/backend",
+    "build:user": "npm run build -w packages/app-user",
+    "build:admin": "npm run build -w packages/app-admin",
+    "build:coin": "npm run build -w packages/app-coin",
+    "build:all": "npm run build:shared && npm run build:backend && npm run build:user && npm run build:admin && npm run build:coin",
+    "build": "npm run build:all",
+    "typecheck:user": "cd packages\\app-user && npx tsc --noEmit",
+    "seed": "npm run seed -w packages/backend",
+    "migrate": "npm run migrate -w packages/backend",
+    "lint": "npm run lint -w packages/backend"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.5.4",
+    "concurrently": "^9.0.0",
+    "postcss": "^8.5.23",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^4.17.21",
+    "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.2.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": "20.20.2"
+  }
+}

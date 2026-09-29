@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * NAVO LIVE — White theme (requirement #7)
+ * Background #FFFFFF · Text #000000 · Secondary #666666 · Button #000000
+ * Light mode only. `color-scheme: light` stops the OS forcing a dark UA style.
+ */
+
+@layer base {
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+    color-scheme: light;
+  }
+
+  html {
+    @apply bg-white text-ink antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply min-h-screen max-w-md mx-auto relative bg-white text-ink;
+  }
+
+  /* Form controls inherit the light theme instead of the UA dark default */
+  input,
+  textarea,
+  select {
+    color-scheme: light;
+    @apply text-ink;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-ink-faint;
+  }
+
+  /* Hide scrollbar but keep scrollable */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer components {
+  .safe-bottom {
+    padding-bottom: var(--safe-bottom);
+  }
+  .safe-top {
+    padding-top: var(--safe-top);
+  }
+
+  /* ── Surfaces ──────────────────────────────────────────────── */
+
+  /* Standard white card on the soft page wash */
+  .card {
+    @apply bg-white rounded-card shadow-card;
+  }
+
+  .card-flat {
+    @apply bg-white rounded-card border border-line;
+  }
+
+  /* Grouped settings-style list (Poppo "Me" screen) */
+  .list-group {
+    @apply bg-white rounded-card overflow-hidden;
+  }
+  .list-row {
+    @apply flex items-center gap-3 px-4 h-14 text-ink active:bg-surface-sunken transition-colors;
+  }
+  .list-row + .list-row {
+    @apply border-t border-line;
+  }
+
+  /* Legacy aliases — remapped from dark glass to light cards so
+     screens not yet hand-rewritten still read correctly. */
+  .glass-card {
+    @apply bg-white rounded-2xl border border-line shadow-card;
+  }
+  .card-glass {
+    @apply bg-white rounded-2xl border border-line shadow-card;
+  }
+  .card-glass-hover {
+    transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  .card-glass-hover:hover {
+    transform: translateY(-2px);
+    border-color: #e2e3ea;
+    box-shadow: 0 2px 4px rgba(16, 18, 32, 0.06), 0 12px 32px rgba(16, 18, 32, 0.1);
+  }
+  .border-gradient-card,
+  .border-gradient {
+    @apply bg-white border border-line rounded-2xl;
+  }
+
+  /* ── Video overlays ────────────────────────────────────────── */
+  /* These sit ON TOP of live video, so they stay dark-on-light-text
+     by design — the white theme applies to app chrome, not the player. */
+  .glass-chip {
+    @apply bg-black/45 backdrop-blur-xl border border-white/15 rounded-full text-white;
+  }
+  .glass-pill {
+    @apply bg-black/35 backdrop-blur-xl border border-white/20 rounded-full text-white;
+  }
+
+  /* ── Buttons ───────────────────────────────────────────────── */
+
+  /* Primary = black pill with white text (requirement #7) */
+  .btn-primary {
+    @apply bg-black text-white font-semibold rounded-full;
+    transition: transform 0.15s ease, opacity 0.2s ease;
+  }
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+  .btn-primary:disabled {
+    @apply bg-ink-ghost text-white;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-sunken text-ink font-semibold rounded-full;
+  }
+
+  .btn-accent {
+    @apply bg-accent-500 text-white font-semibold rounded-full shadow-glow;
+  }
+
+  /* Legacy alias — the old neon button is now the black primary */
+  .btn-neon {
+    @apply bg-black text-white font-bold;
+    transition: transform 0.15s ease, filter 0.2s ease;
+  }
+  .btn-neon:hover {
+    filter: brightness(1.15);
+  }
+  .btn-glow,
+  .btn-glow-pink {
+    box-shadow: 0 6px 20px rgba(91, 91, 245, 0.28);
+  }
+
+  /* ── Text helpers ──────────────────────────────────────────── */
+  .text-gradient {
+    @apply text-ink;
+  }
+  .text-glow,
+  .text-glow-cyan,
+  .text-neon {
+    text-shadow: none;
+  }
+
+  /* ── Backgrounds ───────────────────────────────────────────── */
+  /* The old mesh gradients become the soft light wash Poppo uses
+     behind its header areas. */
+  .bg-mesh,
+  .bg-mesh-animated {
+    background:
+      radial-gradient(70% 40% at 0% 0%, rgba(91, 91, 245, 0.07) 0%, transparent 60%),
+      radial-gradient(60% 35% at 100% 0%, rgba(236, 72, 153, 0.06) 0%, transparent 60%),
+      #ffffff;
+  }
+
+  .bg-mesh-card {
+    @apply bg-white;
+  }
+
+  /* Poppo-style pastel header wash (profile / agent screens) */
+  .bg-wash {
+    background: linear-gradient(180deg, #f3f0ff 0%, #fdf2f6 45%, #ffffff 100%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .shimmer-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer-sweep::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.04), transparent);
+    animation: shimmer 2.4s ease-in-out infinite;
+  }
+
+  /* Skeleton shimmer on light */
+  .skeleton {
+    @apply bg-surface-sunken;
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* Hairline divider that respects the 1px grid on retina */
+  .hairline {
+    @apply border-b border-line;
+  }
+}

@@ -1,0 +1,9 @@
+export { CoinLogin } from './Login';
+export { CoinDashboard } from './Dashboard';
+export { BuyDiamonds } from './BuyDiamonds';
+export { RechargeRequests } from './RechargeRequests';
+export { WithdrawalRequests } from './WithdrawalRequests';
+export { Customers } from './Customers';
+export { Wallet } from './Wallet';
+export { Notifications } from './Notifications';
+export { PaymentInfo } from './PaymentInfo';

@@ -1,0 +1,26 @@
+# Production image for the Bogolive backend (Express + Socket.IO)
+# Runs the compiled-with-tsx server on port 5000.
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install deps first (better layer caching)
+COPY package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/backend/package.json packages/backend/
+COPY packages/app-user/package.json packages/app-user/
+
+RUN npm install
+
+# Copy source
+COPY packages/shared/ ./packages/shared/
+COPY packages/backend/ ./packages/backend/
+
+# Build shared once (for type checks); backend runs via tsx which handles TS + shared/src
+RUN npm run build:shared || true
+
+ENV NODE_ENV=production
+EXPOSE 5000
+
+# tsx is already a devDependency of backend — run the server in production mode
+CMD ["npx", "tsx", "packages/backend/src/index.ts"]

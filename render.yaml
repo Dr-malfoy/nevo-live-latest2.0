@@ -1,0 +1,38 @@
+# Render blueprint for the Bogolive backend (Express + Socket.IO)
+# Deploy: connect this repo in Render → "Blueprint" → select render.yaml
+# Or create a Web Service manually and paste the build/start commands below.
+services:
+  - type: web
+    name: bogolive-api
+    runtime: node
+    plan: starter # persistent WebSockets require Starter ($7/mo) — free tier sleeps/can't hold WS
+    region: singapore # pick closest to your users
+    rootDir: .
+    buildCommand: npm install && npm run build:shared
+    startCommand: npx tsx packages/backend/src/index.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGO_URI
+        sync: false # set in Render dashboard — your Atlas connection string
+      - key: CLIENT_URL
+        sync: false # set to your deployed frontend URL, e.g. https://navoapp.shop
+      - key: JWT_SECRET
+        sync: false # generate a long random string
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false
+      - key: AGORA_APP_CERTIFICATE_SECONDARY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false # the JSON string (escaped) or path — see note below
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

@@ -1,0 +1,142 @@
+// ─── Aviator game styles ──────────────────────────────────────────────
+
+.aviator-flight {
+  position: relative;
+  height: 320px;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.25), transparent 60%),
+    linear-gradient(180deg, #0b1220 0%, #0f172a 70%, #1e293b 100%);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  margin: 0.75rem 1rem 0;
+
+  &__ticks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  &__tick {
+    position: absolute;
+    left: 0.5rem;
+    transform: translateY(50%);
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(148, 163, 184, 0.7);
+  }
+
+  &__baseline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 24px;
+    height: 1px;
+    background: rgba(148, 163, 184, 0.25);
+  }
+
+  &__plane {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: bottom 0.08s linear;
+    z-index: 2;
+  }
+
+  &__counter {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  &__multiplier {
+    font-size: 44px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 0 24px rgba(59, 130, 246, 0.6);
+  }
+
+  &__x {
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  &__counter--crashed .aviator-flight__multiplier {
+    color: #f87171;
+    text-shadow: 0 0 24px rgba(248, 113, 113, 0.6);
+  }
+
+  &__flew-away {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: #f87171;
+    margin-bottom: 0.5rem;
+  }
+
+  &__waiting-text {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: rgba(148, 163, 184, 0.8);
+    margin-bottom: 0.75rem;
+  }
+
+  &__countdown-bar {
+    width: 180px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.2);
+    overflow: hidden;
+    margin: 0 auto;
+
+    > div {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      transition: width 0.1s linear;
+    }
+  }
+}
+
+.aviator-plane {
+  position: relative;
+  transition: transform 0.08s linear;
+  animation: aviator-plane-hover 1.6s ease-in-out infinite;
+
+  &--waiting {
+    animation: aviator-plane-hover 1.6s ease-in-out infinite;
+    opacity: 0.7;
+  }
+
+  &--crashed {
+    animation: aviator-plane-crash 0.6s ease-in forwards;
+  }
+
+  &__trail {
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(251, 146, 60, 0.9));
+    filter: blur(1px);
+    z-index: -1;
+  }
+}
+
+@keyframes aviator-plane-hover {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -6px; }
+}
+
+@keyframes aviator-plane-crash {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(40vh) rotate(80deg); opacity: 0; }
+}
