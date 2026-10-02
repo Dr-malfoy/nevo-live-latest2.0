@@ -12,7 +12,7 @@ import type { AxiosResponse } from 'axios';
  * When the endpoint lands, nothing in the screen changes — it just starts
  * returning data.
  */
-const NOT_BUILT = new Set([404, 501]);
+const NOT_BUILT = new Set([403, 404, 501]);
 
 export async function optional<T>(request: Promise<AxiosResponse<T>>): Promise<T | null> {
   try {

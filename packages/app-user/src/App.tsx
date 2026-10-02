@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BottomNav, GoLiveFab, Header } from './components/layout';
 import { ToastContainer } from './components/ui';
-import { useAuthStore, useSocketStore } from './stores';
+import { useAuthStore, useSocketStore, useUIStore } from './stores';
+import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
+import { CallScreen } from './components/call/CallScreen';
+import { usersApi } from './api';
 import {
   Login,
   Register,
@@ -60,9 +63,16 @@ import {
   GamesHub,
   LuckySpin,
   MyAgency,
+  AgencyPage,
+  CreateAgency,
+  AgencyDetails,
   ActivityCenter,
   AgentProfileMock,
+  TransferHistory,
+  TransactionDetails,
+  HelpCenter,
 } from './pages';
+
 import { PrivacyPolicy, Guidelines, Terms, AboutUs } from './pages/legal/LegalPage';
 
 // Lazy-load the premium roulette screen (heavy SVG + framer-motion).
@@ -103,8 +113,20 @@ const StreamLayout = () => (
 );
 
 const AuthListener = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, token, updateUser, fetchProfile } = useAuthStore();
+  const { isAuthenticated, token, user, updateUser, fetchProfile } = useAuthStore();
   const { socket, connect, disconnect } = useSocketStore();
+  const showToast = useUIStore((s) => s.showToast);
+  const location = useLocation();
+
+  const [globalIncomingCall, setGlobalIncomingCall] = useState<{
+    callId: string;
+    channel: string;
+    type: 'audio' | 'video';
+    initiatorId: string;
+    token: string;
+    initiator: { nickname: string; avatar?: string } | null;
+  } | null>(null);
+  const [globalCallAccepted, setGlobalCallAccepted] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && token) {
@@ -155,7 +177,59 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     };
   }, [socket]);
 
-  return <>{children}</>;
+  // Global incoming call listener (so calls are answered even outside chat screen)
+  useEffect(() => {
+    if (!socket) return;
+    const onCallInvite = async (payload: any) => {
+      // If user is currently in that ChatThread, ChatThread handles it locally
+      if (location.pathname.startsWith('/chat/')) return;
+      if (!payload?.callId || payload.initiatorId === user?._id) return;
+
+      let initiatorInfo = payload.initiator || null;
+      if (!initiatorInfo && payload.initiatorId) {
+        try {
+          const res = await usersApi.getPublicProfile(payload.initiatorId);
+          if (res.data?.success) {
+            initiatorInfo = { nickname: res.data.data.nickname, avatar: res.data.data.avatar };
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      setGlobalIncomingCall({
+        callId: payload.callId,
+        channel: payload.channel,
+        type: payload.type,
+        initiatorId: payload.initiatorId,
+        token: payload.token,
+        initiator: initiatorInfo || { nickname: 'User', avatar: '' },
+      });
+      setGlobalCallAccepted(false);
+    };
+
+    socket.on('call:invite', onCallInvite);
+    return () => {
+      socket.off('call:invite', onCallInvite);
+    };
+  }, [socket, location.pathname, user?._id]);
+
+  return (
+    <>
+      {children}
+      {globalIncomingCall && (
+        <CallScreen
+          incoming={globalIncomingCall}
+          accepted={globalCallAccepted}
+          onClose={(outcome) => {
+            setGlobalIncomingCall(null);
+            setGlobalCallAccepted(false);
+            if (outcome === 'rejected') showToast('Call declined', 'info');
+          }}
+        />
+      )}
+    </>
+  );
 };
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -164,15 +238,23 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const NavigationManager = ({ children }: { children: React.ReactNode }) => {
+  useAndroidBackHandler();
+  return <>{children}</>;
+};
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthListener>
-          <Routes>
+        <NavigationManager>
+          <AuthListener>
+            <Routes>
             {/* Auth pages — no nav */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/signup" element={<Register />} />
+            <Route path="/invite/:inviteCode" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route
               path="/admin/*"
@@ -190,11 +272,15 @@ export default function App() {
               }
             />
 
-            {/* Legal pages — no nav */}
+            {/* Legal & Help pages — no nav */}
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/guidelines" element={<Guidelines />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/about" element={<AboutUs />} />
+            <Route path="/help" element={<HelpCenter />} />
+            <Route path="/help-center" element={<HelpCenter />} />
+            <Route path="/support" element={<HelpCenter />} />
+
 
             {/* Stream pages — no nav, full screen */}
             <Route element={<StreamLayout />}>
@@ -269,6 +355,22 @@ export default function App() {
               element={<ProtectedRoute><MyAgency /></ProtectedRoute>}
             />
             <Route
+              path="/agency"
+              element={<AgencyPage />}
+            />
+            <Route
+              path="/agencies"
+              element={<AgencyPage />}
+            />
+            <Route
+              path="/agency/create"
+              element={<ProtectedRoute><CreateAgency /></ProtectedRoute>}
+            />
+            <Route
+              path="/agency/:id"
+              element={<AgencyDetails />}
+            />
+            <Route
               path="/top-up"
               element={<ProtectedRoute><TopUp /></ProtectedRoute>}
             />
@@ -279,6 +381,18 @@ export default function App() {
             <Route
               path="/transfer"
               element={<ProtectedRoute><TransferPoints /></ProtectedRoute>}
+            />
+            <Route
+              path="/transfer/history"
+              element={<ProtectedRoute><TransferHistory /></ProtectedRoute>}
+            />
+            <Route
+              path="/transactions/:id"
+              element={<ProtectedRoute><TransactionDetails /></ProtectedRoute>}
+            />
+            <Route
+              path="/transaction/:id"
+              element={<ProtectedRoute><TransactionDetails /></ProtectedRoute>}
             />
 
             {/* #64 search · #29 me center menu */}
@@ -378,7 +492,8 @@ export default function App() {
           </Routes>
           <ToastContainer />
         </AuthListener>
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
+      </NavigationManager>
+    </BrowserRouter>
+  </QueryClientProvider>
+);
 }

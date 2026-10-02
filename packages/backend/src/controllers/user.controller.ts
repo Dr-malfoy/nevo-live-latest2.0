@@ -70,12 +70,13 @@ export const userController = {
       const q = (req.query.q as string) || '';
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
+      const badge = (req.query.badge as string) || (req.query.hostBadge as string);
       // `?country=BD,IN` — same shape as the stream feed.
       const countries = String(req.query.country || '')
         .split(',')
         .map((c) => c.trim())
         .filter((c) => c && c.toUpperCase() !== 'ALL');
-      const { data, total } = await userService.searchUsers(q, req.user!.userId, page, limit, countries);
+      const { data, total } = await userService.searchUsers(q, req.user!.userId, page, limit, countries, badge);
       sendPaginated(res, data, total, page, limit);
     } catch (error) {
       next(error);

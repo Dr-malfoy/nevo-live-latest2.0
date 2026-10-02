@@ -16,6 +16,12 @@ router.get('/dashboard', authenticate, requireAdmin, adminController.getDashboar
 router.get('/users', authenticate, requireAdmin, adminController.getUsers);
 router.put('/users/:id/ban', authenticate, requireAdmin, adminController.toggleBanUser);
 router.put('/users/:id/seller-type', authenticate, requireAdmin, adminController.setSellerType);
+
+// Host Management & Badge System
+router.get('/hosts', authenticate, requireAdmin, adminController.getHosts);
+router.put('/hosts/:id/badge', authenticate, requireAdmin, adminController.setHostBadge);
+router.post('/hosts/recalculate-badges', authenticate, requireAdmin, adminController.recalculateHostBadges);
+
 router.get('/streams', authenticate, requireAdmin, adminController.getStreams);
 router.get('/transactions', authenticate, requireAdmin, adminController.getTransactions);
 router.put('/streams/:id/end', authenticate, requireAdmin, adminController.endStream);
@@ -84,4 +90,9 @@ router.post('/official-notifications', authenticate, requireAdmin, officialNotif
 router.put('/official-notifications/:id', authenticate, requireAdmin, officialNotificationController.update);
 router.delete('/official-notifications/:id', authenticate, requireAdmin, officialNotificationController.remove);
 
+// Dynamic Telegram links configuration
+router.get('/telegram-config', authenticate, requireAdmin, adminController.getTelegramConfig);
+router.put('/telegram-config', authenticate, requireAdmin, adminController.updateTelegramConfig);
+
 export default router;
+

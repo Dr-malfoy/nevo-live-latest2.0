@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { initial } from '../../lib/time';
+import { getMediaUrl } from '../../lib/media';
 import { OnlineDot } from './OnlineDot';
 
 interface AvatarProps {
@@ -48,10 +49,11 @@ export const Avatar = ({
   }, [src]);
 
   const ring = ringed ? 'ring-2 ring-white' : '';
+  const resolvedSrc = getMediaUrl(src);
 
-  const inner = src && !hasError ? (
+  const inner = resolvedSrc && !hasError ? (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={nickname}
       referrerPolicy="no-referrer"
       onError={() => setHasError(true)}

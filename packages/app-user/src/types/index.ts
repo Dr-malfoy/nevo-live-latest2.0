@@ -57,6 +57,9 @@ export interface User {
   age?: number | null;
   lastActiveAt?: string;
   level: number;
+  wealthLevel?: number;
+  liveLevel?: number;
+  wealthExp?: number;
   exp: number;
   diamonds: number;
   coins: number;
@@ -68,6 +71,10 @@ export interface User {
   isAdmin: boolean;
   agencyId?: string;
   sellerType?: 'none' | 'official' | 'paylor';
+  hostBadge?: 'alpha' | 'aurora' | 'none';
+  hostBadgeType?: 'manual' | 'auto' | 'none';
+  hostBadgeAssignedAt?: string;
+  hostBadgeExpiresAt?: string;
   verification?: VerificationState;
   following: string[];
   followers: string[];
@@ -88,12 +95,19 @@ export interface UserPublic {
   age?: number | null;
   lastActiveAt?: string;
   level: number;
+  wealthLevel?: number;
+  liveLevel?: number;
+  wealthExp?: number;
   isAgent: boolean;
   role?: 'admin' | 'agent' | 'host' | 'user';
   noble?: { type: string; expiry: string };
   isVip?: boolean;
   hasPurchasedDiamonds?: boolean;
   sellerType?: 'none' | 'official' | 'paylor';
+  hostBadge?: 'alpha' | 'aurora' | 'none';
+  hostBadgeType?: 'manual' | 'auto' | 'none';
+  hostBadgeAssignedAt?: string;
+  hostBadgeExpiresAt?: string;
   verification?: VerificationState;
   coins?: number;
   diamonds?: number;
@@ -237,11 +251,13 @@ export interface Seat {
 
 export interface Transaction {
   _id: string;
-  userId: string;
-  type: 'recharge' | 'gift_send' | 'gift_receive' | 'withdraw' | 'coin_purchase' | 'coin_sale' | 'agent_recharge' | 'agent_sale';
+  txId?: string;
+  userId: any;
+  type: string;
   amount: number;
   currency: 'diamond' | 'coin';
-  targetId?: string;
+  targetId?: any;
+  targetModel?: 'Gift' | 'User';
   giftId?: { name: string; icon: string };
   status: string;
   description?: string;

@@ -7,9 +7,6 @@ import {
   PiLockFill as Lock,
   PiShieldCheckFill as ShieldCheck,
   PiCheckCircleFill as CheckCircle,
-  PiWhatsappLogoFill as Whatsapp,
-  PiChatCircleDotsFill as SmsIcon,
-  PiUserFill as UserIcon,
   PiIdentificationCardFill as IdCardIcon,
   PiEyeFill as EyeOpen,
   PiEyeSlashFill as EyeClosed,
@@ -17,31 +14,43 @@ import {
 } from 'react-icons/pi';
 import { Button, Input } from '../components/ui';
 import { authApi, type SearchAccountResponseData } from '../api';
+import { useUIStore } from '../stores';
+import {
+  setupRecaptcha,
+  clearRecaptcha,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  mapFirebaseAuthError,
+} from '../lib/firebase';
+import { ConfirmationResult } from 'firebase/auth';
 
-type Step = 'search' | 'channel' | 'otp' | 'password' | 'done';
-type Channel = 'sms' | 'whatsapp';
+type Step = 'search' | 'otp' | 'password' | 'done';
 
 export const ForgotPassword = () => {
   const navigate = useNavigate();
+  const showToast = useUIStore((s) => s.showToast);
 
-  // State
+  const recaptchaRef = useRef<HTMLDivElement>(null);
+  const verifierRef = useRef<any>(null);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Step state
   const [step, setStep] = useState<Step>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [foundAccount, setFoundAccount] = useState<SearchAccountResponseData | null>(null);
 
-  const [channel, setChannel] = useState<Channel>('sms');
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
-
-  // OTP
+  // OTP state
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [firebaseIdToken, setFirebaseIdToken] = useState<string | null>(null);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
-  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Password
+  // New Password state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -50,7 +59,7 @@ export const ForgotPassword = () => {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Cooldown effect
+  // Cooldown timer
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (cooldown > 0) {
@@ -61,11 +70,19 @@ export const ForgotPassword = () => {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Handle Account Search
+  // Clean up reCAPTCHA on unmount
+  useEffect(() => {
+    return () => {
+      clearRecaptcha();
+    };
+  }, []);
+
+  // STEP 1: Search for Account
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) {
-      setError('Please enter your phone number, account ID (UID), or username.');
+    const query = searchQuery.trim();
+    if (!query) {
+      setError('Please enter your phone number, UID, username, or email.');
       return;
     }
     setError(null);
@@ -73,56 +90,85 @@ export const ForgotPassword = () => {
     setFoundAccount(null);
 
     try {
-      const res = await authApi.searchAccount(searchQuery.trim());
+      const res = await authApi.searchAccount(query);
       if (res.data.success && res.data.data) {
         setFoundAccount(res.data.data);
       } else {
         setError(res.data.error || 'No account found matching this query.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Account search failed. Please verify your input.');
+      setError(
+        err.response?.data?.error ||
+        'No account found matching this phone number, UID, or username. Please check and try again.'
+      );
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Handle Select Account & Go to Channel Selection
-  const handleSelectAccount = () => {
-    if (!foundAccount) return;
-    setError(null);
-    setStep('channel');
-  };
-
-  // Handle Send OTP
-  const handleSendOtp = async (selectedChannel: Channel = channel) => {
+  // STEP 2: Send Firebase OTP to the found account's phone
+  const handleSendOtp = async () => {
     if (!foundAccount) return;
     setError(null);
     setIsSendingOtp(true);
 
+    const targetPhone = foundAccount.rawPhone;
+
     try {
-      const res = await authApi.sendOtp(foundAccount.rawPhone, selectedChannel, 'reset_password');
-      if (res.data.success && res.data.data) {
-        setChannel(selectedChannel);
-        setCooldown(res.data.data.cooldownSeconds || 60);
-        if (res.data.data.devOtp) {
-          setDevOtp(res.data.data.devOtp);
+      let devOtpFound: string | null = null;
+
+      // 1. Dispatch backend SMS / dev OTP
+      try {
+        const sendRes = await authApi.sendOtp(targetPhone, 'sms', 'reset_password');
+        if (sendRes.data?.data?.devOtp) {
+          devOtpFound = sendRes.data.data.devOtp;
         }
-        setStep('otp');
-        setOtpDigits(['', '', '', '', '', '']);
-        setTimeout(() => {
-          otpInputRefs.current[0]?.focus();
-        }, 150);
-      } else {
-        setError(res.data.error || 'Failed to send OTP code.');
+      } catch (backendErr) {
+        console.warn('Backend sendOtp notice:', backendErr);
       }
+
+      // 2. Try Firebase Phone Auth (if enabled in Firebase Console)
+      try {
+        const verifier = setupRecaptcha('recaptcha-container');
+        verifierRef.current = verifier;
+        const confirmation = await sendPhoneOtp(targetPhone, verifier);
+        confirmationResultRef.current = confirmation;
+      } catch (fbErr: any) {
+        console.warn('Firebase sendPhoneOtp skipped/failed, using system SMS OTP fallback:', fbErr);
+        clearRecaptcha();
+        confirmationResultRef.current = null;
+      }
+
+      setStep('otp');
+      setOtpDigits(['', '', '', '', '', '']);
+      setDevOtp(devOtpFound);
+      setCooldown(60);
+
+      if (devOtpFound) {
+        showToast(`Verification code sent! (Dev OTP: ${devOtpFound})`, 'info');
+      } else {
+        showToast(`Verification code sent to ${foundAccount.phone}`, 'info');
+      }
+
+      setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 150);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to send verification code.');
+      console.error('Failed to send OTP:', err);
+      const friendlyMsg = mapFirebaseAuthError(err);
+      setError(friendlyMsg || 'Failed to send verification code. Please check your network and try again.');
+      clearRecaptcha();
     } finally {
       setIsSendingOtp(false);
     }
   };
 
-  // Handle OTP digit changes
+  const handleResendOtp = async () => {
+    if (cooldown > 0 || isSendingOtp) return;
+    await handleSendOtp();
+  };
+
+  // OTP Input handler
   const handleOtpChange = (index: number, val: string) => {
     if (val.length > 1) {
       const digits = val.replace(/\D/g, '').slice(0, 6).split('');
@@ -161,11 +207,11 @@ export const ForgotPassword = () => {
     }
   };
 
-  // Handle Verify OTP
+  // STEP 3: Verify OTP Code
   const handleVerifyOtp = async (codeToVerify?: string) => {
     const code = codeToVerify || otpDigits.join('');
     if (code.length !== 6) {
-      setError('Please enter complete 6-digit OTP code.');
+      setError('Please enter the complete 6-digit verification code.');
       return;
     }
     if (!foundAccount) return;
@@ -174,31 +220,64 @@ export const ForgotPassword = () => {
     setIsVerifyingOtp(true);
 
     try {
-      const res = await authApi.verifyOtpOnly(foundAccount.rawPhone, code, 'reset_password');
-      if (res.data.success && res.data.data?.verificationToken) {
-        setVerificationToken(res.data.data.verificationToken);
-        setStep('password');
-      } else {
-        setError(res.data.error || 'Invalid or expired OTP code.');
+      let idToken: string | undefined;
+      let verified = false;
+
+      // 1. Verify via Firebase confirmation if active
+      if (confirmationResultRef.current) {
+        try {
+          const verifyRes = await verifyPhoneOtp(confirmationResultRef.current, code);
+          idToken = verifyRes.idToken;
+          setFirebaseIdToken(idToken);
+          verified = true;
+        } catch (fbErr: any) {
+          console.warn('Firebase confirmation failed, checking backend OTP verification:', fbErr);
+        }
       }
+
+      // 2. Verify via backend system OTP
+      try {
+        const verifyRes = await authApi.verifyOtpOnly(foundAccount.rawPhone, code, 'reset_password');
+        if (verifyRes.data?.data?.verificationToken) {
+          setVerificationToken(verifyRes.data.data.verificationToken);
+          verified = true;
+        }
+      } catch (backendOtpErr: any) {
+        if (!verified) {
+          setError(backendOtpErr.response?.data?.error || 'Invalid verification code. Please check and try again.');
+          setIsVerifyingOtp(false);
+          return;
+        }
+      }
+
+      if (!verified) {
+        setError('Invalid verification code. Please check and try again.');
+        setIsVerifyingOtp(false);
+        return;
+      }
+
+      showToast('OTP verified successfully! Now set your new password.', 'success');
+      setStep('password');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid verification code. Please check and try again.');
+      console.error('OTP verification failed:', err);
+      const friendlyMsg = mapFirebaseAuthError(err);
+      setError(friendlyMsg || 'Invalid verification code. Please check and try again.');
     } finally {
       setIsVerifyingOtp(false);
     }
   };
 
-  // Handle Reset Password Submit
+  // STEP 4: Set New Password
   const handleResetPassword = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!foundAccount) return;
 
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters.');
+    if (!newPassword || newPassword.length < 6) {
+      setError('New password must be at least 6 characters long.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError('Passwords do not match. Please re-type password correctly.');
       return;
     }
 
@@ -211,16 +290,23 @@ export const ForgotPassword = () => {
         phone: foundAccount.rawPhone,
         newPassword,
         verificationToken: verificationToken || undefined,
+        idToken: firebaseIdToken || undefined,
         code: code || undefined,
       });
 
       if (res.data.success) {
+        showToast('Password updated successfully!', 'success');
         setStep('done');
       } else {
         setError(res.data.error || 'Failed to update password.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Password reset failed. Please try again.');
+      console.error('Password reset error:', err);
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        'Password reset failed. Please try again.'
+      );
     } finally {
       setIsResetting(false);
     }
@@ -231,33 +317,34 @@ export const ForgotPassword = () => {
       className="min-h-screen flex flex-col relative"
       style={{ backgroundImage: "url('/login-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      <div className="flex-1 flex flex-col p-6 bg-black/45 backdrop-blur-md">
+      {/* Invisible Firebase Recaptcha Container */}
+      <div id="recaptcha-container" ref={recaptchaRef} />
+
+      <div className="flex-1 flex flex-col p-4 sm:p-6 bg-black/45 backdrop-blur-md overflow-y-auto">
         {/* Navigation Bar */}
-        <div className="flex items-center justify-between pt-6 mb-4 max-w-sm mx-auto w-full">
+        <div className="flex items-center justify-between pt-2 mb-4 max-w-sm mx-auto w-full">
           <button
             onClick={() => {
-              if (step === 'channel') setStep('search');
-              else if (step === 'otp') setStep('channel');
+              if (step === 'otp') setStep('search');
               else if (step === 'password') setStep('otp');
               else if (step === 'done') navigate('/login');
               else navigate('/login');
             }}
-            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center active:scale-95 transition-transform"
+            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center active:scale-95 transition-transform hover:bg-white/30"
             aria-label="Back"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="text-white/80 font-medium text-xs">
-            {step === 'search' && 'Find Account'}
-            {step === 'channel' && 'Select Delivery'}
-            {step === 'otp' && 'Verify OTP'}
-            {step === 'password' && 'New Password'}
+          <span className="text-white/90 font-bold text-xs bg-black/40 px-3.5 py-1 rounded-full backdrop-blur-sm">
+            {step === 'search' && 'Step 1: Find Account'}
+            {step === 'otp' && 'Step 2: Verify OTP'}
+            {step === 'password' && 'Step 3: New Password'}
             {step === 'done' && 'Completed'}
           </span>
         </div>
 
         {/* Card Container */}
-        <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full bg-white/95 rounded-3xl p-6 shadow-2xl backdrop-blur-lg animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="my-auto max-w-sm mx-auto w-full bg-white/95 rounded-3xl p-6 shadow-2xl backdrop-blur-lg animate-in fade-in slide-in-from-bottom-4 duration-300">
           
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 text-red-600 text-xs font-semibold p-3 rounded-xl mb-4 animate-fade-in text-center">
@@ -274,7 +361,7 @@ export const ForgotPassword = () => {
 
               <h1 className="text-2xl font-black text-center text-ink tracking-tight mb-1">Find Your Account</h1>
               <p className="text-ink-muted text-xs text-center mb-6">
-                Enter your phone number, account UID, or username to reset your password.
+                Enter your phone number, UID, or username to find your account and reset password.
               </p>
 
               <form onSubmit={handleSearch} className="space-y-4">
@@ -282,7 +369,10 @@ export const ForgotPassword = () => {
                   icon={<SearchIcon className="w-4 h-4 text-ink-muted" />}
                   placeholder="Phone, UID, or Username"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (error) setError(null);
+                  }}
                   autoFocus
                 />
 
@@ -291,19 +381,19 @@ export const ForgotPassword = () => {
                   fullWidth
                   loading={isSearching}
                   disabled={!searchQuery.trim()}
-                  className="h-12 text-sm font-bold"
+                  className="h-12 text-sm font-bold bg-[#4C3BFF] hover:bg-[#3d2fe0]"
                 >
                   Search Account
                 </Button>
               </form>
 
-              {/* Account Search Result Preview */}
+              {/* Found Account Preview Card */}
               {foundAccount && (
                 <div className="mt-5 p-4 bg-[#4C3BFF]/5 border-2 border-[#4C3BFF] rounded-2xl animate-in zoom-in-95 duration-200">
                   <div className="text-[11px] font-bold text-[#4C3BFF] uppercase tracking-wider mb-2">
                     Account Found
                   </div>
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-3 mb-4">
                     <img
                       src={foundAccount.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                       alt={foundAccount.nickname}
@@ -321,103 +411,25 @@ export const ForgotPassword = () => {
                   </div>
 
                   <Button
-                    onClick={handleSelectAccount}
+                    onClick={handleSendOtp}
+                    loading={isSendingOtp}
                     fullWidth
-                    className="h-10 text-xs font-bold bg-[#4C3BFF] hover:bg-[#3d2fe0]"
+                    className="h-11 text-xs font-bold bg-[#4C3BFF] hover:bg-[#3d2fe0]"
                   >
-                    This is My Account &rarr;
+                    Send OTP to My Phone &rarr;
                   </Button>
                 </div>
               )}
 
               <div className="mt-6 text-center">
                 <Link to="/login" className="text-xs text-ink-muted hover:text-ink font-medium">
-                  Remember your password? <strong className="text-[#4C3BFF] underline">Log in</strong>
+                  Remember your password? <strong className="text-[#4C3BFF] underline">Login</strong>
                 </Link>
               </div>
             </div>
           )}
 
-          {/* STEP 2: Choose Delivery Option (WhatsApp vs SMS) */}
-          {step === 'channel' && foundAccount && (
-            <div>
-              <div className="flex items-center gap-3 p-3 bg-surface-sunken rounded-2xl mb-5">
-                <img
-                  src={foundAccount.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-                  alt={foundAccount.nickname}
-                  className="w-10 h-10 rounded-full object-cover border"
-                />
-                <div className="overflow-hidden flex-1">
-                  <div className="font-bold text-ink text-sm truncate">{foundAccount.nickname}</div>
-                  <div className="text-xs text-ink-muted">{foundAccount.phone}</div>
-                </div>
-              </div>
-
-              <h1 className="text-xl font-black text-ink tracking-tight mb-1">Select Delivery Option</h1>
-              <p className="text-ink-muted text-xs mb-5">
-                Where would you like to receive your 6-digit verification code?
-              </p>
-
-              <div className="space-y-3 mb-6">
-                {/* WhatsApp Option Card */}
-                <div
-                  onClick={() => setChannel('whatsapp')}
-                  className={`cursor-pointer p-4 rounded-2xl border-2 transition-all flex items-center gap-3 ${
-                    channel === 'whatsapp'
-                      ? 'border-[#25D366] bg-[#25D366]/10 shadow-sm'
-                      : 'border-line bg-surface hover:bg-surface-sunken'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-[#25D366]/20 flex items-center justify-center shrink-0">
-                    <Whatsapp className="w-6 h-6 text-[#25D366]" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-black text-ink text-sm">WhatsApp OTP</div>
-                    <div className="text-xs text-ink-muted">Send code directly to WhatsApp</div>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    channel === 'whatsapp' ? 'border-[#25D366] bg-[#25D366]' : 'border-line'
-                  }`}>
-                    {channel === 'whatsapp' && <div className="w-2 h-2 rounded-full bg-white" />}
-                  </div>
-                </div>
-
-                {/* SMS Option Card */}
-                <div
-                  onClick={() => setChannel('sms')}
-                  className={`cursor-pointer p-4 rounded-2xl border-2 transition-all flex items-center gap-3 ${
-                    channel === 'sms'
-                      ? 'border-[#4C3BFF] bg-[#4C3BFF]/10 shadow-sm'
-                      : 'border-line bg-surface hover:bg-surface-sunken'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-[#4C3BFF]/20 flex items-center justify-center shrink-0">
-                    <SmsIcon className="w-6 h-6 text-[#4C3BFF]" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-black text-ink text-sm">SMS OTP</div>
-                    <div className="text-xs text-ink-muted">Send code via standard SMS</div>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    channel === 'sms' ? 'border-[#4C3BFF] bg-[#4C3BFF]' : 'border-line'
-                  }`}>
-                    {channel === 'sms' && <div className="w-2 h-2 rounded-full bg-white" />}
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                fullWidth
-                onClick={() => handleSendOtp(channel)}
-                loading={isSendingOtp}
-                className="h-12 text-sm font-bold"
-              >
-                Send Verification Code
-              </Button>
-            </div>
-          )}
-
-          {/* STEP 3: Enter OTP */}
+          {/* STEP 2: Enter Verification Code */}
           {step === 'otp' && foundAccount && (
             <div>
               <div className="flex items-center justify-center w-12 h-12 bg-[#4C3BFF]/10 text-[#4C3BFF] rounded-2xl mb-4 mx-auto">
@@ -426,25 +438,29 @@ export const ForgotPassword = () => {
 
               <h1 className="text-2xl font-black text-center text-ink tracking-tight mb-1">Enter Verification Code</h1>
               <p className="text-ink-muted text-xs text-center mb-1">
-                We sent a 6-digit code via <strong className="text-ink font-bold uppercase">{channel}</strong> to
+                We sent a 6-digit verification code to
               </p>
               <div className="text-center font-bold text-ink text-sm mb-4">{foundAccount.phone}</div>
 
-              {/* Dev Mode OTP auto-helper */}
+              {/* Dev Mode OTP Indicator & Auto-fill */}
               {devOtp && (
-                <div className="mb-4 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-center">
-                  <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Dev Mode OTP:</span>{' '}
-                  <span className="font-mono font-black text-amber-900 text-sm tracking-widest">{devOtp}</span>
+                <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1.5 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-800 uppercase tracking-wider">
+                    <span>⚡ Development OTP Code</span>
+                  </div>
+                  <div className="text-2xl font-black font-mono tracking-widest text-[#4C3BFF]">
+                    {devOtp}
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
-                      const digits = devOtp.split('');
+                      const digits = devOtp.split('').slice(0, 6);
                       setOtpDigits(digits);
                       handleVerifyOtp(devOtp);
                     }}
-                    className="block mx-auto mt-1 text-[11px] text-amber-700 font-bold underline hover:text-amber-900"
+                    className="text-xs font-bold text-[#4C3BFF] hover:underline"
                   >
-                    Auto-fill & Continue
+                    Tap to auto-fill & verify
                   </button>
                 </div>
               )}
@@ -457,6 +473,7 @@ export const ForgotPassword = () => {
                     ref={(el) => (otpInputRefs.current[idx] = el)}
                     type="text"
                     inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={idx === 0 ? 6 : 1}
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
@@ -471,54 +488,32 @@ export const ForgotPassword = () => {
                 onClick={() => handleVerifyOtp()}
                 loading={isVerifyingOtp}
                 disabled={otpDigits.some((d) => !d)}
-                className="h-12 text-sm font-bold mb-4"
+                className="h-12 text-sm font-bold mb-4 bg-[#4C3BFF] hover:bg-[#3d2fe0]"
               >
                 Verify Code
               </Button>
 
-              {/* Resend & channel switch */}
-              <div className="text-center space-y-2">
+              {/* Resend Code */}
+              <div className="text-center">
                 <div className="text-xs text-ink-muted">
                   {cooldown > 0 ? (
                     <span>Resend code in <strong className="text-ink font-bold">{cooldown}s</strong></span>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleSendOtp(channel)}
+                      onClick={handleResendOtp}
                       disabled={isSendingOtp}
                       className="text-[#4C3BFF] font-bold hover:underline inline-flex items-center gap-1.5"
                     >
-                      <RefreshIcon className="w-3.5 h-3.5" /> Resend Code
+                      <RefreshIcon className="w-3.5 h-3.5" /> Resend Verification Code
                     </button>
                   )}
                 </div>
-
-                {channel === 'sms' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleSendOtp('whatsapp')}
-                    disabled={isSendingOtp || cooldown > 0}
-                    className="text-[11px] text-ink-muted hover:text-[#128C7E] transition-colors font-medium flex items-center justify-center gap-1.5 mx-auto"
-                  >
-                    <Whatsapp className="w-3.5 h-3.5 text-[#25D366]" />
-                    Didn't receive SMS? Send via WhatsApp OTP
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleSendOtp('sms')}
-                    disabled={isSendingOtp || cooldown > 0}
-                    className="text-[11px] text-ink-muted hover:text-[#4C3BFF] transition-colors font-medium flex items-center justify-center gap-1.5 mx-auto"
-                  >
-                    <SmsIcon className="w-3.5 h-3.5 text-[#4C3BFF]" />
-                    Didn't receive WhatsApp? Send via SMS OTP
-                  </button>
-                )}
               </div>
             </div>
           )}
 
-          {/* STEP 4: Create New Password */}
+          {/* STEP 3: Create New Password & Re-type */}
           {step === 'password' && (
             <div>
               <div className="flex items-center justify-center w-12 h-12 bg-[#4C3BFF]/10 text-[#4C3BFF] rounded-2xl mb-4 mx-auto">
@@ -527,43 +522,65 @@ export const ForgotPassword = () => {
 
               <h1 className="text-2xl font-black text-center text-ink tracking-tight mb-1">Create New Password</h1>
               <p className="text-ink-muted text-xs text-center mb-6">
-                Enter your new secure password below to complete account recovery.
+                Enter your new password and re-type it to confirm.
               </p>
 
               <form onSubmit={handleResetPassword} className="space-y-4">
-                <div className="relative">
-                  <Input
-                    icon={<Lock className="w-4 h-4 text-ink-muted" />}
-                    placeholder="New password (min 6 characters)"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    type={showPassword ? 'text' : 'password'}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
-                  >
-                    {showPassword ? <EyeClosed className="w-4 h-4" /> : <EyeOpen className="w-4 h-4" />}
-                  </button>
+                {/* New Password */}
+                <div>
+                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider mb-1 ml-1">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      icon={<Lock className="w-4 h-4 text-ink-muted" />}
+                      placeholder="Minimum 6 characters"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      type={showPassword ? 'text' : 'password'}
+                      autoFocus
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink p-1"
+                      aria-label="Toggle new password visibility"
+                    >
+                      {showPassword ? <EyeClosed className="w-4 h-4" /> : <EyeOpen className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="relative">
-                  <Input
-                    icon={<Lock className="w-4 h-4 text-ink-muted" />}
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    type={showConfirmPassword ? 'text' : 'password'}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
-                  >
-                    {showConfirmPassword ? <EyeClosed className="w-4 h-4" /> : <EyeOpen className="w-4 h-4" />}
-                  </button>
+                {/* Re-type Password (Confirm) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider mb-1 ml-1">
+                    Re-type Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      icon={<Lock className="w-4 h-4 text-ink-muted" />}
+                      placeholder="Re-enter new password"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink p-1"
+                      aria-label="Toggle confirm password visibility"
+                    >
+                      {showConfirmPassword ? <EyeClosed className="w-4 h-4" /> : <EyeOpen className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <Button
@@ -571,30 +588,30 @@ export const ForgotPassword = () => {
                   fullWidth
                   loading={isResetting}
                   disabled={!newPassword || !confirmPassword}
-                  className="h-12 text-sm font-bold mt-2"
+                  className="h-12 text-sm font-bold mt-2 bg-[#4C3BFF] hover:bg-[#3d2fe0]"
                 >
-                  Save & Set New Password
+                  Save New Password
                 </Button>
               </form>
             </div>
           )}
 
-          {/* STEP 5: Done Screen */}
+          {/* STEP 4: Done Screen */}
           {step === 'done' && (
             <div className="text-center py-4 space-y-4">
               <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-3xl flex items-center justify-center mx-auto animate-bounce">
                 <CheckCircle className="w-10 h-10" />
               </div>
-              <h1 className="text-2xl font-black text-ink tracking-tight">Password Updated!</h1>
+              <h1 className="text-2xl font-black text-ink tracking-tight">Password Reset Complete!</h1>
               <p className="text-ink-muted text-xs max-w-xs mx-auto">
-                Your password has been successfully reset. You can now use your new password to sign in.
+                Your password has been successfully reset. You can now login with your new password.
               </p>
               <Button
                 fullWidth
                 onClick={() => navigate('/login')}
                 className="h-12 text-sm font-bold bg-green-600 hover:bg-green-700"
               >
-                Go to Sign In
+                Go to Login
               </Button>
             </div>
           )}

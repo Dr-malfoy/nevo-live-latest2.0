@@ -8,6 +8,10 @@ export const adminApi = {
   toggleBan: (id: string) => client.put(`/admin/users/${id}/ban`),
   setSellerType: (id: string, sellerType: 'none' | 'official' | 'paylor') =>
     client.put(`/admin/users/${id}/seller-type`, { sellerType }),
+  getHosts: (params?: Record<string, any>) => client.get('/admin/hosts', { params }),
+  setHostBadge: (id: string, hostBadge: 'alpha' | 'aurora' | 'none') =>
+    client.put(`/admin/hosts/${id}/badge`, { hostBadge }),
+  recalculateHostBadges: () => client.post('/admin/hosts/recalculate-badges'),
   getStreams: (params?: Record<string, any>) => client.get('/admin/streams', { params }),
   endStream: (id: string) => client.put(`/admin/streams/${id}/end`),
   getTransactions: (params?: Record<string, any>) => client.get('/admin/transactions', { params }),
@@ -52,10 +56,16 @@ export const adminApi = {
   updateModerationReport: (id: string, data: { status: string; adminNote?: string }) =>
     client.put(`/admin/reports/${id}`, data),
 
-  // Contact messages from users
+  // Contact messages from users / support tickets
   getContactMessages: (params?: Record<string, any>) => client.get('/admin/contact-messages', { params }),
   replyContactMessage: (id: string, data: { reply?: string; status?: string }) =>
     client.put(`/admin/contact-messages/${id}`, data),
+
+  // Telegram dynamic configuration
+  getTelegramConfig: () => client.get('/admin/telegram-config'),
+  updateTelegramConfig: (data: { channelUrl?: string; supportUrl?: string; groupUrl?: string }) =>
+    client.put('/admin/telegram-config', data),
+
 
   // Analytics
   getAnalytics: (params?: Record<string, any>) => client.get('/admin/analytics', { params }),

@@ -1,5 +1,6 @@
 export interface ITransaction {
   _id: string;
+  txId?: string;
   userId: string;
   type: 'recharge' | 'gift_send' | 'gift_receive' | 'gift_cut' | 'withdraw' | 'coin_purchase' | 'coin_sale' | 'agent_recharge' | 'agent_sale' | 'commission' | 'transfer' | 'game_bet' | 'game_win' | 'daily_reward';
   coinRate?: number;

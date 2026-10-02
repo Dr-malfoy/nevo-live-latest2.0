@@ -21,11 +21,12 @@ function parseCountries(raw: unknown): string[] | undefined {
 export const streamController = {
   async getFeed(req: Request, res: Response, next: NextFunction) {
     try {
-      const { tab, type, category, page, limit, country } = req.query as any;
+      const { tab, type, category, page, limit, country, hostBadge, badge } = req.query as any;
 
       // Requirement #1 — `?country=BD,IN,PK`. Also accepts repeated params
       // (`?country=BD&country=IN`). "ALL" / empty means no constraint.
       const countries = parseCountries(country);
+      const badgeFilter = hostBadge || badge;
 
       if (tab === 'follow' && req.user) {
         const { data, total } = await streamService.getFollowFeed(
@@ -44,7 +45,8 @@ export const streamController = {
         category,
         parseInt(page) || 1,
         parseInt(limit) || 20,
-        countries
+        countries,
+        badgeFilter
       );
       sendPaginated(res, data, total, parseInt(page) || 1, parseInt(limit) || 20);
     } catch (error) {

@@ -21,13 +21,14 @@ import {
   PiSparkleFill as Sparkle,
   PiUserCheckFill as UserCheck,
   PiSmileyFill as SmileyFace,
+  PiWarningCircleFill as AlertCircle,
 } from 'react-icons/pi';
 import { useAuthStore } from '../stores';
 import { verificationApi, uploadApi, usersApi } from '../api';
 import type { VerificationRequest } from '../types';
 
 type Mode = 'hub' | 'face_scan' | 'nid_form';
-type DetectionStatus = 'waiting' | 'no_face' | 'too_dark' | 'too_bright' | 'detected' | 'capturing';
+type DetectionStatus = 'waiting' | 'no_face' | 'too_dark' | 'too_bright' | 'detected' | 'permission_denied' | 'capturing';
 
 const UPLOAD_FOLDER = 'verification';
 
@@ -54,6 +55,7 @@ export const VerificationCenter = () => {
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('waiting');
   const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
   const [isFaceInFrame, setIsFaceInFrame] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -62,6 +64,7 @@ export const VerificationCenter = () => {
   const animFrameIdRef = useRef<number | null>(null);
   const consecutiveFaceFramesRef = useRef<number>(0);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isCapturingRef = useRef<boolean>(false);
 
   // ── NID Verification state ──────────────────────────────────────────
   const [nidFullName, setNidFullName] = useState(user?.nickname || '');
@@ -130,6 +133,20 @@ export const VerificationCenter = () => {
     };
   }, [cameraStream]);
 
+  // ── Auto-attach stream to video element whenever video element or stream updates ──
+  useEffect(() => {
+    if (videoRef.current && cameraStream && cameraActive) {
+      const video = videoRef.current;
+      if (video.srcObject !== cameraStream) {
+        video.srcObject = cameraStream;
+      }
+      video.onloadedmetadata = () => {
+        video.play().catch((e) => console.warn('Video auto-play prevented:', e));
+      };
+      video.play().catch(() => {});
+    }
+  }, [cameraStream, cameraActive, mode]);
+
   // ── Biometric Face Frame Evaluation Engine ──────────────────────────
   const evaluateVideoFrame = useCallback(async (): Promise<{ hasFace: boolean; status: DetectionStatus }> => {
     if (!videoRef.current || videoRef.current.readyState < 2) {
@@ -146,7 +163,7 @@ export const VerificationCenter = () => {
         if (faces && faces.length > 0) {
           const face = faces[0];
           const box = face.boundingBox;
-          if (box && box.width > 50 && box.height > 50) {
+          if (box && box.width > 40 && box.height > 40) {
             return { hasFace: true, status: 'detected' };
           }
         }
@@ -155,7 +172,7 @@ export const VerificationCenter = () => {
       }
     }
 
-    // 2. High-speed Canvas Biometric & Lighting Heuristic
+    // 2. High-speed Canvas Biometric, Chrominance & Edge Variance Analysis
     if (!analysisCanvasRef.current) {
       analysisCanvasRef.current = document.createElement('canvas');
     }
@@ -172,52 +189,58 @@ export const VerificationCenter = () => {
     const data = imgData.data;
 
     let totalBrightness = 0;
-    let skinPixels = 0;
     let centerSkinPixels = 0;
+    let centerContrastDelta = 0;
     const totalPixels = sampleSize * sampleSize;
 
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const brightness = (r + g + b) / 3;
-      totalBrightness += brightness;
+    // Center oval coordinates
+    const minX = Math.floor(sampleSize * 0.22);
+    const maxX = Math.floor(sampleSize * 0.78);
+    const minY = Math.floor(sampleSize * 0.18);
+    const maxY = Math.floor(sampleSize * 0.82);
+    const centerZoneTotal = (maxX - minX) * (maxY - minY);
 
-      // Human skin-tone color model
-      const isSkin =
-        r > 50 &&
-        g > 30 &&
-        b > 15 &&
-        r > g &&
-        r > b &&
-        r - g > 10 &&
-        Math.abs(r - g) > 8;
+    for (let y = 0; y < sampleSize; y++) {
+      for (let x = 0; x < sampleSize; x++) {
+        const i = (y * sampleSize + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+        totalBrightness += brightness;
 
-      if (isSkin) {
-        skinPixels++;
-        const pxIdx = i / 4;
-        const x = pxIdx % sampleSize;
-        const y = Math.floor(pxIdx / sampleSize);
-        // Center facial region (middle 50% circle)
-        if (x >= sampleSize * 0.25 && x <= sampleSize * 0.75 && y >= sampleSize * 0.2 && y <= sampleSize * 0.8) {
-          centerSkinPixels++;
+        // Scientific YCbCr skin chromaticity (Universal across fair to dark skin tones)
+        const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+        const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+        const isSkin = cb >= 77 && cb <= 135 && cr >= 128 && cr <= 178;
+
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+          if (isSkin) {
+            centerSkinPixels++;
+          }
+          // Measure horizontal contrast (detects facial landmarks: eyes, nose, lips vs skin)
+          if (x < maxX) {
+            const nextI = (y * sampleSize + (x + 1)) * 4;
+            const nextBrightness = 0.299 * data[nextI] + 0.587 * data[nextI + 1] + 0.114 * data[nextI + 2];
+            centerContrastDelta += Math.abs(brightness - nextBrightness);
+          }
         }
       }
     }
 
     const avgBrightness = totalBrightness / totalPixels;
-    if (avgBrightness < 35) {
+    if (avgBrightness < 30) {
       return { hasFace: false, status: 'too_dark' };
     }
     if (avgBrightness > 245) {
       return { hasFace: false, status: 'too_bright' };
     }
 
-    const centerZoneTotal = sampleSize * 0.5 * sampleSize * 0.6;
     const centerSkinRatio = centerSkinPixels / centerZoneTotal;
+    const avgContrast = centerContrastDelta / centerZoneTotal;
 
-    // Face is in frame when center skin tone clustering is between 15% and 85%
-    if (centerSkinRatio >= 0.16 && centerSkinRatio <= 0.85) {
+    // Face is validated when skin tone clustering is healthy AND facial edge contrast is present
+    if (centerSkinRatio >= 0.14 && centerSkinRatio <= 0.88 && avgContrast > 2.5) {
       return { hasFace: true, status: 'detected' };
     }
 
@@ -227,24 +250,62 @@ export const VerificationCenter = () => {
   // ── Camera Handlers ──────────────────────────────────────────────────
   const startCamera = async () => {
     setError('');
+    setPermissionError(null);
     setDetectionStatus('waiting');
     setIsFaceInFrame(false);
     consecutiveFaceFramesRef.current = 0;
+    isCapturingRef.current = false;
 
+    // Check mediaDevices support
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError('Camera access is not supported on this browser. Please use Chrome, Safari, Edge, or upload a photo.');
+      setCameraActive(false);
+      return;
+    }
+
+    let stream: MediaStream | null = null;
+
+    // 1. Try front camera with ideal resolution
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
         audio: false,
       });
+    } catch (err: any) {
+      console.warn('Strict facingMode:user constraints failed, attempting fallback...', err);
+      // 2. Fallback to basic video without constraints (for devices/webcams with strict drivers)
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      } catch (fallbackErr: any) {
+        console.error('Camera initialization failed:', fallbackErr);
+        const name = fallbackErr.name || err.name;
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          setPermissionError('Camera permission denied. Please allow camera access in your browser or device settings.');
+          setError('Camera permission denied. Please allow camera permission and click Retry.');
+          setDetectionStatus('permission_denied');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          setError('No camera detected on this device. You can upload a photo directly.');
+        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+          setError('Camera is currently in use by another application. Please close other camera apps and retry.');
+        } else {
+          setError(`Unable to start camera: ${fallbackErr.message || 'Unknown error'}`);
+        }
+        setCameraActive(false);
+        return;
+      }
+    }
+
+    if (stream) {
       setCameraStream(stream);
       setCameraActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      console.error('Camera access error:', err);
-      setError('Camera access denied or unavailable. You can upload a selfie photo directly.');
-      setCameraActive(false);
+      setPermissionError(null);
     }
   };
 
@@ -266,24 +327,37 @@ export const VerificationCenter = () => {
     setDetectionCountdown(null);
   };
 
+  // Auto-start camera when navigating to face_scan mode
+  useEffect(() => {
+    if (mode === 'face_scan' && !cameraActive && !faceCapturedImage && scanStep === 'ready') {
+      startCamera();
+    }
+  }, [mode]);
+
   // ── Capture and Auto-Submit ──────────────────────────────────────────
   const captureAndAutoVerify = useCallback(async () => {
+    if (isCapturingRef.current) return;
     if (!videoRef.current || !canvasRef.current) return;
+    
+    isCapturingRef.current = true;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     
-    canvas.width = video.videoWidth || 480;
+    canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      isCapturingRef.current = false;
+      return;
+    }
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
     setFaceCapturedImage(dataUrl);
     stopCamera();
 
-    // Auto trigger submission immediately upon capturing
+    // Auto trigger verification immediately upon capturing
     await handleFaceVerifySubmit(dataUrl);
   }, []);
 
@@ -296,7 +370,7 @@ export const VerificationCenter = () => {
     let isRunning = true;
 
     const processLoop = async () => {
-      if (!isRunning) return;
+      if (!isRunning || isCapturingRef.current) return;
 
       const evalResult = await evaluateVideoFrame();
 
@@ -305,8 +379,8 @@ export const VerificationCenter = () => {
         setDetectionStatus('detected');
         consecutiveFaceFramesRef.current += 1;
 
-        // If face has been stable for 4 consecutive frames (~400ms), start the auto-capture countdown
-        if (consecutiveFaceFramesRef.current >= 4 && detectionCountdown === null) {
+        // If face has been stable for 3 consecutive frames (~300ms), start the auto-capture countdown
+        if (consecutiveFaceFramesRef.current >= 3 && detectionCountdown === null) {
           setDetectionCountdown(2);
           
           let timeLeft = 2;
@@ -334,7 +408,7 @@ export const VerificationCenter = () => {
       }
 
       if (isRunning) {
-        // Sample every ~120ms for smooth real-time response without CPU load
+        // Sample every ~120ms for smooth real-time response without lag
         setTimeout(() => {
           if (isRunning) animFrameIdRef.current = requestAnimationFrame(processLoop);
         }, 120);
@@ -357,7 +431,6 @@ export const VerificationCenter = () => {
       const url = await uploadApi.upload(file, UPLOAD_FOLDER);
       setFaceCapturedImage(url);
       setScanStep('ready');
-      // Prompt auto-verify on manual upload
       await handleFaceVerifySubmit(url);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to upload photo');
@@ -399,11 +472,13 @@ export const VerificationCenter = () => {
           setScanStep('ready');
           setFaceCapturedImage(null);
           setSuccessMessage('');
+          isCapturingRef.current = false;
         }, 2200);
       }
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Live face verification failed. Please try again.');
       setScanStep('ready');
+      isCapturingRef.current = false;
     } finally {
       setSubmitting(false);
     }
@@ -443,11 +518,11 @@ export const VerificationCenter = () => {
         documentFrontUrl: nidFrontUrl,
         documentBackUrl: nidBackUrl,
         selfieUrl: nidSelfieUrl || undefined,
-        autoApprove: true,
+        autoApprove: false,
       });
 
       if (data.success) {
-        setSuccessMessage('NID Verified! Coin trading, buying and selling diamonds are now unlocked!');
+        setSuccessMessage('NID submitted! Your documents are currently under review by admin.');
         await refreshProfile();
         setTimeout(() => {
           setMode('hub');
@@ -557,6 +632,8 @@ export const VerificationCenter = () => {
                 ? 'border-purple-500 shadow-purple-500/30'
                 : isFaceInFrame
                 ? 'border-emerald-400 shadow-emerald-400/40 ring-4 ring-emerald-400/30'
+                : permissionError
+                ? 'border-red-500/80 shadow-red-500/20'
                 : 'border-slate-700 shadow-slate-900/50'
             }`}>
               {scanStep === 'verifying' ? (
@@ -602,12 +679,20 @@ export const VerificationCenter = () => {
                     )}
                   </div>
                 </>
+              ) : permissionError ? (
+                <div className="flex flex-col items-center gap-2 p-6 text-center z-10">
+                  <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                    <AlertCircle className="w-8 h-8 text-red-400" />
+                  </div>
+                  <p className="text-xs font-bold text-white">Camera Access Denied</p>
+                  <p className="text-[11px] text-white/70">Please allow camera permissions</p>
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-3 p-6 text-center">
                   <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
                     <Camera className="w-8 h-8 text-purple-400" />
                   </div>
-                  <p className="text-sm font-medium text-white/80">Position face inside the circle</p>
+                  <p className="text-sm font-medium text-white/80">Starting live camera...</p>
                 </div>
               )}
 
@@ -630,20 +715,24 @@ export const VerificationCenter = () => {
                       isFaceInFrame ? 'text-emerald-600' : 'text-amber-600'
                     }`}>
                       {isFaceInFrame
-                        ? '✓ Face Detected! Auto-capturing...'
+                        ? '✓ Face Detected! Hold still...'
                         : detectionStatus === 'too_dark'
                         ? '⚠️ Lighting too dark. Move to bright area'
                         : detectionStatus === 'too_bright'
                         ? '⚠️ Lighting too bright. Adjust angle'
-                        : 'Looking for human face...'}
+                        : 'Position your face inside the circle'}
                     </span>
                   </div>
                   <p className="text-xs text-ink-muted">
                     {isFaceInFrame
-                      ? 'Hold still while your face is captured automatically.'
-                      : 'Please look directly into the camera inside the circle.'}
+                      ? 'Stay still. System is auto-capturing your face.'
+                      : 'Look straight at the camera. Verification starts automatically.'}
                   </p>
                 </div>
+              ) : permissionError ? (
+                <p className="text-xs text-red-600 font-medium">
+                  {permissionError}
+                </p>
               ) : (
                 <>
                   <p className="text-sm font-bold text-ink">
@@ -691,14 +780,14 @@ export const VerificationCenter = () => {
                       ) : (
                         <Camera className="w-5 h-5" />
                       )}
-                      {isFaceInFrame ? 'Capture & Verify Now' : 'Align Face to Capture'}
+                      {isFaceInFrame ? 'Capture & Verify Now' : 'Align Face to Auto-Verify'}
                     </button>
                   ) : (
                     <button
                       onClick={startCamera}
                       className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-[0.99] font-bold text-white flex items-center justify-center gap-2 shadow-md shadow-purple-600/25 transition-all text-sm"
                     >
-                      <Camera className="w-5 h-5" /> Open Live Camera
+                      <Camera className="w-5 h-5" /> Start Live Camera
                     </button>
                   )}
 
@@ -949,10 +1038,10 @@ export const VerificationCenter = () => {
             </div>
 
             <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-2 rounded-xl border border-white/10">
-              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isNidVerified ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' : 'bg-white/30'}`} />
+              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isNidVerified ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' : user?.verification?.nidStatus === 'PENDING' ? 'bg-blue-400 animate-pulse' : 'bg-white/30'}`} />
               <span className="text-xs text-white/80 truncate">NID ID</span>
-              <span className={`text-xs font-semibold ml-auto shrink-0 ${isNidVerified ? 'text-amber-300' : 'text-white/50'}`}>
-                {isNidVerified ? 'Active ✓' : 'Not Set'}
+              <span className={`text-xs font-semibold ml-auto shrink-0 ${isNidVerified ? 'text-amber-300' : user?.verification?.nidStatus === 'PENDING' ? 'text-blue-300' : 'text-white/50'}`}>
+                {isNidVerified ? 'Active ✓' : user?.verification?.nidStatus === 'PENDING' ? 'Pending ⏳' : 'Not Set'}
               </span>
             </div>
           </div>
@@ -1061,6 +1150,10 @@ export const VerificationCenter = () => {
               <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shrink-0">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Verified
               </span>
+            ) : user?.verification?.nidStatus === 'PENDING' ? (
+              <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full shrink-0">
+                Pending Admin Review
+              </span>
             ) : (
               <span className="text-xs font-medium text-ink-muted bg-surface-sunken px-2.5 py-1 rounded-full shrink-0">
                 Required
@@ -1094,6 +1187,10 @@ export const VerificationCenter = () => {
           {isNidVerified ? (
             <div className="w-full py-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2 text-xs font-bold text-emerald-700">
               <BadgeCheck className="w-4 h-4" /> NID Verified & Trading Active
+            </div>
+          ) : user?.verification?.nidStatus === 'PENDING' ? (
+            <div className="w-full py-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center gap-2 text-xs font-bold text-blue-700">
+              <Clock className="w-4 h-4 animate-spin" /> Documents Under Admin Review
             </div>
           ) : (
             <button

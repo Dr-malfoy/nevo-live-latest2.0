@@ -9,6 +9,7 @@ import { aviatorService } from './services/aviator.service';
 import { startStreamReaper } from './services/stream.service';
 import { matchService } from './services/match.service';
 import { startRankingEngine } from './services/ranking.service';
+import { agencyService } from './services/agency.service';
 
 const start = async (): Promise<void> => {
   await connectDB();
@@ -25,6 +26,9 @@ const start = async (): Promise<void> => {
 
   // Precompute the leaderboards (§4.5) and settle finished prize windows
   startRankingEngine();
+
+  // 30-day agency member inactivity auto-leave worker
+  agencyService.startAgencyInactivityWorker();
 
   // Start the Teen Patti multiplayer engine
   teenPattiService.start().catch((e) => console.error('Teen Patti engine start failed:', e));

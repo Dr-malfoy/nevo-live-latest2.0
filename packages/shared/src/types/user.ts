@@ -54,6 +54,10 @@ export interface IUser {
   agencyId?: string;
   sellerType?: 'none' | 'official' | 'paylor';
   verification?: IVerificationState;
+  hostBadge?: 'alpha' | 'aurora' | 'none';
+  hostBadgeType?: 'manual' | 'auto' | 'none';
+  hostBadgeAssignedAt?: Date;
+  hostBadgeExpiresAt?: Date;
   isBanned: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -72,6 +76,10 @@ export interface IUserPublic {
   hasPurchasedDiamonds?: boolean;
   role?: 'admin' | 'agent' | 'host' | 'user';
   sellerType?: 'none' | 'official' | 'paylor';
+  hostBadge?: 'alpha' | 'aurora' | 'none';
+  hostBadgeType?: 'manual' | 'auto' | 'none';
+  hostBadgeAssignedAt?: Date;
+  hostBadgeExpiresAt?: Date;
   verification?: IVerificationState;
   country?: string;
   gender?: Gender;

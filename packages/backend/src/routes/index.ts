@@ -34,5 +34,8 @@ export { default as fanclubRoutes } from './fanclub.routes';
 export { default as fangroupRoutes } from './fangroup.routes';
 export { default as streamerRoutes } from './streamer.routes';
 export { default as gamesHubRoutes } from './gamesHub.routes';
+export { default as storyRoutes } from './story.routes';
+export { default as noteRoutes } from './note.routes';
+
 
 

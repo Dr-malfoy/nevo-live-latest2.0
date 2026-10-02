@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { ArrowRight, UserCheck, ShieldCheck, Sparkles, Search, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { adminApi } from '../api';
 import { DiamondIcon, CoinIcon } from '../components/CurrencyIcon';
+import { getMediaUrl } from '../lib/media';
 
 export const AdminWallet = () => {
   const [wallet, setWallet] = useState<any>(null);
@@ -358,9 +359,9 @@ export const AdminWallet = () => {
                     <div className="flex items-center gap-3.5 pb-4 border-b border-dark-800">
                       {recipient.avatar ? (
                         <img
-                          src={recipient.avatar}
+                          src={getMediaUrl(recipient.avatar)}
                           alt={recipient.nickname}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/50"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/50 bg-dark-800"
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-primary-600/30 border border-primary-500 flex items-center justify-center text-primary-300 font-bold text-lg">

@@ -1,15 +1,15 @@
-# Render blueprint for the Bogolive backend (Express + Socket.IO)
+# Render blueprint for the Nevo Live backend (Express + Socket.IO)
 # Deploy: connect this repo in Render → "Blueprint" → select render.yaml
-# Or create a Web Service manually and paste the build/start commands below.
+# Or create a Web Service manually with the settings below.
 services:
   - type: web
-    name: bogolive-api
+    name: nevo-live-latest
     runtime: node
-    plan: starter # persistent WebSockets require Starter ($7/mo) — free tier sleeps/can't hold WS
-    region: singapore # pick closest to your users
+    plan: starter # Starter plan recommended for persistent WebSocket connections
+    region: singapore # Closest region for low latency
     rootDir: .
     buildCommand: npm install --include=dev && npm run build:shared && npm run build:backend
-    startCommand: npx tsx packages/backend/src/index.ts
+    startCommand: node packages/backend/dist/index.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -17,22 +17,38 @@ services:
       - key: PORT
         value: 5000
       - key: MONGO_URI
-        sync: false # set in Render dashboard — your Atlas connection string
-      - key: CLIENT_URL
-        sync: false # set to your deployed frontend URL, e.g. https://navoapp.shop
+        value: mongodb+srv://rijomkumar_db_user:UqKjjbakeUlEJDjE@cluster0.cw4qnjy.mongodb.net/bogolive?retryWrites=true&w=majority&appName=Cluster0
       - key: JWT_SECRET
-        sync: false # generate a long random string
+        value: bogolive-jwt-secret-key-development-2026
+      - key: CLIENT_URL
+        value: https://nevo-live-latest.onrender.com
       - key: AGORA_APP_ID
-        sync: false
+        value: b0b508017ff54158a6e30f30c7cbea98
       - key: AGORA_APP_CERTIFICATE
-        sync: false
-      - key: AGORA_APP_CERTIFICATE_SECONDARY
-        sync: false
-      - key: FIREBASE_SERVICE_ACCOUNT
-        sync: false # the JSON string (escaped) or path — see note below
+        value: 837b0be08c6e43a0a29d5978252eff62
       - key: CLOUDINARY_CLOUD_NAME
-        sync: false
+        value: dl5u2l3n
       - key: CLOUDINARY_API_KEY
-        sync: false
+        value: "438381728283281"
       - key: CLOUDINARY_API_SECRET
-        sync: false
+        value: cctW7msOrjgBs9-lp-BrhH-8SqI
+      - key: OTP_DEV_MODE
+        value: "true"
+      - key: OTP_HMAC_SECRET
+        value: bogolive-otp-secret-key-development-2026
+      - key: OTP_LENGTH
+        value: "6"
+      - key: OTP_EXPIRY_SECONDS
+        value: "300"
+      - key: OTP_RESEND_COOLDOWN_SECONDS
+        value: "60"
+      - key: OTP_MAX_ATTEMPTS
+        value: "5"
+      - key: OTP_MAX_REQUESTS
+        value: "5"
+      - key: OTP_RATE_LIMIT_WINDOW_SECONDS
+        value: "900"
+      - key: OTP_SMS_PROVIDER
+        value: console
+      - key: OTP_WHATSAPP_PROVIDER
+        value: console

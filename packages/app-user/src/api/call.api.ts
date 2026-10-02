@@ -8,6 +8,8 @@ export interface CallSession {
   token: string;
   participantCount?: number;
   maxParticipants?: number;
+  /** Coins per minute for priced 1:1 host calls. 0 for free/group calls. */
+  coinsPerMinute?: number;
 }
 
 export interface CallParticipant {
@@ -29,10 +31,42 @@ export interface CallRosterSession extends CallSession {
   participants: CallParticipant[];
 }
 
+export interface CallQuote {
+  coinsPerMinute: number;
+  balance: number;
+  canCall: boolean;
+  reason?: string;
+  minBalance: number;
+  hostNickname?: string;
+  hostAvatar?: string;
+}
+
+export interface BillingTickResult {
+  coinsFinished?: boolean;
+  audienceCoins?: number;
+  minutesBilled?: number;
+  totalCoins?: number;
+  skipped?: boolean;
+}
+
 export const callApi = {
-  /** Start a 1:1 or group call (1..9 recipients, max 10 total participants). */
-  create: (recipientIds: string[], type: 'audio' | 'video' = 'audio') =>
-    client.post<ApiResponse<CallSession>>('/calls', { recipientIds, type }),
+  /**
+   * Get a pricing quote before initiating a call.
+   * Checks the audience's balance against the host's per-minute price.
+   */
+  getQuote: (hostId: string) =>
+    client.get<ApiResponse<CallQuote>>(`/calls/quote/${hostId}`),
+
+  /**
+   * Start a 1:1 or group call.
+   * source: 'profile' (from host profile) | 'messenger' (from chat).
+   */
+  create: (
+    recipientIds: string[],
+    type: 'audio' | 'video' = 'audio',
+    source: 'profile' | 'messenger' = 'messenger'
+  ) =>
+    client.post<ApiResponse<CallSession>>('/calls', { recipientIds, type, source }),
 
   accept: (callId: string) =>
     client.post<ApiResponse<CallSession>>(`/calls/${callId}/accept`),
@@ -51,4 +85,15 @@ export const callApi = {
 
   end: (callId: string, outcome: 'ended' | 'rejected' | 'missed' = 'ended') =>
     client.post<ApiResponse>(`/calls/${callId}/end`, { outcome }),
+
+  /**
+   * Billing heartbeat — sent every 60 s by the audience client.
+   * The server is the authoritative billing source; this is a safety net.
+   */
+  billingTick: (callId: string) =>
+    client.post<ApiResponse<BillingTickResult>>(`/calls/${callId}/billing-tick`),
+
+  /** Explicitly finalize call billing (idempotent). Called on hangup. */
+  finalize: (callId: string) =>
+    client.post<ApiResponse>(`/calls/${callId}/finalize`),
 };

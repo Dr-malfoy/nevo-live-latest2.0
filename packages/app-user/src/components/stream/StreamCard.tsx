@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { PiGameControllerFill as Gamepad2, PiMicrophoneFill as Mic, PiRadioFill as Radio, PiVideoCameraFill as Video } from 'react-icons/pi';
-import { LevelBadge } from '../user';
+import { LevelBadge, HostBadge } from '../user';
 import { flagEmoji } from '../../lib/countries';
 import { compactNumber } from '../../lib/time';
 import { calculateWealthLevel, calculateLiveLevel } from '../../lib/userLevels';
@@ -49,7 +49,7 @@ export const StreamCard = ({ stream }: StreamCardProps) => {
   const hostAny = host as any;
   const wealth = hostAny?.wealthLevel && hostAny.wealthLevel > 1
     ? hostAny.wealthLevel
-    : calculateWealthLevel(hostAny?.diamonds, hostAny?.level).level;
+    : calculateWealthLevel(hostAny?.wealthExp || hostAny?.diamonds, hostAny?.wealthLevel || hostAny?.level).level;
   const live = hostAny?.liveLevel && hostAny.liveLevel > 1
     ? hostAny.liveLevel
     : calculateLiveLevel(hostAny?.coins, hostAny?.level).level;
@@ -110,6 +110,9 @@ export const StreamCard = ({ stream }: StreamCardProps) => {
               {country && <span className="text-[11px] leading-none shrink-0">{flagEmoji(country)}</span>}
               <span className="text-[11px] text-white/90 truncate">{host.nickname}</span>
               <LevelBadge level={hostLevel} className="!h-[15px] !px-1 !text-[9px]" />
+              {(hostAny as any)?.hostBadge && (hostAny as any).hostBadge !== 'none' && (
+                <HostBadge badge={(hostAny as any).hostBadge} size="xs" />
+              )}
             </div>
           )}
         </div>

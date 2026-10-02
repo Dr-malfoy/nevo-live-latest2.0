@@ -4,8 +4,9 @@ import { LevelBadge } from './LevelBadge';
 import { VipBadge } from './VipBadge';
 import { OnlineDot } from './OnlineDot';
 import { RoleTags } from './RoleTag';
+import { HostBadge } from './HostBadge';
 
-type NameplateUser = Partial<UserPublic> & Partial<User> & { nickname: string };
+type NameplateUser = Partial<UserPublic> & Partial<User> & { nickname: string; hostBadge?: string };
 
 interface UserNameplateProps {
   user: NameplateUser;
@@ -15,7 +16,9 @@ interface UserNameplateProps {
   showFlag?: boolean;
   showLevel?: boolean;
   showVip?: boolean;
+  showHostBadge?: boolean;
   showOnline?: boolean;
+  showId?: boolean;
   /**
    * Let the badges wrap to a second line instead of squeezing the name.
    * On by default for `lg`; turn it on for list rows, where the Follow pill
@@ -35,7 +38,7 @@ const nameSize = {
  * Requirement #3 — the standard identity block used everywhere a user's name
  * appears:
  *
- *   🟢 Mehedi Hasan [Lv.15] [VIP3]
+ *   🟢 Mehedi Hasan [ALPHA HOST] [Lv.15] [VIP3]
  *   HOST
  *
  * One component so the badges stay consistent across the feed, profiles,
@@ -48,6 +51,7 @@ export const UserNameplate = ({
   showFlag = true,
   showLevel = true,
   showVip = true,
+  showHostBadge = true,
   showOnline = true,
   showId = true,
   wrap,
@@ -63,6 +67,10 @@ export const UserNameplate = ({
         {showOnline && <OnlineDot online={user.online} size={size === 'lg' ? 'md' : 'sm'} />}
 
         <span className={`font-semibold text-ink truncate ${nameSize[size]}`}>{user.nickname}</span>
+
+        {showHostBadge && user.hostBadge && user.hostBadge !== 'none' && (
+          <HostBadge badge={user.hostBadge} size={badgeSize === 'md' ? 'sm' : 'xs'} />
+        )}
 
         {showId && user.uid && (
           <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
@@ -83,7 +91,8 @@ export const UserNameplate = ({
         {showVip && (
           <VipBadge
             noble={user.noble as any}
-            isVip={user.isVip || (user as any).hasPurchasedDiamonds}
+            isVip={user.isVip || (user as any).hasPurchasedDiamonds || Boolean((user as any).wealthExp && (user as any).wealthExp > 0)}
+            wealthExp={(user as any).wealthExp}
             diamonds={user.diamonds}
             size={badgeSize}
           />

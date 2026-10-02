@@ -6,6 +6,7 @@ import {
 import { AppError } from '../middleware/errorHandler';
 import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
+import { calculateWealthLevel } from '../utils/userLevels';
 
 const PAYMENT_METHODS = ['bybit', 'binance', 'bkash', 'nagad', 'rocket'] as const;
 const MOBILE_BANKING = ['bkash', 'nagad', 'rocket'] as const;
@@ -98,6 +99,9 @@ export const paymentService = {
     // Credit the user & auto-grant VIP badge on diamond purchase
     if (currency === 'diamond') {
       user.diamonds += order.diamonds;
+      user.wealthExp = (user.wealthExp || 0) + order.diamonds;
+      const wealthInfo = calculateWealthLevel(user.wealthExp, user.wealthLevel);
+      user.wealthLevel = Math.max(user.wealthLevel || 1, wealthInfo.level);
       user.hasPurchasedDiamonds = true;
       user.isVip = true;
       if (!user.noble) {
@@ -598,6 +602,9 @@ export const paymentService = {
     // Credit the agent's balance & auto-grant VIP badge on diamond purchase
     if (order.currency === 'diamond') {
       agent.diamonds += order.amount;
+      agent.wealthExp = (agent.wealthExp || 0) + order.amount;
+      const wealthInfo = calculateWealthLevel(agent.wealthExp, agent.wealthLevel);
+      agent.wealthLevel = Math.max(agent.wealthLevel || 1, wealthInfo.level);
       agent.hasPurchasedDiamonds = true;
       agent.isVip = true;
       if (!agent.noble) {

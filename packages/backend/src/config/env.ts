@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// __dirname resolves to packages/backend/src/config/
-// Going up 4 levels reaches the project root
+// Load environment variables from environment or .env file
+dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
 export const env = {

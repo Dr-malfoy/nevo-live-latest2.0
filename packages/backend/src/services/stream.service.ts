@@ -39,9 +39,9 @@ export function startStreamReaper(): void {
 
 const staleBeforeDate = () => new Date(Date.now() - HEARTBEAT_STALE_MS);
 
-/** Host fields every stream card needs, incl. country flag + presence dot. */
+/** Host fields every stream card needs, incl. country flag + presence dot + premium badges. */
 const HOST_FIELDS =
-  'uid nickname avatar level isAgent role sellerType coins diamonds verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds';
+  'uid nickname avatar level isAgent role sellerType coins diamonds wealthExp verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
 
 /**
  * Requirement #1 — country filter.
@@ -74,9 +74,10 @@ const toStreamDTO = (doc: any) => {
   const dto = doc.toObject ? doc.toObject() : { ...doc };
   if (host) {
     const rawHost = typeof host.toObject === 'function' ? host.toObject() : host;
+    const wealthExp = Math.max(rawHost?.wealthExp || 0, rawHost?.diamonds || 0);
     const wealthLevel = rawHost?.wealthLevel && rawHost.wealthLevel > 1
       ? rawHost.wealthLevel
-      : calculateWealthLevel(rawHost?.diamonds, rawHost?.level).level;
+      : calculateWealthLevel(wealthExp, rawHost?.level).level;
     const liveLevel = rawHost?.liveLevel && rawHost.liveLevel > 1
       ? rawHost.liveLevel
       : calculateLiveLevel(rawHost?.coins, rawHost?.level).level;
@@ -89,6 +90,8 @@ const toStreamDTO = (doc: any) => {
       wealthLevel,
       liveLevel,
       level,
+      hostBadge: rawHost.hostBadge || 'none',
+      hostBadgeType: rawHost.hostBadgeType || 'none',
       isVip: Boolean(rawHost.isVip || rawHost.hasPurchasedDiamonds || (rawHost.diamonds && rawHost.diamonds > 0)),
     };
   }
@@ -105,7 +108,8 @@ export const streamService = {
     category?: string,
     page: number = 1,
     limit: number = 20,
-    countries?: string[]
+    countries?: string[],
+    hostBadge?: string
   ) {
     const countryFilter = buildCountryFilter(countries);
 
@@ -134,17 +138,36 @@ export const streamService = {
     let sort: any = { startedAt: -1 };
     if (tab === 'popular') sort = { viewerCount: -1, startedAt: -1 };
 
-    // Total reflects the deduped, fresh live set — never over-counts.
-    const total = idSet.size;
-    // Paginate over the deduped set for stable ordering
+    // Fetch all active live streams to allow badge filtering & priority sorting
     const all = await LiveStream.find({ _id: { $in: [...idSet] }, ...filter })
       .populate('hostId', HOST_FIELDS)
       .sort(sort);
 
-    const sorted = all.sort((a: any, b: any) => {
-      if (tab === 'popular') return (Math.max(0, b.viewerCount) - Math.max(0, a.viewerCount)) || (b.startedAt.getTime() - a.startedAt.getTime());
+    // Filter by hostBadge if requested (e.g. 'alpha' or 'aurora')
+    const filtered = (hostBadge && hostBadge !== 'all')
+      ? all.filter((s: any) => {
+          const hBadge = (s.hostId as any)?.hostBadge;
+          return hBadge === hostBadge;
+        })
+      : all;
+
+    // Premium search / feed priority: Alpha and Aurora hosts get a priority score
+    const getPriorityScore = (s: any): number => {
+      const badge = (s.hostId as any)?.hostBadge;
+      if (badge === 'alpha' || badge === 'aurora') return 2;
+      return 0;
+    };
+
+    const sorted = filtered.sort((a: any, b: any) => {
+      const pDiff = getPriorityScore(b) - getPriorityScore(a);
+      if (pDiff !== 0 && !hostBadge) return pDiff; // Boost premium hosts to the top
+      if (tab === 'popular') {
+        return (Math.max(0, b.viewerCount) - Math.max(0, a.viewerCount)) || (b.startedAt.getTime() - a.startedAt.getTime());
+      }
       return b.startedAt.getTime() - a.startedAt.getTime();
     });
+
+    const total = sorted.length;
     const data = sorted.slice(getSkip(page, limit), getSkip(page, limit) + limit).map(toStreamDTO);
 
     return { data, total };
@@ -266,12 +289,13 @@ export const streamService = {
   async getViewers(streamId: string) {
     const { calculateWealthLevel, calculateLiveLevel } = await import('../utils/userLevels');
     const stream = await LiveStream.findById(streamId)
-      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel isVip hasPurchasedDiamonds noble diamonds coins exp')
+      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel wealthExp isVip hasPurchasedDiamonds noble diamonds coins exp')
       .lean();
     if (!stream) throw new AppError('Stream not found', 404);
     return (stream.viewers || []).map((v: any) => {
       const isVip = Boolean(v.isVip || v.hasPurchasedDiamonds || v.noble || (v.diamonds && v.diamonds > 0));
-      const wealthLevel = v.wealthLevel && v.wealthLevel > 1 ? v.wealthLevel : calculateWealthLevel(v.diamonds, v.level).level;
+      const wealthExp = Math.max(v.wealthExp || 0, v.diamonds || 0);
+      const wealthLevel = v.wealthLevel && v.wealthLevel > 1 ? v.wealthLevel : calculateWealthLevel(wealthExp, v.level).level;
       const liveLevel = v.liveLevel && v.liveLevel > 1 ? v.liveLevel : calculateLiveLevel(v.coins, v.level).level;
       const level = v.level && v.level > 1 ? v.level : Math.max(wealthLevel, liveLevel, 1);
       return {

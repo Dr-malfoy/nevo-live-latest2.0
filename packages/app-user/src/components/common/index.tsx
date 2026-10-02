@@ -59,17 +59,21 @@ export const ScreenHeader = ({
 };
 
 /** Circular help button — appears on most screens in the documents. */
-export const HelpButton = ({ onClick, light = false }: { onClick?: () => void; light?: boolean }) => (
-  <button
-    onClick={onClick}
-    aria-label="Help"
-    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-      light ? 'text-white/90' : 'text-ink-muted'
-    }`}
-  >
-    <HelpCircle className="w-5 h-5" />
-  </button>
-);
+export const HelpButton = ({ onClick, light = false }: { onClick?: () => void; light?: boolean }) => {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={onClick ?? (() => navigate('/help'))}
+      aria-label="Help"
+      className={`w-8 h-8 rounded-full flex items-center justify-center ${
+        light ? 'text-white/90' : 'text-ink-muted'
+      }`}
+    >
+      <HelpCircle className="w-5 h-5" />
+    </button>
+  );
+};
+
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 

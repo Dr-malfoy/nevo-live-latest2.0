@@ -114,3 +114,79 @@ export function sortForFilterBar(codes: string[]): string[] {
 
   return [...priority, ...rest];
 }
+
+export const COUNTRY_DIAL_CODES: Record<string, string> = {
+  BD: '+880',
+  IN: '+91',
+  PK: '+92',
+  NP: '+977',
+  LK: '+94',
+  ID: '+62',
+  PH: '+63',
+  MY: '+60',
+  AE: '+971',
+  SA: '+966',
+  QA: '+974',
+  KW: '+965',
+  OM: '+968',
+  BH: '+973',
+  US: '+1',
+  CA: '+1',
+  GB: '+44',
+  AU: '+61',
+  SG: '+65',
+  TH: '+66',
+  VN: '+84',
+  JP: '+81',
+  KR: '+82',
+  CN: '+86',
+  TW: '+886',
+  DE: '+49',
+  FR: '+33',
+  IT: '+39',
+  ES: '+34',
+  NL: '+31',
+  RU: '+7',
+  TR: '+90',
+  EG: '+20',
+  ZA: '+27',
+  NG: '+234',
+  KE: '+254',
+  BR: '+55',
+  MX: '+52',
+  AF: '+93',
+  BT: '+975',
+  MV: '+960',
+  MM: '+95',
+  IQ: '+964',
+  IR: '+98',
+  JO: '+962',
+  UA: '+380',
+  UZ: '+998',
+};
+
+export function countryDialCode(code?: string | null): string {
+  if (!code) return '+880';
+  const upper = code.toUpperCase();
+  return COUNTRY_DIAL_CODES[upper] || '+880';
+}
+
+export function allCountryDialOptions(): { code: string; name: string; dialCode: string; flag: string }[] {
+  // Sort priority countries first (BD, IN, PK...), then rest alphabetically
+  const all = allCountries().map((c) => ({
+    code: c.code,
+    name: c.name,
+    dialCode: COUNTRY_DIAL_CODES[c.code] || '+1',
+    flag: flagEmoji(c.code),
+  }));
+
+  const priorityCodes = new Set(PRIORITY_COUNTRIES);
+  const priorityList = PRIORITY_COUNTRIES
+    .map((code) => all.find((item) => item.code === code))
+    .filter(Boolean) as { code: string; name: string; dialCode: string; flag: string }[];
+  
+  const restList = all.filter((item) => !priorityCodes.has(item.code));
+
+  return [...priorityList, ...restList];
+}
+

@@ -40,8 +40,9 @@ export const authController = {
 
   async passwordLogin(req: Request, res: Response, next: NextFunction) {
     try {
-      const { phone, password } = req.body;
-      const result = await authService.loginWithPassword(phone, password);
+      const identifier = req.body.phone || req.body.identifier || req.body.email;
+      const { password } = req.body;
+      const result = await authService.loginWithPassword(identifier, password);
       sendSuccess(res, result, 'Login successful');
     } catch (error) {
       next(error);
@@ -53,6 +54,16 @@ export const authController = {
       const { idToken } = req.body;
       const result = await authService.loginWithGoogle(idToken);
       sendSuccess(res, result, 'Login successful');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async facebookLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken, accessToken } = req.body;
+      const result = await authService.loginWithFacebook(idToken, accessToken);
+      sendSuccess(res, result, 'Facebook login successful');
     } catch (error) {
       next(error);
     }

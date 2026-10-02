@@ -12,7 +12,7 @@ export interface IAuditLogDocument extends Document {
 
 const auditLogSchema = new Schema<IAuditLogDocument>(
   {
-    actorId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    actorId: { type: Schema.Types.ObjectId, ref: 'User', required: false, index: true },
     action: { type: String, required: true, index: true },
     targetType: { type: String, index: true },
     targetId: { type: String },

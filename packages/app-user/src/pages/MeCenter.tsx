@@ -29,8 +29,9 @@ const CREATOR_CENTERS: MenuItem[] = [
 ];
 
 const GENERAL: MenuItem[] = [
-  { key: 'help', label: 'Help Center', Icon: Headphones, tint: 'text-[#F5A623]', value: '24h' },
+  { key: 'help', label: 'Help Center', Icon: Headphones, tint: 'text-[#F5A623]', value: '24h', to: '/help' },
   { key: 'watch_history', label: 'Watch History', Icon: Clock, tint: 'text-ink-muted', to: '/watch-history' },
+
   { key: 'guardian', label: 'Guardian', Icon: ShieldCheck, tint: 'text-ink-muted' },
   { key: 'level', label: 'Level', Icon: Crown, tint: 'text-ink-muted', to: '/levels' },
   { key: 'achievement', label: 'Achievement Poster', Icon: Medal, tint: 'text-ink-muted', to: '/achievements' },

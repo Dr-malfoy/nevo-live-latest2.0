@@ -1,23 +1,22 @@
 import { callService } from './call.service';
+import { User } from '../models';
 
 /**
  * 1:1 random-match queue for the Match feature.
  *
- * An in-memory waiting pool (per process). Waiters are paired
- * first-come-first-served, same call type only (video with video, audio with
- * audio). On a match, a normal ringing Call is created through callService —
- * both users receive the existing `call:invite` and the existing accept flow
- * takes over. Pairing is kicked instantly on enqueue and also runs on a
- * short interval as a safety net.
- *
- * NOTE: in-memory means a multi-instance deploy would need this moved to
- * Mongo/Redis. Fine for the current single-instance deployment.
+ * Supports Call Type (audio / video) and Gender Filter ('male' | 'female' | 'all').
+ * Waiters are paired first-come-first-served with gender filter compatibility.
+ * On a match, a ringing Call is created through callService.
  */
+
+export type GenderFilter = 'male' | 'female' | 'all';
 
 interface MatchWaiter {
   userId: string;
   socketId: string;
   type: 'audio' | 'video';
+  userGender: string;
+  targetGender: GenderFilter;
   joinedAt: number;
 }
 
@@ -29,6 +28,21 @@ let started = false;
 
 const removeWaiter = (userId: string) => {
   waiters = waiters.filter((w) => w.userId !== userId);
+};
+
+const isMatchCompatible = (a: MatchWaiter, b: MatchWaiter): boolean => {
+  if (a.userId === b.userId) return false;
+  if (a.type !== b.type) return false;
+
+  // Verify A's target preference matches B's gender
+  if (a.targetGender === 'male' && b.userGender !== 'male') return false;
+  if (a.targetGender === 'female' && b.userGender !== 'female') return false;
+
+  // Verify B's target preference matches A's gender
+  if (b.targetGender === 'male' && a.userGender !== 'male') return false;
+  if (b.targetGender === 'female' && a.userGender !== 'female') return false;
+
+  return true;
 };
 
 export const matchService = {
@@ -47,10 +61,34 @@ export const matchService = {
     waiters = [];
   },
 
-  /** Add a user to the match pool (deduped) and kick an immediate pairing. */
-  async enqueue(userId: string, socketId: string, type: 'audio' | 'video' = 'audio'): Promise<void> {
+  /** Add a user to the match pool (deduped) with gender filter and kick immediate pairing. */
+  async enqueue(
+    userId: string,
+    socketId: string,
+    type: 'audio' | 'video' = 'video',
+    targetGender: GenderFilter = 'all'
+  ): Promise<void> {
     removeWaiter(userId);
-    waiters.push({ userId, socketId, type, joinedAt: Date.now() });
+
+    let userGender = 'unspecified';
+    try {
+      const u = await User.findById(userId).select('gender').lean();
+      if (u?.gender) {
+        userGender = u.gender;
+      }
+    } catch {
+      // fallback to unspecified if lookup fails
+    }
+
+    waiters.push({
+      userId,
+      socketId,
+      type,
+      userGender,
+      targetGender: targetGender === 'male' || targetGender === 'female' ? targetGender : 'all',
+      joinedAt: Date.now(),
+    });
+
     await tryMatch();
   },
 
@@ -66,8 +104,7 @@ export const matchService = {
 };
 
 /**
- * Pair the two oldest waiters of the same call type and create the call.
- * Consumes both from the queue so a matched user is never matched twice.
+ * Pair the oldest compatible waiters according to type and gender filter.
  */
 async function tryMatch(): Promise<void> {
   if (waiters.length < 2) return;
@@ -75,26 +112,38 @@ async function tryMatch(): Promise<void> {
   // Sort by join order — oldest first
   waiters.sort((a, b) => a.joinedAt - b.joinedAt);
 
-  // Group by type and pair the earliest two of the same type.
-  const byType: Record<string, MatchWaiter[]> = { audio: [], video: [] };
-  for (const w of waiters) byType[w.type].push(w);
+  let matchedAny = true;
+  while (matchedAny && waiters.length >= 2) {
+    matchedAny = false;
 
-  for (const type of ['audio', 'video'] as const) {
-    const pool = byType[type];
-    if (pool.length < 2) continue;
+    for (let i = 0; i < waiters.length; i++) {
+      const a = waiters[i];
+      let partnerIndex = -1;
 
-    const [a, b] = pool;
-    if (a.userId === b.userId) continue; // never pair with self (defensive)
+      for (let j = i + 1; j < waiters.length; j++) {
+        const b = waiters[j];
+        if (isMatchCompatible(a, b)) {
+          partnerIndex = j;
+          break;
+        }
+      }
 
-    // Consume both before creating the call — if creation fails, re-enqueue.
-    removeWaiter(a.userId);
-    removeWaiter(b.userId);
+      if (partnerIndex !== -1) {
+        const b = waiters[partnerIndex];
 
-    try {
-      await callService.createCall(a.userId, [b.userId], type);
-    } catch (err) {
-      console.error('[match] createCall failed, restoring waiters:', (err as Error)?.message);
-      waiters.push(a, b);
+        // Consume both before creating the call
+        removeWaiter(a.userId);
+        removeWaiter(b.userId);
+
+        try {
+          await callService.createCall(a.userId, [b.userId], a.type);
+          matchedAny = true;
+          break; // break to re-evaluate remaining waiters
+        } catch (err) {
+          console.error('[match] createCall failed, restoring waiters:', (err as Error)?.message);
+          waiters.push(a, b);
+        }
+      }
     }
   }
 }

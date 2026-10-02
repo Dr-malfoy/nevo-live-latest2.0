@@ -12,6 +12,7 @@ import {
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { getBangladeshDayBounds, getBangladeshMonthBounds, getRewardCycleBounds } from '../utils/date';
+import { hostBadgeService } from './hostBadge.service';
 
 /**
  * Ranking service — BACKEND-GUIDE.md §4.5 (#28, #35–#38, #71).
@@ -29,6 +30,8 @@ export type RankingBoard =
   | 'host_daily'
   | 'rocket_host'
   | 'star_host'
+  | 'alpha_host'
+  | 'aurora_host'
   | 'esports_host'
   | 'earnings'
   | 'rich'
@@ -120,6 +123,30 @@ const BOARD_LIST: BoardDef[] = [
     titlePrize: true,
     prizePeriod: 'week',
     condition: 'Weekly top host — prize is a 7-day Star Host title',
+    countries: ['IN', 'NP', 'BD', 'BT'],
+  },
+  {
+    key: 'alpha_host',
+    category: 'host',
+    metricLabel: 'Alpha',
+    kind: 'gold_received',
+    badge: 'ALPHA HOST',
+    prizes: [1000000, 500000, 250000],
+    poolTotal: 1750000,
+    prizePeriod: 'week',
+    condition: 'Weekly Male Host: Live Duration ≥ 50h & Earnings ≥ 500k Coins',
+    countries: ['IN', 'NP', 'BD', 'BT'],
+  },
+  {
+    key: 'aurora_host',
+    category: 'host',
+    metricLabel: 'Aurora',
+    kind: 'gold_received',
+    badge: 'AURORA HOST',
+    prizes: [1000000, 500000, 250000],
+    poolTotal: 1750000,
+    prizePeriod: 'week',
+    condition: 'Weekly Female Host: Live Duration ≥ 50h & Earnings ≥ 500k Coins',
     countries: ['IN', 'NP', 'BD', 'BT'],
   },
   {
@@ -586,7 +613,7 @@ export const rankingService = {
     }
 
     const users = await User.find({ _id: { $in: toObjectIds(rows.map((r) => r.userId)) } }).select(
-      'uid nickname avatar level country isAgent role noble lastActiveAt'
+      'uid nickname avatar level country isAgent role noble lastActiveAt hostBadge hostBadgeType gender'
     );
     const usersById = new Map(users.map((u) => [String(u._id), u]));
 
@@ -606,6 +633,9 @@ export const rankingService = {
             isAgent: user.isAgent,
             role: user.role,
             noble: user.noble,
+            hostBadge: user.hostBadge || 'none',
+            hostBadgeType: user.hostBadgeType || 'none',
+            gender: user.gender,
             online: isOnline(user.lastActiveAt),
           },
           metric: row.metric,
@@ -787,6 +817,7 @@ export function startRankingEngine(): void {
     try {
       await rankingService.refreshAll();
       await rankingService.settleFinishedWindows();
+      await hostBadgeService.recalculateAllHostBadges();
     } catch (err: any) {
       console.error('[ranking] engine tick failed:', err?.message);
     }

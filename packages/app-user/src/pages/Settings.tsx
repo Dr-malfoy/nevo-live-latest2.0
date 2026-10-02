@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { PiCaretLeftBold as ArrowLeft, PiFloppyDiskFill as Save, PiBuildingsFill as Building2, PiLinkBold as Link2, PiLinkBreakBold as Unlink, PiMagnifyingGlassBold as Search, PiUserPlusFill as UserPlus, PiTrashFill as Trash2, PiShieldCheckFill as ShieldCheck, PiFileTextFill as FileText, PiBookOpenFill as BookOpen, PiInfoFill as Info, PiWarningFill as AlertTriangle, PiKeyFill as KeyRound, PiSparkleFill as Sparkles, PiUsersFill as Users } from 'react-icons/pi';
+import { PiCaretLeftBold as ArrowLeft, PiFloppyDiskFill as Save, PiBuildingsFill as Building2, PiLinkBold as Link2, PiLinkBreakBold as Unlink, PiMagnifyingGlassBold as Search, PiUserPlusFill as UserPlus, PiTrashFill as Trash2, PiShieldCheckFill as ShieldCheck, PiFileTextFill as FileText, PiBookOpenFill as BookOpen, PiInfoFill as Info, PiWarningFill as AlertTriangle, PiKeyFill as KeyRound, PiSparkleFill as Sparkles, PiUsersFill as Users, PiHeadphonesFill as Headphones } from 'react-icons/pi';
+
 import { useNavigate } from 'react-router-dom';
 import { Button, Input } from '../components/ui';
 import { useAuthStore } from '../stores';
@@ -155,17 +156,15 @@ export const Settings = () => {
   };
 
   const handleLeave = async () => {
-    if (!confirm('Leave this agency?')) return;
+    if (!confirm('Submit a request to leave this agency? You will remain in the agency until the owner approves.')) return;
     setAgencyMsg(''); setAgencyErr('');
     try {
-      const { data } = await agencyApi.leave();
+      const { data } = await agencyApi.requestLeave();
       if (data.success) {
-        setMyAgency(null);
-        updateUser({ agencyId: undefined, role: 'user' } as any);
-        setAgencyMsg('You left the agency');
+        setAgencyMsg(data.message || 'Leave request submitted to agency owner. Awaiting approval.');
       }
     } catch (err: any) {
-      setAgencyErr(err.response?.data?.error || 'Failed to leave agency');
+      setAgencyErr(err.response?.data?.error || 'Failed to submit leave request');
     }
   };
 
@@ -411,6 +410,22 @@ export const Settings = () => {
           </div>
         )}
 
+        {/* ─── Help & Support ─── */}
+        <div className="bg-surface-sunken rounded-xl p-4 mt-6">
+          <h3 className="font-medium flex items-center gap-2 mb-3">
+            <Headphones className="w-4 h-4 text-orange-400" /> Help &amp; Support
+          </h3>
+          <div className="space-y-1">
+            <button onClick={() => navigate('/help')} className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-dark-700 transition-colors text-sm">
+              <div className="flex items-center gap-3">
+                <Headphones className="w-4 h-4 text-orange-400" />
+                <span>Help Center &amp; Support Tickets</span>
+              </div>
+              <span className="text-xs text-ink-muted bg-dark-700 px-2 py-0.5 rounded-full">24h</span>
+            </button>
+          </div>
+        </div>
+
         {/* ─── Legal & Policies ─── */}
         <div className="bg-surface-sunken rounded-xl p-4 mt-6">
           <h3 className="font-medium flex items-center gap-2 mb-3">
@@ -431,6 +446,7 @@ export const Settings = () => {
             </button>
           </div>
         </div>
+
 
         {/* ─── Account ─── */}
         <div className="bg-surface-sunken rounded-xl p-4 mt-6">

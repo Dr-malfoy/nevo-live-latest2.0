@@ -2,8 +2,10 @@ export { User, IUserDocument, IUserSettings, DEFAULT_USER_SETTINGS } from './Use
 export { LiveStream, ILiveStreamDocument } from './LiveStream';
 export { Room, IRoomDocument } from './Room';
 export { Gift, IGiftDocument } from './Gift';
-export { Transaction, ITransactionDocument, TransactionType } from './Transaction';
+export { Transaction, ITransactionDocument, TransactionType, getFormattedTxId, generateTransactionId, getTxPrefix } from './Transaction';
 export { Agency, IAgencyDocument } from './Agency';
+export { AgencyLeaveRequest, IAgencyLeaveRequestDocument } from './AgencyLeaveRequest';
+export { AgencyJoinRequest, IAgencyJoinRequestDocument } from './AgencyJoinRequest';
 export { Moment, IMomentDocument } from './Moment';
 export { LevelConfig, ILevelConfigDocument } from './LevelConfig';
 export { NobleTier, INobleTierDocument } from './NobleTier';
@@ -76,6 +78,11 @@ export { SignInRecord, ISignInRecordDocument } from './SignInRecord';
 export { WatchHistory, IWatchHistoryDocument } from './WatchHistory';
 export { AppConfig, IAppConfigDocument } from './AppConfig';
 
+// ── Stories & Notes (24h expiration) ─────────────────────────
+export { Story, IStoryDocument } from './Story';
+export { Note, INoteDocument } from './Note';
+
 // ── OTP verification ────────────────────────────────────────────────
 export { OtpVerification, IOtpVerificationDocument, OtpChannel, OtpPurpose } from './OtpVerification';
+
 

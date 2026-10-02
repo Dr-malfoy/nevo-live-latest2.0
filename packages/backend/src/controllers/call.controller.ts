@@ -9,7 +9,10 @@ export const callController = {
       const raw: unknown = req.body?.recipientIds ?? (req.body?.userId ? [req.body.userId] : []);
       const recipientIds = Array.isArray(raw) ? (raw as string[]).map(String) : [];
       const type = req.body?.type === 'video' ? 'video' : 'audio';
-      const result = await callService.createCall(req.user!.userId, recipientIds, type);
+      // source: where the call was initiated from (profile | messenger)
+      const source: 'profile' | 'messenger' =
+        req.body?.source === 'profile' ? 'profile' : 'messenger';
+      const result = await callService.createCall(req.user!.userId, recipientIds, type, source);
       sendSuccess(res, result, 'Call started', 201);
     } catch (error) {
       next(error);
@@ -54,7 +57,12 @@ export const callController = {
 
   async endCall(req: Request, res: Response, next: NextFunction) {
     try {
-      const outcome = req.body?.outcome === 'rejected' ? 'rejected' : req.body?.outcome === 'missed' ? 'missed' : 'ended';
+      const outcome =
+        req.body?.outcome === 'rejected'
+          ? 'rejected'
+          : req.body?.outcome === 'missed'
+          ? 'missed'
+          : 'ended';
       const result = await callService.endCall(req.params.id, req.user!.userId, outcome);
       sendSuccess(res, result, 'Call ended');
     } catch (error) {
@@ -62,10 +70,56 @@ export const callController = {
     }
   },
 
+  /**
+   * GET /calls/quote/:hostId
+   *
+   * Returns the host's per-minute price and whether the requesting audience
+   * member has sufficient balance to start a call.
+   */
   async getCallQuote(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await callService.getCallQuote(req.user!.userId, req.params.hostId);
       sendSuccess(res, result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /calls/:id/billing-tick
+   *
+   * Backend-controlled per-minute billing. The client sends this every 60 s
+   * as a heartbeat, but the server is the sole authority for coin deduction.
+   * The server also runs its own interval to handle disconnected clients.
+   */
+  async billingTick(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await callService.billingTick(req.params.id, req.user!.userId);
+      if (!result) {
+        sendSuccess(res, { skipped: true }, 'No billable call');
+        return;
+      }
+      if (result.coinsFinished) {
+        sendSuccess(res, { coinsFinished: true }, 'Coins finished — call ended');
+        return;
+      }
+      sendSuccess(res, result, 'Billing tick processed');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /calls/:id/finalize
+   *
+   * Explicitly finalize a call's billing (idempotent).
+   * Called by the client on hangup as a safety net; the server also calls
+   * this automatically when ending a call.
+   */
+  async finalizeCall(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await callService.finalizeCallBilling(req.params.id);
+      sendSuccess(res, result ?? { skipped: true }, 'Call finalized');
     } catch (error) {
       next(error);
     }

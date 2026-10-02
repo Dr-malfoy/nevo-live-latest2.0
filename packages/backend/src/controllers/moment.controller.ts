@@ -4,14 +4,15 @@ import { sendSuccess, sendPaginated, sendError } from '../utils/response';
 import { getIO } from '../socket';
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
-const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel exp sellerType verification diamonds coins noble isVip';
+const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel wealthExp exp sellerType verification diamonds coins noble isVip';
 
 const decorateUser = (plain: any) => {
   if (!plain) return plain;
   const raw = typeof plain.toObject === 'function' ? plain.toObject() : { ...plain };
   const diamonds = Math.max(0, raw?.diamonds ?? 0);
   const coins = Math.max(0, raw?.coins ?? 0);
-  const wealthLevel = raw?.wealthLevel && raw.wealthLevel > 1 ? raw.wealthLevel : calculateWealthLevel(diamonds, raw?.level).level;
+  const wealthExp = Math.max(raw?.wealthExp || 0, diamonds);
+  const wealthLevel = raw?.wealthLevel && raw.wealthLevel > 1 ? raw.wealthLevel : calculateWealthLevel(wealthExp, raw?.level).level;
   const liveLevel = raw?.liveLevel && raw.liveLevel > 1 ? raw.liveLevel : calculateLiveLevel(coins, raw?.level).level;
   const level = raw?.level && raw.level > 1 ? raw.level : Math.max(wealthLevel, liveLevel, 1);
   return {

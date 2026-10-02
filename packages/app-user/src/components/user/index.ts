@@ -12,3 +12,4 @@ export { UserListRow } from './UserListRow';
 export { FollowButton } from './FollowButton';
 export { EditProfileSheet } from './EditProfileSheet';
 export { ProfileStatsRow } from './ProfileStatsRow';
+export { HostBadge, type HostBadgeType, type HostBadgeProps } from './HostBadge';

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { transactionService } from '../services/transaction.service';
-import { sendPaginated } from '../utils/response';
+import { sendPaginated, sendSuccess } from '../utils/response';
 
 export const transactionController = {
   async getTransactions(req: Request, res: Response, next: NextFunction) {
@@ -9,6 +9,16 @@ export const transactionController = {
       const limit = parseInt(req.query.limit as string) || 20;
       const { data, total } = await transactionService.getUserTransactions(req.user!.userId, page, limit);
       sendPaginated(res, data, total, page, limit);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTransactionDetail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const transaction = await transactionService.getTransactionById(id, req.user!.userId);
+      sendSuccess(res, transaction);
     } catch (error) {
       next(error);
     }

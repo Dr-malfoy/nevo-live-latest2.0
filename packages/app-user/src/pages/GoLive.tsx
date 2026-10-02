@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PiCaretLeftBold as ArrowLeft, PiVideoCameraFill as Video, PiMicrophoneFill as Mic, PiGameControllerFill as Gamepad2, PiUploadSimpleBold as Upload } from 'react-icons/pi';
 import { Button, Input, VerificationGateModal } from '../components/ui';
-import { streamsApi, uploadApi } from '../api';
+import { streamsApi, uploadApi, agencyApi } from '../api';
+import { optional } from '../api/pending';
 import { roomsApi } from '../api/rooms.api';
 import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
@@ -48,9 +49,20 @@ export const GoLive = () => {
     }
 
     // Check if Agency Quit Request is pending
-    if (localStorage.getItem('agencyQuitStatus') === 'pending') {
-      showToast('You cannot go live while your agency quit request is pending', 'error');
-      return;
+    try {
+      const statusRes = await optional(agencyApi.getLeaveStatus()).catch(() => null);
+      const isPending =
+        (statusRes as any)?.data?.hasPending ||
+        (statusRes as any)?.data?.request?.status === 'pending' ||
+        (statusRes as any)?.hasPending ||
+        localStorage.getItem('agencyQuitStatus') === 'pending';
+
+      if (isPending) {
+        showToast('You cannot go live while your agency quit request is pending', 'error');
+        return;
+      }
+    } catch {
+      // ignore
     }
 
     setLoading(true);

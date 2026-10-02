@@ -13,6 +13,7 @@ export const Discover = () => {
   const socket = useSocketStore((s) => s.socket);
   const currentUser = useAuthStore((s) => s.user);
   const [query, setQuery] = useState('');
+  const [badgeFilter, setBadgeFilter] = useState<'all' | 'alpha' | 'aurora'>('all');
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -28,21 +29,37 @@ export const Discover = () => {
   callRef.current = call;
   const selectedCountries = useCountryStore((s) => s.selected);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true); setSearched(true);
+  const handleSearch = async (overrideBadge?: 'all' | 'alpha' | 'aurora') => {
+    const activeBadge = overrideBadge !== undefined ? overrideBadge : badgeFilter;
+    const q = query.trim();
+    if (!q && activeBadge === 'all') {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    setSearching(true);
+    setSearched(true);
     try {
-      // Requirement #1 — Discover honours the shared country filter too.
-      const { data } = await usersApi.searchUsers(query.trim(), {
+      const { data } = await usersApi.searchUsers(q, {
         ...(selectedCountries.length > 0 ? { country: selectedCountries.join(',') } : {}),
+        ...(activeBadge !== 'all' ? { badge: activeBadge } : {}),
       });
       setResults(data.data || []);
-    } catch {} finally { setSearching(false); }
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleBadgeFilterChange = (badge: 'all' | 'alpha' | 'aurora') => {
+    setBadgeFilter(badge);
+    handleSearch(badge);
   };
 
   // Re-run an existing search when the country filter changes.
   useEffect(() => {
-    if (searched && query.trim()) handleSearch();
+    if (searched || badgeFilter !== 'all') handleSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries.join(',')]);
 
@@ -190,6 +207,23 @@ export const Discover = () => {
 
         {/* Requirement #1 — country filter applies to people search too */}
         <CountryFilterBar className="px-4 pb-3" />
+
+        {/* Alpha / Aurora badge filter */}
+        <div className="flex items-center gap-2 px-4 pb-3 overflow-x-auto scrollbar-hide">
+          {(['all', 'alpha', 'aurora'] as const).map((b) => (
+            <button
+              key={b}
+              onClick={() => handleBadgeFilterChange(b)}
+              className={`h-8 px-3 rounded-full text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
+                badgeFilter === b
+                  ? 'bg-ink text-white'
+                  : 'bg-surface-sunken text-ink-muted'
+              }`}
+            >
+              {b === 'all' ? 'All Hosts' : b === 'alpha' ? '👑 Alpha Host' : '✨ Aurora Host'}
+            </button>
+          ))}
+        </div>
       </header>
 
       {/* Active calls — the "Join" option */}

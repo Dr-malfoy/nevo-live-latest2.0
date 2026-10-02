@@ -9,6 +9,10 @@ import {
   PiDotsThreeBold as MoreHorizontal,
   PiPauseFill as Pause,
   PiPhoneFill as Phone,
+  PiPhoneSlashFill as PhoneSlash,
+  PiPhoneIncomingFill as PhoneIncoming,
+  PiPhoneOutgoingFill as PhoneOutgoing,
+  PiPhoneXFill as PhoneX,
   PiPlayFill as Play,
   PiPlusBold as Plus,
   PiPaperPlaneRightFill as Send,
@@ -25,17 +29,21 @@ import {
   PiFlagFill as Flag,
   PiBroomFill as Broom,
   PiUserFill as UserIcon,
+  PiProhibitFill as Prohibit,
 } from 'react-icons/pi';
-import { chatApi, callApi, giftsApi, uploadApi, reportApi } from '../api';
+import { chatApi, callApi, giftsApi, uploadApi, reportApi, usersApi } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
 import { CallScreen } from '../components/call/CallScreen';
+import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import { requestMediaPermissions } from '../lib/permissions';
 import type { Gift } from '../types';
 import type { ChatStreak } from '../api/chat.api';
+import { markChatDeleted } from '../lib/deletedChats';
 
 interface CallState {
   incoming?: {
@@ -45,6 +53,7 @@ interface CallState {
     initiatorId: string;
     token: string;
     initiator: { nickname: string; avatar?: string } | null;
+    coinsPerMinute?: number;
   };
   outgoing?: {
     callId: string;
@@ -52,8 +61,10 @@ interface CallState {
     type: 'audio' | 'video';
     token: string;
     callee: { nickname: string; avatar?: string } | null;
+    coinsPerMinute?: number;
   };
 }
+
 
 const QUICK_REPLIES = [
   { label: 'Hi', emoji: '👋' },
@@ -163,6 +174,14 @@ export const ChatThread = () => {
   const [showGift, setShowGift] = useState(false);
   const [call, setCall] = useState<CallState | null>(null);
   const [callAccepted, setCallAccepted] = useState(false);
+  const [insufficientCoins, setInsufficientCoins] = useState<{
+    visible: boolean;
+    reason?: string;
+    coinsPerMinute?: number;
+    balance?: number;
+    minBalance?: number;
+  }>({ visible: false });
+
 
   // Context / Action state
   const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
@@ -170,6 +189,7 @@ export const ChatThread = () => {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ type: 'user' | 'chat' | 'message'; id: string }>({
     type: 'user',
@@ -341,11 +361,13 @@ export const ChatThread = () => {
             initiatorId: payload.initiatorId,
             token: payload.token,
             initiator: other ? { nickname: other.nickname, avatar: other.avatar } : null,
+            coinsPerMinute: payload.coinsPerMinute,
           },
         });
       }
     };
     socket.on('call:invite', onCallInvite);
+
 
     const onCallAccept = (payload: any) => {
       if (payload?.callId && callRef.current?.outgoing?.callId === payload.callId) setCallAccepted(true);
@@ -495,14 +517,31 @@ export const ChatThread = () => {
 
   const handleDeleteConversation = async () => {
     if (!chatId) return;
+    markChatDeleted(chatId, user?._id);
+    if (other?._id) markChatDeleted(other._id, user?._id);
     setShowDeleteChatConfirm(false);
     setShowOptionsMenu(false);
     try {
-      await chatApi.deleteChat(chatId);
+      if (!chatId.startsWith('official_')) {
+        await chatApi.deleteChat(chatId);
+      }
       showToast('Conversation removed', 'success');
       navigate('/messages');
     } catch (err: any) {
       showToast(err?.response?.data?.error || 'Could not delete conversation', 'error');
+    }
+  };
+
+  const handleConfirmBlock = async () => {
+    if (!other?._id) return;
+    setShowBlockConfirm(false);
+    setShowOptionsMenu(false);
+    try {
+      await usersApi.blockUser(other._id);
+      showToast('User blocked successfully', 'success');
+      navigate('/messages');
+    } catch (err: any) {
+      showToast(err?.response?.data?.error || 'Failed to block user', 'error');
     }
   };
 
@@ -538,9 +577,33 @@ export const ChatThread = () => {
 
   const startCall = async (type: 'audio' | 'video') => {
     if (!other?._id) return;
-    setCallAccepted(false);
+
+    // Check & request camera/mic permissions
+    const perm = await requestMediaPermissions(type);
+    if (!perm.granted) {
+      showToast(perm.error || 'Media permission denied', 'error');
+      return;
+    }
+
     try {
-      const { data } = await callApi.create([other._id], type);
+      // 1. Balance Check & Price Quote
+      const { data: quoteRes } = await callApi.getQuote(other._id);
+      if (quoteRes.success && quoteRes.data) {
+        if (!quoteRes.data.canCall) {
+          setInsufficientCoins({
+            visible: true,
+            reason: quoteRes.data.reason,
+            coinsPerMinute: quoteRes.data.coinsPerMinute,
+            balance: quoteRes.data.balance,
+            minBalance: quoteRes.data.minBalance,
+          });
+          return;
+        }
+      }
+
+      // 2. Start Call Request
+      setCallAccepted(false);
+      const { data } = await callApi.create([other._id], type, 'messenger');
       if (data.success && data.data) {
         setCall({
           outgoing: {
@@ -548,14 +611,27 @@ export const ChatThread = () => {
             channel: data.data.channel,
             type: data.data.type,
             token: data.data.token,
-            callee: { nickname: other.nickname, avatar: other.avatar },
+            callee: { nickname: other.nickname, avatar: other.avatar, online: Boolean(other.online) },
+            coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || 10000,
           },
         });
       }
     } catch (err: any) {
-      showToast(err.response?.data?.error || 'Could not start the call', 'error');
+      const errorData = err.response?.data;
+      if (err.response?.status === 402 || errorData?.error?.includes('Insufficient Coins')) {
+        setInsufficientCoins({
+          visible: true,
+          reason: errorData?.error || 'Insufficient Coins to start call',
+          coinsPerMinute: 10000,
+          balance: user?.coins || 0,
+          minBalance: 1000000,
+        });
+      } else {
+        showToast(err.response?.data?.error || err.message || 'Could not start the call', 'error');
+      }
     }
   };
+
 
   const handleSendGift = async (gift: Gift, quantity: number) => {
     if (!other?._id || !chatId) return;
@@ -758,6 +834,48 @@ export const ChatThread = () => {
                           <p className="font-bold text-sm leading-tight">{item.giftName || 'Gift'}</p>
                           <p className={`text-[11px] leading-tight ${mine ? 'text-white/80' : 'text-pink-500'}`}>
                             {item.message || `x${item.giftCount || 1}`}
+                          </p>
+                        </div>
+                      </div>
+                    ) : item.kind === 'call' ? (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startCall(item.callType === 'video' ? 'video' : 'audio');
+                        }}
+                        className="flex items-center gap-3 py-1 cursor-pointer"
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                            item.callStatus === 'missed' || item.callStatus === 'rejected'
+                              ? mine
+                                ? 'bg-white/20 text-rose-200'
+                                : 'bg-rose-500/15 text-rose-600'
+                              : mine
+                                ? 'bg-white/20 text-white'
+                                : 'bg-primary-500/15 text-primary-600'
+                          }`}
+                        >
+                          {item.callType === 'video' ? (
+                            <Video className="w-4 h-4" />
+                          ) : item.callStatus === 'missed' || item.callStatus === 'rejected' ? (
+                            <PhoneX className="w-4 h-4" />
+                          ) : mine ? (
+                            <PhoneOutgoing className="w-4 h-4" />
+                          ) : (
+                            <PhoneIncoming className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-bold text-sm leading-tight ${
+                            item.callStatus === 'missed' && !mine ? 'text-rose-600 font-extrabold' : ''
+                          }`}>
+                            {item.message || (item.callType === 'video' ? 'Video call' : 'Audio call')}
+                          </p>
+                          <p className={`text-[11px] mt-0.5 leading-tight ${
+                            mine ? 'text-white/80' : 'text-ink-muted'
+                          }`}>
+                            Tap to call back
                           </p>
                         </div>
                       </div>
@@ -1076,6 +1194,20 @@ export const ChatThread = () => {
             <span>Remove Whole Conversation</span>
           </button>
 
+          {/* Block user (Only for normal users) */}
+          {other?._id && !other?.isOfficial && (
+            <button
+              onClick={() => {
+                setShowOptionsMenu(false);
+                setShowBlockConfirm(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 active:bg-red-100 text-sm font-semibold text-red-600 transition-colors"
+            >
+              <Prohibit className="w-5 h-5 text-red-600" />
+              <span>Block User</span>
+            </button>
+          )}
+
           <button
             onClick={() => handleOpenReport('user', other?._id || chatId || '')}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 active:bg-amber-100 text-sm font-semibold text-amber-600 transition-colors"
@@ -1083,6 +1215,33 @@ export const ChatThread = () => {
             <Flag className="w-5 h-5 text-amber-600" />
             <span>Send Report</span>
           </button>
+        </div>
+      </Modal>
+
+      {/* ── Block User Confirm Modal ───────────────────────────────── */}
+      <Modal
+        isOpen={showBlockConfirm}
+        onClose={() => setShowBlockConfirm(false)}
+        title="Block User?"
+      >
+        <div className="space-y-4 pt-1">
+          <p className="text-sm text-ink-muted">
+            Are you sure you want to block <span className="font-semibold text-ink">{other?.nickname || 'this user'}</span>? They will not be able to message or call you, and this conversation will be closed.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowBlockConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-ink active:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmBlock}
+              className="flex-1 py-2.5 rounded-xl bg-red-600 text-sm font-semibold text-white active:bg-red-700 shadow-sm"
+            >
+              Block User
+            </button>
+          </div>
         </div>
       </Modal>
 
@@ -1207,19 +1366,34 @@ export const ChatThread = () => {
         {other?._id && <GiftPanel receiverId={other._id} onSend={handleSendGift} />}
       </Modal>
 
+      {/* Insufficient Coins Modal */}
+      <InsufficientCoinsModal
+        visible={insufficientCoins.visible}
+        reason={insufficientCoins.reason}
+        coinsPerMinute={insufficientCoins.coinsPerMinute}
+        balance={insufficientCoins.balance}
+        minBalance={insufficientCoins.minBalance}
+        onClose={() => setInsufficientCoins({ visible: false })}
+      />
+
       {/* Call Screen */}
       {call && (
         <CallScreen
           incoming={call.incoming}
           outgoing={call.outgoing}
           accepted={callAccepted}
+          coinsPerMinute={call.outgoing?.coinsPerMinute || call.incoming?.coinsPerMinute || 0}
+          isAudience={!!call.outgoing}
           onClose={(outcome?: 'ended' | 'rejected') => {
             setCall(null);
             setCallAccepted(false);
             if (outcome === 'rejected') showToast('Call declined', 'info');
+            loadChat();
+            setTimeout(loadChat, 500);
           }}
         />
       )}
     </div>
   );
 };
+

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, XCircle, ExternalLink, Clock, Check, X, ShieldCheck, ArrowLeft, CreditCard, Camera, User, ZoomIn } from 'lucide-react';
+import { BadgeCheck, XCircle, ExternalLink, Clock, Check, X, ShieldCheck, ArrowLeft, CreditCard, Camera, User, ZoomIn, Download, ImageOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { adminApi } from '../api';
 import { DataTable } from '../components/DataTable';
+import { getMediaUrl, getMediaCandidates } from '../lib/media';
 
 type Row = any;
 
@@ -19,6 +20,118 @@ const statusLabels: Record<string, string> = {
   rejected: 'Rejected',
 };
 
+// Sub-component for resilient document photo preview with multi-candidate fallback
+const DocumentPreviewCard = ({
+  label,
+  rawUrl,
+  onZoom,
+}: {
+  label: string;
+  rawUrl?: string;
+  onZoom: (url: string, title: string) => void;
+}) => {
+  const candidates = getMediaCandidates(rawUrl);
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const currentUrl = candidates[candidateIndex] || '';
+
+  // Reset states if the raw URL changes
+  useEffect(() => {
+    setCandidateIndex(0);
+    setHasError(false);
+    setIsLoading(true);
+  }, [rawUrl]);
+
+  const handleImgError = () => {
+    if (candidateIndex + 1 < candidates.length) {
+      setCandidateIndex((prev) => prev + 1);
+      setIsLoading(true);
+    } else {
+      setIsLoading(false);
+      setHasError(true);
+    }
+  };
+
+  const handleImgLoad = () => {
+    setIsLoading(false);
+    setHasError(false);
+  };
+
+  return (
+    <div className="bg-dark-900/80 border border-dark-700 rounded-xl overflow-hidden flex flex-col group transition-all hover:border-dark-600">
+      <div className="relative h-32 w-full bg-dark-950 flex items-center justify-center overflow-hidden">
+        {currentUrl ? (
+          hasError ? (
+            <div className="flex flex-col items-center justify-center p-3 text-center text-xs text-amber-400 gap-1.5 w-full h-full bg-amber-950/20">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <span className="font-semibold">Failed to load</span>
+              <a
+                href={currentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[11px] underline text-primary-400 hover:text-primary-300 flex items-center gap-0.5 mt-0.5"
+              >
+                Open link <ExternalLink className="w-3 h-3 inline" />
+              </a>
+            </div>
+          ) : (
+            <div
+              onClick={() => onZoom(currentUrl, label)}
+              className="relative w-full h-full cursor-pointer flex items-center justify-center"
+            >
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-dark-900">
+                  <RefreshCw className="w-5 h-5 text-dark-400 animate-spin" />
+                </div>
+              )}
+              <img
+                key={currentUrl}
+                src={currentUrl}
+                alt={label}
+                loading="lazy"
+                crossOrigin="anonymous"
+                onLoad={handleImgLoad}
+                onError={handleImgError}
+                className={`w-full h-full object-cover transition-all duration-200 group-hover:scale-105 ${
+                  isLoading ? 'opacity-0' : 'opacity-100'
+                }`}
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <span className="text-xs font-semibold text-white bg-dark-900/80 px-2.5 py-1 rounded-lg flex items-center gap-1 shadow">
+                  <ZoomIn className="w-3.5 h-3.5 text-primary-400" /> Zoom
+                </span>
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-xs text-dark-500 italic bg-dark-900/50 gap-1">
+            <ImageOff className="w-5 h-5 opacity-40" />
+            <span>Not Provided</span>
+          </div>
+        )}
+      </div>
+
+      <div className="px-2.5 py-1.5 bg-dark-800 border-t border-dark-700/60 flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-dark-300 truncate">{label}</span>
+        {currentUrl && !hasError && (
+          <a
+            href={currentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open in new window"
+            className="text-dark-400 hover:text-white transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const Verification = () => {
   const [requests, setRequests] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +140,9 @@ export const Verification = () => {
   const [status, setStatus] = useState('');
   const [selected, setSelected] = useState<Row | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [modalCandidateIndex, setModalCandidateIndex] = useState(0);
+  const [modalImgError, setModalImgError] = useState(false);
+  const [modalImgLoading, setModalImgLoading] = useState(true);
   const [rejectReason, setRejectReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -81,15 +197,48 @@ export const Verification = () => {
     }
   };
 
+  const openPreview = (url: string, title: string) => {
+    setModalCandidateIndex(0);
+    setModalImgError(false);
+    setModalImgLoading(true);
+    setPreviewImage({ url, title });
+  };
+
+  const modalCandidates = previewImage ? getMediaCandidates(previewImage.url) : [];
+  const activeModalUrl = modalCandidates[modalCandidateIndex] || previewImage?.url || '';
+
+  const handleModalImgError = () => {
+    if (modalCandidateIndex + 1 < modalCandidates.length) {
+      setModalCandidateIndex((prev) => prev + 1);
+      setModalImgLoading(true);
+    } else {
+      setModalImgLoading(false);
+      setModalImgError(true);
+    }
+  };
+
+  const handleModalImgLoad = () => {
+    setModalImgLoading(false);
+    setModalImgError(false);
+  };
+
   const columns = [
     {
       key: 'userId', label: 'Applicant / User',
       render: (r: Row) => {
         const u = typeof r.userId === 'object' ? r.userId : null;
+        const avatarUrl = getMediaUrl(u?.avatar);
         return (
           <div className="flex items-center gap-2.5">
-            {u?.avatar ? (
-              <img src={u.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-dark-600" />
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-8 h-8 rounded-full object-cover border border-dark-600 bg-dark-700"
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+              />
             ) : (
               <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center text-dark-400">
                 <User className="w-4 h-4" />
@@ -153,6 +302,7 @@ export const Verification = () => {
   ];
 
   const selUser = selected && typeof selected.userId === 'object' ? selected.userId : null;
+  const userAvatarUrl = getMediaUrl(selUser?.avatar);
 
   return (
     <div>
@@ -204,8 +354,15 @@ export const Verification = () => {
             <div className="p-5 space-y-4">
               {/* Applicant Summary */}
               <div className="flex items-center gap-3 p-3.5 bg-dark-700/60 rounded-xl border border-dark-700">
-                {selUser?.avatar ? (
-                  <img src={selUser.avatar} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-primary-500" />
+                {userAvatarUrl ? (
+                  <img
+                    src={userAvatarUrl}
+                    alt=""
+                    className="w-12 h-12 rounded-full object-cover border-2 border-primary-500 bg-dark-800"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-dark-600 flex items-center justify-center text-dark-300">
                     <User className="w-6 h-6" />
@@ -247,34 +404,27 @@ export const Verification = () => {
 
               {/* Document Photo Previews */}
               <div>
-                <p className="text-xs font-bold text-dark-400 uppercase tracking-wider mb-2">Uploaded Document Photos (Click to Zoom)</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-dark-400 uppercase tracking-wider">
+                    Uploaded Document Photos (Click to Zoom)
+                  </p>
+                </div>
                 <div className="grid grid-cols-3 gap-2.5">
-                  {[
-                    { label: 'NID Front Side', url: selected.documentFrontUrl || selected.facePhotoUrl },
-                    { label: 'NID Back Side', url: selected.documentBackUrl },
-                    { label: 'Selfie with NID', url: selected.selfieUrl },
-                  ].map((d) => (
-                    <div key={d.label} className="bg-dark-700/60 border border-dark-700 rounded-xl overflow-hidden group">
-                      {d.url ? (
-                        <div
-                          onClick={() => setPreviewImage({ url: d.url, title: d.label })}
-                          className="relative h-28 cursor-pointer overflow-hidden flex items-center justify-center bg-black/40"
-                        >
-                          <img src={d.url} alt={d.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 text-white text-xs font-semibold">
-                            <ZoomIn className="w-4 h-4" /> Zoom
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="w-full h-28 flex items-center justify-center text-xs text-dark-500 italic bg-dark-800">
-                          Not Provided
-                        </div>
-                      )}
-                      <p className="text-center text-[11px] font-semibold text-dark-300 py-1.5 bg-dark-700 border-t border-dark-600/50">
-                        {d.label}
-                      </p>
-                    </div>
-                  ))}
+                  <DocumentPreviewCard
+                    label="NID Front Side"
+                    rawUrl={selected.documentFrontUrl || selected.facePhotoUrl || selUser?.verification?.facePhotoUrl}
+                    onZoom={openPreview}
+                  />
+                  <DocumentPreviewCard
+                    label="NID Back Side"
+                    rawUrl={selected.documentBackUrl}
+                    onZoom={openPreview}
+                  />
+                  <DocumentPreviewCard
+                    label="Selfie with NID"
+                    rawUrl={selected.selfieUrl || selected.facePhotoUrl || selUser?.verification?.facePhotoUrl}
+                    onZoom={openPreview}
+                  />
                 </div>
               </div>
 
@@ -358,22 +508,84 @@ export const Verification = () => {
 
       {/* ── High-Resolution Image Zoom Modal ─────────────────────────────── */}
       {previewImage && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="relative max-w-3xl w-full flex flex-col items-center">
-            <div className="w-full flex items-center justify-between text-white mb-2">
-              <span className="font-bold text-sm">{previewImage.title}</span>
-              <button
-                onClick={() => setPreviewImage(null)}
-                className="p-1.5 rounded-full bg-dark-700 hover:bg-dark-600 text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full flex flex-col items-center bg-dark-900/90 border border-dark-700 rounded-2xl p-4 shadow-2xl max-h-[92vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between text-white mb-3 pb-2 border-b border-dark-700">
+              <span className="font-bold text-sm text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-primary-400" />
+                {previewImage.title}
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={activeModalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg bg-dark-800 hover:bg-dark-700 text-xs font-semibold text-white transition-colors flex items-center gap-1.5 border border-dark-600"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-primary-400" /> Open Original
+                </a>
+                <a
+                  href={activeModalUrl}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg bg-dark-800 hover:bg-dark-700 text-xs font-semibold text-white transition-colors flex items-center gap-1.5 border border-dark-600"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" /> Save
+                </a>
+                <button
+                  onClick={() => setPreviewImage(null)}
+                  className="p-1.5 rounded-lg bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-white transition-colors border border-dark-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <img
-              src={previewImage.url}
-              alt={previewImage.title}
-              className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain border border-dark-700 shadow-2xl"
-            />
+
+            <div className="relative w-full flex items-center justify-center overflow-auto max-h-[75vh] min-h-[250px] bg-dark-950 rounded-xl p-2 border border-dark-800">
+              {modalImgLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-dark-950/80">
+                  <RefreshCw className="w-7 h-7 text-primary-400 animate-spin" />
+                  <span className="text-xs text-dark-400">Loading document image...</span>
+                </div>
+              )}
+
+              {modalImgError ? (
+                <div className="flex flex-col items-center justify-center text-center p-8 gap-3">
+                  <AlertTriangle className="w-10 h-10 text-amber-400" />
+                  <p className="text-sm font-semibold text-white">Could not preview image directly in viewer</p>
+                  <p className="text-xs text-dark-400 max-w-sm">
+                    The image source path might be restricted by browser CORS or hosted remotely. You can still open it directly in a new tab:
+                  </p>
+                  <a
+                    href={activeModalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Open Full Image in New Tab
+                  </a>
+                </div>
+              ) : (
+                <img
+                  key={activeModalUrl}
+                  src={activeModalUrl}
+                  alt={previewImage.title}
+                  crossOrigin="anonymous"
+                  onLoad={handleModalImgLoad}
+                  onError={handleModalImgError}
+                  className={`max-h-[72vh] w-auto max-w-full rounded-lg object-contain shadow-2xl transition-opacity duration-200 ${
+                    modalImgLoading ? 'opacity-0' : 'opacity-100'
+                  }`}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}

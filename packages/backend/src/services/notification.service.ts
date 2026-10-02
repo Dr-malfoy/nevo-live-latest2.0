@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Notification } from '../models';
 import { getIO } from '../socket';
 
@@ -9,13 +10,19 @@ export const notificationService = {
     message: string,
     data?: Record<string, any>
   ) {
-    const notif = await Notification.create({ userId, type, title, message, data });
     try {
-      getIO().to(`user:${userId}`).emit('notification:new', notif.toObject());
-    } catch {
-      // Socket not initialized — notification still saved
+      if (!userId || !mongoose.isValidObjectId(userId)) return null;
+      const notif = await Notification.create({ userId, type, title, message, data });
+      try {
+        getIO()?.to(`user:${userId}`).emit('notification:new', notif.toObject());
+      } catch {
+        // Socket not initialized — notification still saved
+      }
+      return notif;
+    } catch (err) {
+      console.warn('[NotificationService] Failed to create notification:', err);
+      return null;
     }
-    return notif;
   },
 
   async getUserNotifications(userId: string, page: number, limit: number) {

@@ -4,7 +4,10 @@ export interface IChatMessageDocument extends Document {
   chatId: Schema.Types.ObjectId;
   senderId: Schema.Types.ObjectId;
   message: string;
-  kind: 'text' | 'gift' | 'voice' | 'image';
+  kind: 'text' | 'gift' | 'voice' | 'image' | 'call';
+  callType?: 'audio' | 'video';
+  callDuration?: number;
+  callStatus?: 'completed' | 'missed' | 'rejected' | 'cancelled';
   giftId?: Schema.Types.ObjectId;
   giftName?: string;
   giftCount?: number;
@@ -28,7 +31,10 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
     chatId: { type: Schema.Types.ObjectId, ref: 'Chat', required: true, index: true },
     senderId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     message: { type: String, default: '', trim: true, maxlength: 2000 },
-    kind: { type: String, enum: ['text', 'gift', 'voice', 'image'], default: 'text' },
+    kind: { type: String, enum: ['text', 'gift', 'voice', 'image', 'call'], default: 'text' },
+    callType: { type: String, enum: ['audio', 'video'] },
+    callDuration: { type: Number, default: 0 },
+    callStatus: { type: String, enum: ['completed', 'missed', 'rejected', 'cancelled'] },
     giftId: { type: Schema.Types.ObjectId, ref: 'Gift' },
     giftName: { type: String },
     giftCount: { type: Number },

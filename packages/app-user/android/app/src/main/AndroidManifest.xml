@@ -33,6 +33,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <meta-data
+            android:name="com.codetrixstudio.capacitor.GoogleAuth.client_id"
+            android:value="240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com" />
     </application>
 
     <!-- Permissions -->

@@ -15,6 +15,7 @@ import {
 import { Avatar, LevelBadge, VerifiedBadge } from '../user';
 import { compactNumber, timeAgo } from '../../lib/time';
 import { calculateWealthLevel, calculateLiveLevel } from '../../lib/userLevels';
+import { getMediaUrl } from '../../lib/media';
 import { momentsApi, usersApi } from '../../api';
 import { useAuthStore, useUIStore } from '../../stores';
 import { ShareModal } from './ShareModal';
@@ -130,15 +131,23 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
     }
   };
 
-  // Play active video and pause others
+  // Play active video and pause others with browser autoplay fallback
   useEffect(() => {
     videoRefs.current.forEach((v, idx) => {
       if (!v) return;
       if (idx === activeIndex) {
         v.currentTime = 0;
+        v.muted = isMuted;
         v.play()
           .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
+          .catch(() => {
+            // If unmuted autoplay blocked by browser policy, fallback to muted
+            v.muted = true;
+            setIsMuted(true);
+            v.play()
+              .then(() => setIsPlaying(true))
+              .catch(() => setIsPlaying(false));
+          });
       } else {
         v.pause();
       }
@@ -154,8 +163,14 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
       setShowPlayOverlay(true);
       setTimeout(() => setShowPlayOverlay(false), 800);
     } else {
-      v.play().catch(() => {});
-      setIsPlaying(true);
+      v.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          v.muted = true;
+          setIsMuted(true);
+          v.play().catch(() => {});
+          setIsPlaying(true);
+        });
       setShowPlayOverlay(true);
       setTimeout(() => setShowPlayOverlay(false), 800);
     }
@@ -166,7 +181,12 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
     const nextMute = !isMuted;
     setIsMuted(nextMute);
     videoRefs.current.forEach((v) => {
-      if (v) v.muted = nextMute;
+      if (v) {
+        v.muted = nextMute;
+        if (!nextMute && v.paused) {
+          v.play().catch(() => {});
+        }
+      }
     });
   };
 
@@ -337,15 +357,16 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
           const resolveLevel = (u?: any): number => {
             if (!u) return 1;
             const rawLvl = Number(u.level) || 0;
-            const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.diamonds, rawLvl).level;
+            const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.wealthExp || u.diamonds, u.wealthLevel || rawLvl).level;
             const lLvl = u.liveLevel && u.liveLevel > 1 ? u.liveLevel : calculateLiveLevel(u.coins, rawLvl).level;
             return Math.max(1, rawLvl, wLvl, lLvl);
           };
           const authorName = isCurrentUser ? (currentUser.nickname || author?.nickname || 'User') : (author?.nickname || 'User');
-          const authorAvatar = isCurrentUser ? (currentUser.avatar || author?.avatar) : author?.avatar;
+          const authorAvatar = getMediaUrl(isCurrentUser ? (currentUser.avatar || author?.avatar) : author?.avatar);
           const authorLevel = isCurrentUser ? resolveLevel(currentUser) : resolveLevel(author);
           const authorId = author?._id || (isCurrentUser ? currentUser._id : (typeof moment.userId === 'string' ? moment.userId : undefined));
-          const videoSrc = moment.videoUrl || moment.media?.[0];
+          const rawVideoSrc = moment.videoUrl || moment.media?.[0];
+          const videoSrc = getMediaUrl(rawVideoSrc);
 
           const isFollowed = authorId ? !!followedMap[authorId] : false;
           const likeInfo = likesState[moment._id] || {
@@ -374,6 +395,7 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
                   loop
                   muted={isMuted}
                   playsInline
+                  preload="auto"
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -569,7 +591,7 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
               : 'User'
           }
           caption={selectedMomentForShare.content}
-          thumbnailUrl={selectedMomentForShare.videoUrl || selectedMomentForShare.media?.[0]}
+          thumbnailUrl={getMediaUrl(selectedMomentForShare.videoUrl || selectedMomentForShare.media?.[0])}
           onShareSuccess={() => onUpdate?.()}
         />
       )}

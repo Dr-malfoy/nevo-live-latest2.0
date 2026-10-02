@@ -256,8 +256,18 @@ export const agentController = {
   async getHostData(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const hosts = await User.find({ agencyId: new mongoose.Types.ObjectId(userId) })
-        .select('uid nickname avatar level diamonds coins createdAt')
+      const agency = await agencyService.getByAgent(userId);
+      const agencyIds: any[] = [new mongoose.Types.ObjectId(userId)];
+      if (agency) {
+        agencyIds.push(agency._id);
+      }
+      const hosts = await User.find({
+        $or: [
+          { agencyId: { $in: agencyIds } },
+          { _id: { $in: agency?.hosts || [] } },
+        ],
+      })
+        .select('uid nickname avatar level diamonds coins createdAt role')
         .lean();
       sendSuccess(res, { hosts, count: hosts.length });
     } catch (error) {
@@ -282,10 +292,20 @@ export const agentController = {
       const userId = req.user!.userId;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
-      const filter = { agencyId: new mongoose.Types.ObjectId(userId) };
+      const agency = await agencyService.getByAgent(userId);
+      const agencyIds: any[] = [new mongoose.Types.ObjectId(userId)];
+      if (agency) {
+        agencyIds.push(agency._id);
+      }
+      const filter = {
+        $or: [
+          { agencyId: { $in: agencyIds } },
+          { _id: { $in: agency?.hosts || [] } },
+        ],
+      };
       const total = await User.countDocuments(filter);
       const hosts = await User.find(filter)
-        .select('uid nickname avatar level diamonds coins createdAt')
+        .select('uid nickname avatar level diamonds coins createdAt role')
         .skip((page - 1) * limit)
         .limit(limit)
         .lean();

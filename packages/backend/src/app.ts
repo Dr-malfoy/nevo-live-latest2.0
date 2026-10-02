@@ -43,6 +43,8 @@ import {
   fangroupRoutes,
   streamerRoutes,
   gamesHubRoutes,
+  storyRoutes,
+  noteRoutes,
 } from './routes';
 
 const app = express();
@@ -90,13 +92,23 @@ app.use(cors({
   credentials: true,
 }));
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(rateLimiter());
 
-// Static uploads directory
-app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
-app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads')));
+// Static uploads directory with CORS, CORP and Range headers support
+const staticUploadOptions = {
+  setHeaders: (res: express.Response) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Accept-Ranges', 'bytes');
+  },
+};
+
+app.use('/uploads', express.static(path.resolve(__dirname, '../uploads'), staticUploadOptions));
+app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads'), staticUploadOptions));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), staticUploadOptions));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'packages/backend/uploads'), staticUploadOptions));
 
 // Root & Health check
 app.get('/', (_req, res) => {
@@ -114,6 +126,7 @@ app.get('/api/health', (_req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/streams', streamRoutes);
 app.use('/api/gifts', giftRoutes);
 app.use('/api/transactions', transactionRoutes);
@@ -148,6 +161,8 @@ app.use('/api/fanclub', fanclubRoutes);
 app.use('/api/fangroups', fangroupRoutes);
 app.use('/api/streamer', streamerRoutes);
 app.use('/api/games', gamesHubRoutes);
+app.use('/api/stories', storyRoutes);
+app.use('/api/notes', noteRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);

@@ -1,3 +1,4 @@
+import { isValidObjectId } from 'mongoose';
 import { User, Agency, OtpChannel, OtpPurpose } from '../models';
 import { signToken } from '../utils/jwt';
 import { hashPassword, comparePassword } from '../utils/hash';
@@ -121,13 +122,36 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithPassword(phone: string, password: string) {
-    console.log(`[Auth] Login attempt — phone: ${phone}`);
-    const variants = getPhoneSearchVariants(phone);
-    const user = await User.findOne({ phone: { $in: variants } }).select('+password');
+  async loginWithPassword(identifier: string, password: string) {
+    const raw = (identifier || '').trim();
+    console.log(`[Auth] Login attempt — identifier: ${raw}`);
+    if (!raw) {
+      throw new AppError('Phone number or email is required', 400);
+    }
+    if (!password) {
+      throw new AppError('Password is required', 400);
+    }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+    let user;
+
+    if (isEmail) {
+      user = await User.findOne({ email: raw.toLowerCase() }).select('+password');
+    } else {
+      const variants = getPhoneSearchVariants(raw);
+      user = await User.findOne({
+        $or: [
+          { phone: { $in: variants } },
+          { email: raw.toLowerCase() },
+          { username: new RegExp(`^${raw}$`, 'i') },
+          { uid: raw },
+        ],
+      }).select('+password');
+    }
+
     if (!user) {
-      console.warn(`[Auth] Login FAILED — no user found for phone: ${phone}`);
-      throw new AppError('User not found', 404);
+      console.warn(`[Auth] Login FAILED — no user found for identifier: ${raw}`);
+      throw new AppError('Invalid credentials. No account found.', 404);
     }
 
     // Self-heal: fix missing/corrupted roles before proceeding
@@ -137,7 +161,7 @@ export const authService = {
 
     if (!user.password) {
       console.warn(`[Auth] Login FAILED — user ${user.uid} has no password set (OTP-only account)`);
-      throw new AppError('Please use OTP login', 400);
+      throw new AppError('Please use OTP login or reset password', 400);
     }
     if (user.isBanned) {
       console.warn(`[Auth] Login FAILED — user ${user.uid} is banned`);
@@ -146,7 +170,7 @@ export const authService = {
 
     const valid = await comparePassword(password, user.password);
     if (!valid) {
-      console.warn(`[Auth] Login FAILED — invalid password for user ${user.uid} (${phone})`);
+      console.warn(`[Auth] Login FAILED — invalid password for user ${user.uid} (${raw})`);
       throw new AppError('Invalid password', 401);
     }
 
@@ -197,6 +221,84 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
+  async loginWithFacebook(idToken?: string, accessToken?: string) {
+    let facebookId: string = '';
+    let email: string = '';
+    let name: string = 'Facebook User';
+    let avatar: string = '';
+
+    // 1. Try Firebase ID Token verification
+    if (idToken) {
+      const decoded = await verifyIdToken(idToken);
+      if (decoded) {
+        facebookId = decoded.uid || (decoded as any).user_id || '';
+        email = decoded.email || '';
+        name = decoded.name || 'Facebook User';
+        avatar = decoded.picture || '';
+      }
+    }
+
+    // 2. If access token provided or fallback
+    if (!facebookId && accessToken) {
+      try {
+        const axios = (await import('axios')).default;
+        const fbRes = await axios.get(
+          `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
+        );
+        if (fbRes.data?.id) {
+          facebookId = fbRes.data.id;
+          name = fbRes.data.name || name;
+          email = fbRes.data.email || email;
+          avatar = fbRes.data.picture?.data?.url || avatar;
+        }
+      } catch (e) {
+        console.warn('Facebook Graph API fetch failed:', (e as Error).message);
+      }
+    }
+
+    if (!facebookId) {
+      throw new AppError('Unable to authenticate with Facebook. Invalid token or credentials.', 401);
+    }
+
+    // Check if user exists by facebookId or matching email
+    let user = await User.findOne({
+      $or: [
+        { facebookId },
+        ...(email ? [{ email }] : []),
+      ],
+    });
+
+    if (!user) {
+      const uid = await generateUid();
+      user = await User.create({
+        uid,
+        phone: `fb_${facebookId}`,
+        facebookId,
+        email: email || undefined,
+        nickname: name,
+        avatar,
+      });
+    } else if (!user.facebookId) {
+      user.facebookId = facebookId;
+      if (!user.avatar && avatar) user.avatar = avatar;
+      await user.save();
+    }
+
+    if (user.isBanned) throw new AppError('Account is banned', 403);
+
+    await ensureAgentRole(user);
+
+    const token = signToken({
+      userId: user._id.toString(),
+      uid: user.uid,
+      role: user.role,
+      isAgent: user.isAgent,
+      isAdmin: user.isAdmin,
+    });
+
+    return { token, user: user.toObject() };
+  },
+
   async devLogin(phone: string, nickname?: string) {
     let user = await User.findOne({ phone });
     if (!user) {
@@ -227,18 +329,27 @@ export const authService = {
     if (!raw) throw new AppError('Please enter a phone number, account ID, or username', 400);
 
     const phoneVariants = getPhoneSearchVariants(raw);
-    const filter: any[] = [{ uid: raw }];
+    const safeRaw = raw.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+
+    const filter: any[] = [
+      { uid: raw },
+      { username: new RegExp(`^${safeRaw}$`, 'i') },
+      { nickname: new RegExp(`^${safeRaw}$`, 'i') },
+      { email: raw.toLowerCase() },
+    ];
 
     if (phoneVariants.length > 0) {
       filter.push({ phone: { $in: phoneVariants } });
+      filter.push({ phone: raw });
     }
-    // Search exact username or email
-    filter.push({ username: new RegExp(`^${raw}$`, 'i') });
-    filter.push({ email: raw.toLowerCase() });
-    filter.push({ nickname: new RegExp(`^${raw}$`, 'i') });
-    // Also partial phone match if numeric
-    if (/^\d{4,}$/.test(raw)) {
-      filter.push({ phone: new RegExp(raw + '$') });
+
+    const digitsOnly = raw.replace(/\D/g, '');
+    if (digitsOnly.length >= 4) {
+      filter.push({ phone: new RegExp(digitsOnly + '$') });
+    }
+
+    if (raw.includes('@')) {
+      filter.push({ phone: `email_${raw.toLowerCase()}` });
     }
 
     const user = await User.findOne({ $or: filter }).select('uid nickname avatar phone email username');
@@ -270,11 +381,17 @@ export const authService = {
       | {
           fullName?: string;
           username?: string;
-          phone: string;
+          phone?: string;
           email?: string;
           nickname?: string;
           password?: string;
           confirmPassword?: string;
+          birthday?: string | Date;
+          dob?: string | Date;
+          gender?: 'male' | 'female' | 'other' | 'unspecified';
+          inviteCode?: string;
+          inviter?: string;
+          avatar?: string;
           verificationToken?: string;
           code?: string;
         },
@@ -285,10 +402,13 @@ export const authService = {
   ) {
     let fullName: string | undefined;
     let username: string | undefined;
-    let phone: string;
+    let phone: string | undefined;
     let email: string | undefined;
     let nickname: string;
     let password: string | undefined;
+    let birthday: Date | undefined;
+    let gender: 'male' | 'female' | 'other' | 'unspecified' = 'unspecified';
+    let inviteCode: string | undefined;
     let verificationToken: string | undefined;
     let code: string | undefined;
 
@@ -297,8 +417,19 @@ export const authService = {
       username = phoneOrParams.username;
       phone = phoneOrParams.phone;
       email = phoneOrParams.email;
-      nickname = phoneOrParams.nickname || phoneOrParams.username || phoneOrParams.fullName || '';
+      nickname = phoneOrParams.nickname || phoneOrParams.fullName || phoneOrParams.username || '';
       password = phoneOrParams.password;
+      const rawDob = phoneOrParams.birthday || phoneOrParams.dob;
+      if (rawDob) {
+        const parsed = new Date(rawDob);
+        if (!isNaN(parsed.getTime())) {
+          birthday = parsed;
+        }
+      }
+      if (phoneOrParams.gender) {
+        gender = phoneOrParams.gender;
+      }
+      inviteCode = phoneOrParams.inviteCode || phoneOrParams.inviter;
       verificationToken = phoneOrParams.verificationToken;
       code = phoneOrParams.code;
     } else {
@@ -309,17 +440,48 @@ export const authService = {
       code = codeParam;
     }
 
-    const phoneResult = normalizePhoneNumber(phone);
-    if (!phoneResult.isValid) {
-      throw new AppError(phoneResult.error || 'Invalid phone number format', 400);
+    if (!fullName || fullName.trim().length < 1) {
+      throw new AppError('Full name is required', 400);
     }
-    const normalizedPhone = phoneResult.e164;
 
-    // Strict One Number = One Account check across all phone variations
-    const phoneVariants = getPhoneSearchVariants(phone);
-    const existingPhone = await User.findOne({ phone: { $in: phoneVariants } });
-    if (existingPhone) {
-      throw new AppError('An account with this phone number already exists. One phone number can only be used to create one account. Please log in or use Forgot Password.', 409);
+    const rawPhone = phone?.trim();
+    const rawEmail = email?.trim().toLowerCase();
+
+    if (!rawPhone && !rawEmail) {
+      throw new AppError('Please provide a Mobile Phone Number or Gmail address', 400);
+    }
+
+    let normalizedPhone: string | undefined;
+    if (rawPhone) {
+      const phoneResult = normalizePhoneNumber(rawPhone);
+      if (!phoneResult.isValid) {
+        throw new AppError(phoneResult.error || 'Invalid phone number format', 400);
+      }
+      normalizedPhone = phoneResult.e164;
+
+      // Strict One Number = One Account check across all phone variations
+      const phoneVariants = getPhoneSearchVariants(rawPhone);
+      const existingPhone = await User.findOne({ phone: { $in: phoneVariants } });
+      if (existingPhone) {
+        throw new AppError('An account with this phone number already exists. Please log in or use Forgot Password.', 409);
+      }
+    }
+
+    if (rawEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+        throw new AppError('Please enter a valid Gmail / email address', 400);
+      }
+      const existingEmail = await User.findOne({ email: rawEmail });
+      if (existingEmail) {
+        throw new AppError('An account with this Gmail / email already exists. Please log in.', 409);
+      }
+    }
+
+    // Ensure we have a valid unique phone field for MongoDB user record
+    const finalPhone = normalizedPhone || `email_${rawEmail}`;
+    const existingUserPhone = await User.findOne({ phone: finalPhone });
+    if (existingUserPhone) {
+      throw new AppError('An account with this Gmail already exists. Please log in.', 409);
     }
 
     if (username && username.trim()) {
@@ -327,39 +489,76 @@ export const authService = {
       if (existingUser) throw new AppError('This username is already taken. Please choose another.', 409);
     }
 
-    if (email && email.trim()) {
-      const existingEmail = await User.findOne({ email: email.trim().toLowerCase() });
-      if (existingEmail) throw new AppError('This email is already registered. Please use a different email or log in.', 409);
+    if (!password || password.length < 6) {
+      throw new AppError('Password must be at least 6 characters', 400);
     }
 
-    // Verify OTP token or direct code if provided
-    if (verificationToken) {
-      const isValid = await otpService.consumeVerificationToken(
-        normalizedPhone,
-        verificationToken,
-        'signup'
-      );
-      if (!isValid) {
-        throw new AppError('Phone verification expired or invalid. Please verify your phone number again.', 400);
+    // Verify OTP token, Firebase idToken, or direct code if registering with phone
+    if (normalizedPhone) {
+      if ((phoneOrParams as any).idToken) {
+        try {
+          const decoded = await verifyIdToken((phoneOrParams as any).idToken);
+          if (decoded?.phone_number && decoded.phone_number !== normalizedPhone) {
+            throw new AppError('Phone verification token mismatch', 401);
+          }
+        } catch (fbErr: any) {
+          if (code) {
+            await otpService.verifyOtp({ rawPhone: normalizedPhone, code, purpose: 'signup' });
+          } else {
+            throw new AppError('Invalid or expired phone verification token', 401);
+          }
+        }
+      } else if (verificationToken) {
+        const isValid = await otpService.consumeVerificationToken(
+          normalizedPhone,
+          verificationToken,
+          'signup'
+        );
+        if (!isValid) {
+          throw new AppError('Phone verification expired or invalid. Please verify your phone number again.', 400);
+        }
+      } else if (code) {
+        await otpService.verifyOtp({ rawPhone: normalizedPhone, code, purpose: 'signup' });
+      } else {
+        throw new AppError('Phone verification OTP code is required to create an account.', 400);
       }
-    } else if (code) {
-      await otpService.verifyOtp({ rawPhone: normalizedPhone, code, purpose: 'signup' });
+    }
+
+    // Resolve Inviter / Referral Code if provided
+    let invitedById: any = undefined;
+    const cleanInvite = (inviteCode || '').trim();
+    if (cleanInvite) {
+      const inviter = await User.findOne({
+        $or: [
+          { uid: cleanInvite },
+          { username: new RegExp(`^${cleanInvite}$`, 'i') },
+          { phone: cleanInvite },
+          ...(isValidObjectId(cleanInvite) ? [{ _id: cleanInvite }] : []),
+        ],
+      });
+      if (inviter) {
+        invitedById = inviter._id;
+        console.log(`[Auth] Account linked to inviter: ${inviter.uid} (${inviter._id})`);
+      } else {
+        console.warn(`[Auth] Referral code '${cleanInvite}' not found — proceeding without inviter`);
+      }
     }
 
     const uid = await generateUid();
     const data: any = {
       uid,
-      phone: normalizedPhone,
-      fullName: fullName?.trim() || '',
-      username: username?.trim() || undefined,
-      email: email?.trim().toLowerCase() || undefined,
-      nickname: nickname.trim() || fullName?.trim() || `User${uid.slice(-4)}`,
+      phone: finalPhone,
+      fullName: fullName.trim(),
+      username: username?.trim().toLowerCase() || undefined,
+      email: rawEmail || undefined,
+      nickname: nickname.trim() || fullName.trim() || `User${uid.slice(-4)}`,
+      gender: gender || 'unspecified',
+      birthday: birthday || undefined,
+      invitedBy: invitedById,
       avatar: '',
     };
 
-    if (password) {
-      data.password = await hashPassword(password);
-    }
+    data.password = await hashPassword(password);
 
     const user = await User.create(data);
 
@@ -403,8 +602,15 @@ export const authService = {
     }
 
     const phoneVariants = getPhoneSearchVariants(phone);
-    const user = await User.findOne({ phone: { $in: phoneVariants } });
-    if (!user) throw new AppError('Account not found with this phone number', 404);
+    const user = await User.findOne({
+      $or: [
+        { phone: { $in: phoneVariants } },
+        { phone: phone },
+        { email: phone.toLowerCase() },
+        { uid: phone },
+      ],
+    });
+    if (!user) throw new AppError('Account not found with this phone number or ID', 404);
 
     if (user.isBanned) throw new AppError('Account is banned', 403);
 

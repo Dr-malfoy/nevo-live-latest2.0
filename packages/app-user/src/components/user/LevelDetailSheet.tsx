@@ -354,26 +354,54 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                       transform: 'translateX(-50%)',
                     }}
                   >
-                    <div className="relative bg-[#343e35] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full shadow-lg border border-white/10 whitespace-nowrap">
-                      {currentInfo.currentPoints.toLocaleString()}
+                    <div
+                      className={`relative text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-lg border whitespace-nowrap ${
+                        activeTab === 'wealth'
+                          ? 'bg-[#3b270a] border-amber-400/50 text-amber-200 shadow-amber-950/50'
+                          : 'bg-[#1b3a1a] border-lime-400/50 text-lime-200 shadow-emerald-950/50'
+                      }`}
+                    >
+                      {currentInfo.currentPoints.toLocaleString()} {activeTab === 'wealth' ? 'Diamonds' : 'Coins'}
                       {/* Downward triangle pointer */}
-                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[4px] border-x-transparent border-t-[4px] border-t-[#343e35]" />
+                      <div
+                        className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[4px] border-x-transparent border-t-[4px] ${
+                          activeTab === 'wealth' ? 'border-t-[#3b270a]' : 'border-t-[#1b3a1a]'
+                        }`}
+                      />
                     </div>
                   </div>
 
                   {/* The Progress Bar Track */}
-                  <div className="h-2.5 w-full rounded-full bg-[#273429] overflow-hidden">
+                  <div
+                    className={`h-2.5 w-full rounded-full overflow-hidden ${
+                      activeTab === 'wealth' ? 'bg-[#2a1b08]' : 'bg-[#273429]'
+                    }`}
+                  >
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#7cd92e] to-[#99f53d] transition-all duration-500 shadow-[0_0_10px_rgba(124,217,46,0.6)]"
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        activeTab === 'wealth'
+                          ? 'bg-gradient-to-r from-[#F59E0B] via-[#FBBF24] to-[#FDE047] shadow-[0_0_12px_rgba(251,191,36,0.8)]'
+                          : 'bg-gradient-to-r from-[#7cd92e] to-[#99f53d] shadow-[0_0_10px_rgba(124,217,46,0.6)]'
+                      }`}
                       style={{ width: `${Math.max(2, currentInfo.progress)}%` }}
                     />
                   </div>
                 </div>
 
+                {/* Progress Details Count */}
+                <div className="flex items-center justify-between text-xs text-white/80 font-bold mb-1 tabular-nums">
+                  <span>
+                    {currentInfo.currentPoints.toLocaleString()} / {currentInfo.tierNext === Infinity ? 'MAX' : currentInfo.tierNext.toLocaleString()} EXP
+                  </span>
+                  <span className={activeTab === 'wealth' ? 'text-amber-300 font-extrabold' : 'text-lime-300 font-extrabold'}>
+                    {currentInfo.progress}%
+                  </span>
+                </div>
+
                 {/* Remaining Progress Text */}
-                <p className="text-xs text-white/60 font-medium">
+                <p className="text-[11px] text-white/60 font-medium">
                   {currentInfo.remaining > 0
-                    ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()}`
+                    ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} ${activeTab === 'wealth' ? 'Diamonds' : 'Coins'}`
                     : 'Top level reached!'}
                 </p>
               </div>

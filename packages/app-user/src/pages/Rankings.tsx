@@ -45,9 +45,8 @@ const CATEGORIES: { key: Category; label: string; hero: string }[] = [
 const BOARDS: Record<Category, { key: RankingBoard; label: string }[]> = {
   host: [
     { key: 'host_daily', label: 'Daily' },
-    { key: 'rocket_host', label: 'Rocket Host' },
-    { key: 'star_host', label: 'Star host' },
-    { key: 'esports_host', label: 'Esports Host' },
+    { key: 'alpha_host', label: '👑 Alpha Host' },
+    { key: 'aurora_host', label: '✨ Aurora Host' },
   ],
   agent: [
     { key: 'agent_count', label: 'Count' },
@@ -71,7 +70,7 @@ const PERIODS: { key: RankingPeriod; label: string }[] = [
 
 /** Weekly boards default to the week, daily boards to today. */
 const defaultPeriod = (board: RankingBoard): RankingPeriod =>
-  board === 'rocket_host' || board === 'star_host' ? 'week' : 'today';
+  board === 'alpha_host' || board === 'aurora_host' ? 'week' : 'today';
 
 const categoryOf = (board: RankingBoard): Category => {
   if (BOARDS.host.some((b) => b.key === board)) return 'host';
@@ -110,21 +109,36 @@ export const Rankings = () => {
     let cancelled = false;
     setLoading(true);
 
-    Promise.all([
-      optional(
-        rankingApi.get({
-          board,
-          period,
-          scope,
-          country: selectedCountries.length ? selectedCountries.join(',') : undefined,
-        })
-      ).catch(() => null),
-      optional(rankingApi.getConfig(board)).catch(() => null),
-    ])
+    // Boards whose endpoints are fully implemented on the backend.
+    // These never need the optional() shim — call them directly so that an
+    // empty leaderboard shows "No one ranked yet" instead of "not connected".
+    const LIVE_BOARDS: RankingBoard[] = [
+      'host_daily', 'alpha_host', 'aurora_host',
+      'agent_count', 'agent_income', 'elite_agent',
+      'earnings', 'rich', 'gift', 'video',
+    ];
+    const isLiveBoard = LIVE_BOARDS.includes(board);
+
+    const rankingReq = isLiveBoard
+      ? rankingApi.get({ board, period, scope, country: selectedCountries.length ? selectedCountries.join(',') : undefined })
+          .then((r) => r.data).catch(() => null)
+      : optional(rankingApi.get({ board, period, scope, country: selectedCountries.length ? selectedCountries.join(',') : undefined }))
+          .catch(() => null);
+
+    const configReq = isLiveBoard
+      ? rankingApi.getConfig(board).then((r) => r.data).catch(() => null)
+      : optional(rankingApi.getConfig(board)).catch(() => null);
+
+    Promise.all([rankingReq, configReq])
       .then(([res, cfg]) => {
         if (cancelled) return;
         if (res?.success && res.data?.rows) {
           setResult(res.data);
+          setLive(true);
+        } else if (isLiveBoard && res == null) {
+          // Network / server error — still mark live so we don't show the
+          // "API not connected" notice for a board that is genuinely built.
+          setResult(null);
           setLive(true);
         } else {
           setResult(null);

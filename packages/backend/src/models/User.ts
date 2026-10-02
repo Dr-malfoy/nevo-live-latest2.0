@@ -36,15 +36,15 @@ export const DEFAULT_USER_SETTINGS: IUserSettings = {
 };
 
 export interface IVerificationState {
-  status: 'NOT_SUBMITTED' | 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED';
-  type?: 'host' | 'agency';
+  status: 'NOT_SUBMITTED' | 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED' | string;
+  type?: 'host' | 'agency' | 'user' | 'agent' | 'admin' | 'streamer' | string;
   verified: boolean;
   faceVerified?: boolean;
   faceVerifiedAt?: Date;
   facePhotoUrl?: string;
   nidVerified?: boolean;
   nidVerifiedAt?: Date;
-  nidStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED';
+  nidStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED' | string;
   nidNumber?: string;
   verifiedAt?: Date;
   rejectionReason?: string;
@@ -60,6 +60,7 @@ export interface IUserDocument extends Document {
   email?: string;
   password?: string;
   googleId?: string;
+  facebookId?: string;
   nickname: string;
   avatar: string;
   cover: string;
@@ -76,6 +77,7 @@ export interface IUserDocument extends Document {
   wealthLevel?: number;
   liveLevel?: number;
   exp: number;
+  wealthExp?: number;
   diamonds: number;
   coins: number;
   /**
@@ -111,6 +113,10 @@ export interface IUserDocument extends Document {
   isAdmin: boolean;
   agencyId?: Schema.Types.ObjectId;
   sellerType: 'none' | 'official' | 'paylor';
+  hostBadge: 'alpha' | 'aurora' | 'none';
+  hostBadgeType: 'manual' | 'auto' | 'none';
+  hostBadgeAssignedAt?: Date;
+  hostBadgeExpiresAt?: Date;
   verification: IVerificationState;
   isBanned: boolean;
   paymentInfo?: {
@@ -132,6 +138,7 @@ const userSchema = new Schema<IUserDocument>(
     email: { type: String, trim: true, lowercase: true, sparse: true, index: true },
     password: { type: String, select: false },
     googleId: { type: String, sparse: true, index: true },
+    facebookId: { type: String, sparse: true, index: true },
     nickname: { type: String, required: true, trim: true },
     avatar: { type: String, default: '' },
     cover: { type: String, default: '' },
@@ -156,6 +163,7 @@ const userSchema = new Schema<IUserDocument>(
     wealthLevel: { type: Number, default: 1, min: 1, max: 100 },
     liveLevel: { type: Number, default: 1, min: 1, max: 100 },
     exp: { type: Number, default: 0 },
+    wealthExp: { type: Number, default: 0, min: 0 },
     diamonds: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
     tickets: { type: Number, default: 0, min: 0 },
@@ -215,13 +223,29 @@ const userSchema = new Schema<IUserDocument>(
       enum: ['none', 'official', 'paylor'],
       default: 'none',
     },
+    hostBadge: {
+      type: String,
+      enum: ['alpha', 'aurora', 'none'],
+      default: 'none',
+      index: true,
+    },
+    hostBadgeType: {
+      type: String,
+      enum: ['manual', 'auto', 'none'],
+      default: 'none',
+    },
+    hostBadgeAssignedAt: { type: Date },
+    hostBadgeExpiresAt: { type: Date },
     verification: {
       status: {
         type: String,
-        enum: ['NOT_SUBMITTED', 'PENDING', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED'],
         default: 'NOT_SUBMITTED',
       },
-      type: { type: String, enum: ['host', 'agency'] },
+      type: {
+        type: String,
+        enum: ['host', 'agency', 'user', 'agent', 'admin', 'streamer'],
+        default: 'user',
+      },
       verified: { type: Boolean, default: false },
       faceVerified: { type: Boolean, default: false },
       faceVerifiedAt: { type: Date },
@@ -230,7 +254,6 @@ const userSchema = new Schema<IUserDocument>(
       nidVerifiedAt: { type: Date },
       nidStatus: {
         type: String,
-        enum: ['NOT_SUBMITTED', 'PENDING', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED'],
         default: 'NOT_SUBMITTED',
       },
       nidNumber: { type: String },

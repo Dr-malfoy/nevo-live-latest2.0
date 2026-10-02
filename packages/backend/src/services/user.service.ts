@@ -14,7 +14,7 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  * the flag, and lastActiveAt for the online dot (requirement #3).
  */
 const CARD_FIELDS =
-  'uid nickname avatar cover level wealthLevel liveLevel isAgent noble role sellerType verification country gender bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds';
+  'uid nickname avatar cover level wealthLevel liveLevel wealthExp isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds';
 
 /** A user counts as online if they were active in the last 5 minutes. */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -36,12 +36,17 @@ const ageFrom = (birthday?: Date | null): number | null => {
 
 /** Attach the derived presentation fields every client needs. */
 const decorate = (plain: any) => {
-  const isVip = Boolean(plain?.isVip || plain?.hasPurchasedDiamonds || (plain?.diamonds && plain?.diamonds > 0) || plain?.noble);
-  const wealthLevel = plain?.wealthLevel && plain.wealthLevel > 1 ? plain.wealthLevel : calculateWealthLevel(plain?.diamonds, plain?.level).level;
+  const isVip = Boolean(plain?.isVip || plain?.hasPurchasedDiamonds || (plain?.wealthExp && plain.wealthExp > 0) || (plain?.diamonds && plain?.diamonds > 0) || plain?.noble);
+  const wealthExp = Math.max(plain?.wealthExp || 0, plain?.diamonds || 0);
+  const calculatedWealth = calculateWealthLevel(wealthExp, plain?.wealthLevel || plain?.level);
+  const wealthLevel = Math.max(plain?.wealthLevel || 1, calculatedWealth.level);
   const liveLevel = plain?.liveLevel && plain.liveLevel > 1 ? plain.liveLevel : calculateLiveLevel(plain?.coins, plain?.level).level;
   const level = plain?.level && plain.level > 1 ? plain.level : Math.max(wealthLevel, liveLevel, 1);
   return {
     ...plain,
+    wealthExp,
+    hostBadge: plain?.hostBadge || 'none',
+    hostBadgeType: plain?.hostBadgeType || 'none',
     online: isOnline(plain?.lastActiveAt),
     age: ageFrom(plain?.birthday),
     isVip,
@@ -63,22 +68,29 @@ export const userService = {
   },
 
   async getPublicProfile(userId: string, requesterId?: string) {
-    const user = await User.findById(userId).select(`${CARD_FIELDS} birthday following followers`);
+    let user: any = mongoose.isValidObjectId(userId)
+      ? await User.findById(userId).select(`${CARD_FIELDS} birthday following followers`)
+      : null;
+    if (!user) {
+      user = await User.findOne({ uid: userId }).select(`${CARD_FIELDS} birthday following followers`);
+    }
     if (!user) throw new AppError('User not found', 404);
+
+    const targetUserId = user._id.toString();
 
     // Viewing someone else's profile is what makes you their "visitor".
     // Fire-and-forget: a failed visit write must never fail the page load.
-    if (requesterId && requesterId !== userId) {
-      this.recordVisit(requesterId, userId).catch(() => {});
+    if (requesterId && requesterId !== targetUserId) {
+      this.recordVisit(requesterId, targetUserId).catch(() => {});
     }
 
-    const stats = await this.getProfileStats(userId);
+    const stats = await this.getProfileStats(targetUserId);
 
     let isFollowing = false;
     let isFollowedBy = false;
-    if (requesterId && requesterId !== userId) {
+    if (requesterId && requesterId !== targetUserId) {
       const requester = await User.findById(requesterId).select('following');
-      isFollowing = !!requester?.following?.some((f: any) => f.toString() === userId);
+      isFollowing = !!requester?.following?.some((f: any) => f.toString() === targetUserId);
       isFollowedBy = !!user.followers?.some((f: any) => f.toString() === requesterId);
     }
 
@@ -182,39 +194,48 @@ export const userService = {
     await User.updateOne({ _id: userId }, { $set: { lastActiveAt: new Date() } });
   },
 
-  // Discover: search users by UID / nickname / username / phone / ID, optionally by country
   async searchUsers(
     query: string,
     requesterId: string,
-    page: number,
-    limit: number,
-    countries?: string[]
+    page: number = 1,
+    limit: number = 20,
+    countries?: string[],
+    badge?: string
   ) {
-    if (!query || query.trim().length < 1) return { data: [], total: 0 };
-    const q = query.trim();
-    // Strip prefixes like "id:", "ID:", "#", "@" if present
-    const cleanQ = q.replace(/^(id\s*:\s*|#|@)/i, '').trim();
-    const term = cleanQ.length > 0 ? cleanQ : q;
-
-    // Regex metacharacters in a user's search box must not become a pattern.
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    const orConditions: any[] = [
-      { uid: { $regex: escaped, $options: 'i' } },
-      { nickname: { $regex: escaped, $options: 'i' } },
-      { username: { $regex: escaped, $options: 'i' } },
-      { phone: { $regex: escaped, $options: 'i' } },
-    ];
-
-    if (mongoose.Types.ObjectId.isValid(term) && term.length === 24) {
-      orConditions.push({ _id: new mongoose.Types.ObjectId(term) });
-    }
+    const q = (query || '').trim();
+    const hasBadgeFilter = badge && badge !== 'all';
+    if (!q && !hasBadgeFilter) return { data: [], total: 0 };
 
     const filter: any = {
       _id: { $ne: requesterId },
       isBanned: false,
-      $or: orConditions,
     };
+
+    if (q.length > 0) {
+      // Strip prefixes like "id:", "ID:", "#", "@" if present
+      const cleanQ = q.replace(/^(id\s*:\s*|#|@)/i, '').trim();
+      const term = cleanQ.length > 0 ? cleanQ : q;
+
+      // Regex metacharacters in a user's search box must not become a pattern.
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const orConditions: any[] = [
+        { uid: { $regex: escaped, $options: 'i' } },
+        { nickname: { $regex: escaped, $options: 'i' } },
+        { username: { $regex: escaped, $options: 'i' } },
+        { phone: { $regex: escaped, $options: 'i' } },
+      ];
+
+      if (mongoose.Types.ObjectId.isValid(term) && term.length === 24) {
+        orConditions.push({ _id: new mongoose.Types.ObjectId(term) });
+      }
+
+      filter.$or = orConditions;
+    }
+
+    if (hasBadgeFilter) {
+      filter.hostBadge = badge;
+    }
 
     // Requirement #1 — the country filter applies to Discover too.
     const codes = (countries || [])
@@ -225,7 +246,7 @@ export const userService = {
     const total = await User.countDocuments(filter);
     const users = await User.find(filter)
       .select(CARD_FIELDS)
-      .sort({ createdAt: -1 })
+      .sort({ hostBadge: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 

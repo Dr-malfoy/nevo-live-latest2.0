@@ -20,7 +20,8 @@ export const sendPaginated = (
   data: any[],
   total: number,
   page: number,
-  limit: number
+  limit: number,
+  extras?: Record<string, any>
 ) => {
   return res.status(200).json({
     success: true,
@@ -31,5 +32,6 @@ export const sendPaginated = (
       total,
       totalPages: Math.ceil(total / limit),
     },
+    ...(extras && { ...extras }),
   });
 };

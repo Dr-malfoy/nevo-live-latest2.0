@@ -1,9 +1,44 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PiCameraFill as Camera, PiCheckBold as Check, PiCaretRightBold as ChevronRight, PiCoinsFill as Coins, PiCopyFill as Copy, PiCrownFill as Crown, PiGameControllerFill as Gamepad2, PiGiftFill as Gift, PiHeadphonesFill as Headphones, PiHeartFill as Heart, PiSquaresFourFill as LayoutGrid, PiSignOutBold as LogOut, PiMedalFill as Medal, PiRadioFill as Radio, PiPaperPlaneRightFill as Send, PiGearFill as SettingsIcon, PiShareNetworkFill as Share2, PiShieldCheckFill as ShieldCheck, PiStorefrontFill as Store, PiTrophyFill as Trophy, PiUserGearFill as UserCog, PiUserPlusFill as UserPlus, PiUsersFill as Users, PiWalletFill as WalletIcon } from 'react-icons/pi';
-import { PiTelevision, PiLightbulb, PiPlanet, PiClock, PiBackpack, PiSealCheck, PiYoutubeLogoFill, PiFacebookLogoFill, PiTiktokLogoFill, PiUsersFill } from 'react-icons/pi';
+import {
+  PiCameraFill as Camera,
+  PiCheckBold as Check,
+  PiCaretRightBold as ChevronRight,
+  PiCoinsFill as Coins,
+  PiCopyFill as Copy,
+  PiCrownFill as Crown,
+  PiGameControllerFill as Gamepad2,
+  PiGiftFill as Gift,
+  PiHeadphonesFill as Headphones,
+  PiHeartFill as Heart,
+  PiSquaresFourFill as LayoutGrid,
+  PiSignOutBold as LogOut,
+  PiMedalFill as Medal,
+  PiRadioFill as Radio,
+  PiPaperPlaneRightFill as Send,
+  PiGearFill as SettingsIcon,
+  PiShareNetworkFill as Share2,
+  PiShieldCheckFill as ShieldCheck,
+  PiStorefrontFill as Store,
+  PiTrophyFill as Trophy,
+  PiUserGearFill as UserCog,
+  PiUserPlusFill as UserPlus,
+  PiUsersFill as Users,
+  PiUsersFill,
+  PiWalletFill as WalletIcon,
+  PiTelevision,
+  PiLightbulb,
+  PiPlanet,
+  PiClock,
+  PiBackpack,
+  PiSealCheck,
+  PiBuildingsFill,
+  PiYoutubeLogoFill,
+  PiFacebookLogoFill,
+  PiTiktokLogoFill,
+} from 'react-icons/pi';
 import { useAuthStore } from '../stores';
-import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet } from '../components/user';
+import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge } from '../components/user';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
 import { usersApi } from '../api';
@@ -23,12 +58,12 @@ const QUICK_ACTIONS = [
   { to: '/achievements', label: 'Medal Wall', Icon: Medal, tint: 'bg-[#FFECEC] text-[#E5342F]' },
 ];
 
-/** Requirement #22H — the Agent section. */
+/** Requirement #22H — the Agent & Agency section. */
 const AGENT_ACTIONS = [
-  { to: '/agent', label: 'Agent', Icon: UserCog, tint: 'bg-[#E8F4FF] text-role-agent' },
-  { to: '/agent/invite-hosts', label: 'Add Host', Icon: UserPlus, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
-  { to: '/referral', label: 'Invite Agent', Icon: Users, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
-  { to: '/transfer', label: 'Coins Trading', Icon: Coins, tint: 'bg-[#FFF3E0] text-role-seller' },
+  { to: '/agency', label: 'Agency', Icon: PiBuildingsFill, tint: 'bg-[#E8F4FF] text-[#2563EB]' },
+  { to: '/agent', label: 'My Agency', Icon: UserCog, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
+  { to: '/transfer', label: 'Coin Transfer', Icon: Coins, tint: 'bg-[#FFF3E0] text-[#F59E0B]' },
+  { to: '/agent/invite-hosts', label: 'Add Host', Icon: UserPlus, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
 ];
 
 export const Profile = () => {
@@ -80,8 +115,9 @@ export const Profile = () => {
     );
   }
 
-  const wealthInfo = calculateWealthLevel(user.diamonds, user.level);
-  const liveInfo = calculateLiveLevel(user.coins, user.level);
+  const wealthPoints = Math.max((user as any).wealthExp || 0, user.diamonds || 0);
+  const wealthInfo = calculateWealthLevel(wealthPoints, (user as any).wealthLevel || user.level);
+  const liveInfo = calculateLiveLevel(user.coins, (user as any).liveLevel || user.level);
 
   const copyUid = async () => {
     try {
@@ -109,8 +145,9 @@ export const Profile = () => {
   };
 
   const hasVip = Boolean(
-    (user as any).isVip ||
-    (user as any).hasPurchasedDiamonds ||
+    user.isVip ||
+    user.hasPurchasedDiamonds ||
+    ((user as any).wealthExp && (user as any).wealthExp > 0) ||
     user.noble ||
     (user.diamonds && user.diamonds > 0)
   );
@@ -179,6 +216,9 @@ export const Profile = () => {
                 <span className="font-extrabold text-ink text-lg truncate tracking-tight uppercase">
                   {user.nickname}
                 </span>
+                {user.hostBadge && user.hostBadge !== 'none' && (
+                  <HostBadge badge={user.hostBadge} size="sm" />
+                )}
                 {hasVip ? (
                   <VipCapsule
                     label="VIP"
@@ -191,9 +231,9 @@ export const Profile = () => {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => navigate('/wallet')}
+                    onClick={() => navigate('/top-up')}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/5 hover:bg-black/10 text-ink-muted text-[10px] font-bold active:scale-95 transition-transform shrink-0"
-                    title="Purchase Diamonds to earn VIP Badge"
+                    title="Top up Diamonds to earn VIP Badge"
                   >
                     <span>💎 Get VIP</span>
                   </button>
@@ -313,13 +353,13 @@ export const Profile = () => {
         </div>
       </div>
 
-      {/* ── Agent section (#22H) ───────────────────────────────── */}
-      <div className="mx-4 mt-3 bg-white rounded-card p-3">
+      {/* ── Agent & Agency section (#22H) ───────────────────────── */}
+      <div className="mx-4 mt-3 bg-white rounded-card p-3 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-ink">Agent</h2>
           <button
-            onClick={() => navigate('/agent')}
-            className="text-sm text-ink-muted flex items-center gap-0.5"
+            onClick={() => navigate('/agency')}
+            className="text-sm text-ink-muted flex items-center gap-0.5 hover:text-ink transition-colors"
           >
             All <ChevronRight className="w-4 h-4" />
           </button>
@@ -342,14 +382,14 @@ export const Profile = () => {
 
         <div className="grid grid-cols-2 gap-2 mt-3">
           <button
-            onClick={() => navigate('/rewards')}
-            className="h-11 rounded-xl bg-surface-soft text-sm font-medium text-ink-soft"
+            onClick={() => navigate('/agency?filter=popular')}
+            className="h-11 rounded-xl bg-surface-soft text-sm font-medium text-ink-soft hover:bg-surface-sunken active:scale-[0.98] transition-all flex items-center justify-center"
           >
-            Agent Rewards
+            Agency Ranking
           </button>
           <button
             onClick={() => navigate('/rankings?board=agent_count')}
-            className="h-11 rounded-xl bg-surface-soft text-sm font-medium text-ink-soft"
+            className="h-11 rounded-xl bg-surface-soft text-sm font-medium text-ink-soft hover:bg-surface-sunken active:scale-[0.98] transition-all flex items-center justify-center"
           >
             Agent Ranking
           </button>
@@ -379,7 +419,7 @@ export const Profile = () => {
       <div className="mx-4 mt-3 list-group">
         {(user.isAdmin || user.role === 'admin') && (
           <MenuRow
-            icon={<PiShieldCheckFill className="w-[22px] h-[22px] text-purple-600" />}
+            icon={<ShieldCheck className="w-[22px] h-[22px] text-purple-600" />}
             label="Admin Control Dashboard"
             value="Port 3001"
             onClick={() => {
@@ -406,8 +446,9 @@ export const Profile = () => {
           icon={<Headphones className="w-[22px] h-[22px] text-orange-400" />}
           label="Help Center"
           rightNode={<span className="text-[13px] text-ink-muted mr-1">24h</span>}
-          onClick={() => setShowContact(true)}
+          onClick={() => navigate('/help')}
         />
+
         <MenuRow
           icon={<PiClock className="w-5 h-5" />}
           label="Watch History"
@@ -433,6 +474,11 @@ export const Profile = () => {
           label="Bag"
           rightNode={<div className="w-1.5 h-1.5 rounded-full bg-status-danger mr-1" />}
           onClick={() => {}}
+        />
+        <MenuRow
+          icon={<PiBuildingsFill className="w-5 h-5 text-indigo-600" />}
+          label="Agency Center"
+          onClick={() => navigate('/agency')}
         />
         <MenuRow
           icon={<PiUsersFill className="w-5 h-5 text-indigo-500" />}
@@ -477,27 +523,29 @@ export const Profile = () => {
         isOpen={showLevelSheet}
         onClose={() => setShowLevelSheet(false)}
         defaultTab={levelSheetTab}
-        userDiamonds={user.diamonds}
+        userDiamonds={wealthPoints}
         userCoins={user.coins}
-        userLevel={user.level}
+        userLevel={(user as any).wealthLevel || user.level}
       />
     </div>
   );
 };
 
-function MenuRow({
-  icon,
-  label,
-  value,
-  rightNode,
-  onClick,
-}: {
+interface MenuRowProps {
   icon: React.ReactNode;
   label: string;
   value?: string;
   rightNode?: React.ReactNode;
   onClick: () => void;
-}) {
+}
+
+const MenuRow: React.FC<MenuRowProps> = ({
+  icon,
+  label,
+  value,
+  rightNode,
+  onClick,
+}) => {
   return (
     <button onClick={onClick} className="list-row w-full">
       <span className="text-ink-muted flex items-center justify-center w-6">{icon}</span>
@@ -507,4 +555,4 @@ function MenuRow({
       <ChevronRight className="w-[18px] h-[18px] text-[#D3D3D3] shrink-0" />
     </button>
   );
-}
+};

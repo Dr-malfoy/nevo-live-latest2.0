@@ -44,7 +44,7 @@ export const incomeController = {
   async getTransferQuote(req: Request, res: Response, next: NextFunction) {
     try {
       const { receiverUid } = req.query as { receiverUid: string };
-      const quote = await incomeService.getTransferQuote(receiverUid);
+      const quote = await incomeService.getTransferQuote(receiverUid, req.user?.userId);
       sendSuccess(res, quote);
     } catch (error) {
       next(error);

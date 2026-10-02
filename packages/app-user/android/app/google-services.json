@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "240298940237",
+    "project_id": "nevo-live-latest",
+    "storage_bucket": "nevo-live-latest.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240298940237:android:4a3f4b7f7904cd0e734904",
+        "android_client_info": {
+          "package_name": "com.nevolive.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "240298940237-np5n5r4b5lbseqvcgmbelia2ksonrcji.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nevolive.app",
+            "certificate_hash": "fe0800c29687b913df259f03bcd06c8225f85e0d"
+          }
+        },
+        {
+          "client_id": "240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGbWH41wBsRN2ZPce5RxyOh2zFN8lSJ1U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

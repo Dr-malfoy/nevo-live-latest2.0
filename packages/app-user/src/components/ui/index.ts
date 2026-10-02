@@ -5,3 +5,5 @@ export { Card } from './Card';
 export { Loading } from './Loading';
 export { VerificationGateModal } from './VerificationGateModal';
 export { ToastContainer } from './Toast';
+export { PhoneInputWithCountry, formatFullPhoneNumber } from './PhoneInputWithCountry';
+

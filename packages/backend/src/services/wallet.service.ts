@@ -3,6 +3,7 @@ import { PlatformWallet, User, Transaction } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
+import { calculateWealthLevel } from '../utils/userLevels';
 
 export const walletService = {
   async getWallet() {
@@ -20,6 +21,12 @@ export const walletService = {
     }
     if (!user) {
       user = await User.findOne({ phone: cleanId }).select('uid nickname avatar phone role level diamonds coins isAgent');
+    }
+    if (!user) {
+      user = await User.findOne({ username: cleanId.toLowerCase() }).select('uid nickname avatar phone role level diamonds coins isAgent');
+    }
+    if (!user) {
+      user = await User.findOne({ email: cleanId.toLowerCase() }).select('uid nickname avatar phone role level diamonds coins isAgent');
     }
     if (!user) {
       throw new AppError('User/Agent not found with given ID/UID/Phone', 404);
@@ -47,7 +54,7 @@ export const walletService = {
       throw new AppError('Target User ID / Agent ID is required', 400);
     }
 
-    // Find target user by UID, ObjectId, or Phone
+    // Find target user by UID, ObjectId, Phone, Username, or Email
     let target: any = await User.findOne({ uid: cleanId });
     if (!target && mongoose.isValidObjectId(cleanId)) {
       target = await User.findById(cleanId);
@@ -56,43 +63,77 @@ export const walletService = {
       target = await User.findOne({ phone: cleanId });
     }
     if (!target) {
+      target = await User.findOne({ username: cleanId.toLowerCase() });
+    }
+    if (!target) {
+      target = await User.findOne({ email: cleanId.toLowerCase() });
+    }
+    if (!target) {
       throw new AppError('Recipient user/agent not found', 404);
     }
 
-    // Admin has limitless capability to issue/send diamonds and coins.
-    // If platform wallet exists, optionally update platform inventory if balance is present, but never block admin.
-    const wallet = await PlatformWallet.getWallet();
-    const field = currency === 'diamond' ? 'diamonds' : 'coins';
-    if (wallet[field] && wallet[field] >= amount) {
-      wallet[field] -= amount;
-      await wallet.save();
+    // Platform wallet inventory tracking
+    let wallet: any = null;
+    try {
+      wallet = await PlatformWallet.getWallet();
+      const field = currency === 'diamond' ? 'diamonds' : 'coins';
+      if (wallet && wallet[field] && wallet[field] >= amount) {
+        await PlatformWallet.findByIdAndUpdate(wallet._id, { $inc: { [field]: -amount } });
+        wallet[field] -= amount;
+      }
+    } catch (walletErr) {
+      console.warn('[WalletService] Platform wallet balance update warning:', walletErr);
     }
 
     // Credit target user balance (works for users, agents, hosts, etc.)
+    let updateQuery: any = {};
     if (currency === 'diamond') {
-      target.diamonds = (target.diamonds || 0) + amount;
-      target.hasPurchasedDiamonds = true;
-      target.isVip = true;
-      if (!target.noble) {
-        target.noble = {
+      const currentWealthExp = target.wealthExp || 0;
+      const newWealthExp = currentWealthExp + amount;
+      const wealthInfo = calculateWealthLevel(newWealthExp, target.wealthLevel);
+      const newWealthLevel = Math.max(target.wealthLevel || 1, wealthInfo.level);
+
+      const setObj: any = {
+        wealthLevel: newWealthLevel,
+        hasPurchasedDiamonds: true,
+        isVip: true,
+      };
+
+      if (!target.noble || !target.noble.type) {
+        setObj.noble = {
           type: 'diamond',
           expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         };
       }
+
+      updateQuery = {
+        $inc: { diamonds: amount, wealthExp: amount },
+        $set: setObj,
+      };
     } else {
-      target.coins = (target.coins || 0) + amount;
+      updateQuery = {
+        $inc: { coins: amount },
+      };
     }
-    await target.save();
+
+    const updated = await User.findByIdAndUpdate(target._id, updateQuery, { new: true });
+    if (updated) {
+      target = updated;
+    }
 
     // Create transaction record
-    await Transaction.create({
-      userId: target._id,
-      type: 'transfer',
-      amount,
-      currency,
-      status: 'completed',
-      description: `Transfer from admin (${currency})`,
-    });
+    try {
+      await Transaction.create({
+        userId: target._id,
+        type: 'transfer',
+        amount,
+        currency,
+        status: 'completed',
+        description: `Transfer from admin (${currency})`,
+      });
+    } catch (txErr) {
+      console.warn('[WalletService] Failed to record transaction:', txErr);
+    }
 
     // Audit log
     await auditService.logAudit(
@@ -129,7 +170,7 @@ export const walletService = {
     } catch {}
 
     return {
-      wallet: wallet.toObject(),
+      wallet: wallet ? (typeof wallet.toObject === 'function' ? wallet.toObject() : wallet) : { diamonds: 0, coins: 0 },
       recipient: {
         _id: target._id,
         uid: target.uid,

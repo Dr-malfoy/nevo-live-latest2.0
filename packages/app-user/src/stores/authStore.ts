@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { authApi } from '../api';
+import { authApi, usersApi } from '../api';
 import type { User } from '../types';
 
 interface AuthState {
@@ -10,19 +10,26 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   login: (phone: string, password: string) => Promise<void>;
-  loginWithOTP: (phone: string, code: string, idToken: string) => Promise<void>;
+  loginWithOTP: (phone: string, code?: string, idToken?: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithFacebook: (idToken?: string, accessToken?: string) => Promise<void>;
   register: (
     payloadOrPhone:
       | {
-          fullName?: string;
+          fullName: string;
           username?: string;
-          phone: string;
+          phone?: string;
           email?: string;
           nickname?: string;
           password?: string;
           confirmPassword?: string;
+          dob?: string;
+          birthday?: string;
+          gender?: 'male' | 'female' | 'other' | 'unspecified';
+          inviteCode?: string;
+          inviter?: string;
           verificationToken?: string;
+          idToken?: string;
           code?: string;
         }
       | string,
@@ -109,6 +116,27 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      loginWithFacebook: async (idToken, accessToken) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { data } = await authApi.facebookLogin(idToken, accessToken);
+          if (data.success && data.data) {
+            set({
+              user: data.data.user,
+              token: data.data.token,
+              isAuthenticated: true,
+              isLoading: false,
+            });
+          }
+        } catch (err: any) {
+          set({
+            isLoading: false,
+            error: err.response?.data?.error || 'Facebook login failed',
+          });
+          throw err;
+        }
+      },
+
       register: async (payloadOrPhone, nickname, password, verificationToken, code) => {
         set({ isLoading: true, error: null });
         try {
@@ -150,7 +178,6 @@ export const useAuthStore = create<AuthState>()(
 
       fetchProfile: async () => {
         try {
-          const { usersApi } = await import('../api');
           const { data } = await usersApi.getProfile();
           if (data.success && data.data) {
             set((state) => ({

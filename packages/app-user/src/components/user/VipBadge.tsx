@@ -4,6 +4,7 @@ import { VipCapsule } from './LevelBadge';
 interface VipBadgeProps {
   noble?: { type: string; expiry: string } | null;
   isVip?: boolean;
+  wealthExp?: number;
   diamonds?: number;
   size?: 'sm' | 'md';
   className?: string;
@@ -13,7 +14,7 @@ interface VipBadgeProps {
  * Requirement #3A — VIP Badge next to the user name.
  * Renders noble tier VIP badge or diamond VIP capsule when user has purchased diamonds.
  */
-export const VipBadge = ({ noble, isVip, diamonds, size = 'sm', className = '' }: VipBadgeProps) => {
+export const VipBadge = ({ noble, isVip, wealthExp, diamonds, size = 'sm', className = '' }: VipBadgeProps) => {
   const vip = vipInfo(noble);
   if (vip) {
     const dims = size === 'sm' ? 'h-[18px] px-1.5 text-[10px]' : 'h-6 px-2 text-xs';
@@ -27,7 +28,7 @@ export const VipBadge = ({ noble, isVip, diamonds, size = 'sm', className = '' }
     );
   }
 
-  if (isVip || (diamonds && diamonds > 0)) {
+  if (isVip || (wealthExp && wealthExp > 0) || (diamonds && diamonds > 0)) {
     return (
       <VipCapsule
         label="VIP"

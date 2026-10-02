@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PiCaretLeftBold as ArrowLeft, PiCheckBold as Check, PiCaretDownBold as ChevronDown, PiCaretUpBold as ChevronUp, PiCopyFill as Copy, PiShieldWarningFill as ShieldAlert } from 'react-icons/pi';
 import { paymentApi, type CryptoNetwork, type CryptoOption, type RecentRecharge } from '../api/payment.api';
+import { usersApi } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { Loading } from '../components/ui';
@@ -71,11 +72,12 @@ export const TopUp = () => {
   useEffect(() => {
     let cancelled = false;
 
-    import('../api').then(({ usersApi }) => {
-      usersApi.getProfile().then(({ data }) => {
+    usersApi
+      .getProfile()
+      .then(({ data }) => {
         if (!cancelled && data.success && data.data) updateUser(data.data);
-      }).catch(() => {});
-    });
+      })
+      .catch(() => {});
 
     Promise.all([
       optional(paymentApi.getCryptoOptions()).catch(() => null),

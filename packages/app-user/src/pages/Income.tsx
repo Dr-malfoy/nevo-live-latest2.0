@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PiCaretLeftBold as ArrowLeft, PiCaretDownBold as ChevronDown, PiCaretRightBold as ChevronRight, PiQuestionFill as HelpCircle, PiArrowsLeftRightFill as TransferIcon, PiCoinsFill as CoinBag, PiShieldCheckFill as ShieldCheck } from 'react-icons/pi';
-import { incomeApi } from '../api';
+import { incomeApi, usersApi } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { Loading } from '../components/ui';
@@ -66,11 +66,12 @@ export const Income = () => {
     let cancelled = false;
     setLoading(true);
 
-    import('../api').then(({ usersApi }) => {
-      usersApi.getProfile().then(({ data }) => {
+    usersApi
+      .getProfile()
+      .then(({ data }) => {
         if (!cancelled && data.success && data.data) updateUser(data.data);
-      }).catch(() => {});
-    });
+      })
+      .catch(() => {});
 
     const loadSummary = async (): Promise<IncomeSummary | null> => {
       const res = await optional(incomeApi.getSummary(range)).catch(() => null);

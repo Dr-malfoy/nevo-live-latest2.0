@@ -22,6 +22,7 @@ import { momentsApi } from '../../api';
 import { useAuthStore, useUIStore } from '../../stores';
 import { timeAgo, compactNumber } from '../../lib/time';
 import { calculateWealthLevel, calculateLiveLevel } from '../../lib/userLevels';
+import { getMediaUrl } from '../../lib/media';
 import { ReportModal } from '../report/ReportModal';
 import { ShareModal } from './ShareModal';
 import { CommentsDrawer } from './CommentsDrawer';
@@ -92,7 +93,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   const resolveLevel = (u?: any): number => {
     if (!u) return 1;
     const rawLvl = Number(u.level) || 0;
-    const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.diamonds, rawLvl).level;
+    const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.wealthExp || u.diamonds, u.wealthLevel || rawLvl).level;
     const lLvl = u.liveLevel && u.liveLevel > 1 ? u.liveLevel : calculateLiveLevel(u.coins, rawLvl).level;
     return Math.max(1, rawLvl, wLvl, lLvl);
   };
@@ -109,11 +110,12 @@ export const PostCard: React.FC<PostCardProps> = ({
   const authorLevel = isCurrentUser ? resolveLevel(currentUser) : resolveLevel(author);
   const authorId = author?._id || (isCurrentUser ? currentUser._id : (typeof moment.userId === 'string' ? moment.userId : undefined));
 
-  const mediaSrc = moment.videoUrl || (moment.media && moment.media[0]);
+  const rawMediaSrc = moment.videoUrl || (moment.media && moment.media[0]);
+  const mediaSrc = getMediaUrl(rawMediaSrc);
   const isVideo =
     moment.mediaType === 'video' ||
     Boolean(moment.videoUrl) ||
-    Boolean(mediaSrc?.match(/\.(mp4|webm|mov|mkv)$/i));
+    Boolean(rawMediaSrc?.match(/\.(mp4|webm|mov|mkv)$/i));
 
   // Like handler with lively instant feedback
   const handleLike = async () => {

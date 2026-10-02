@@ -64,10 +64,13 @@ export function calculateWealthLevel(diamonds: number = 0, fallbackLevel?: numbe
     }
   }
 
-  // Fallback level respect (if points are 0 or fallback is higher, clamped to 1..100)
-  if (fallbackLevel && fallbackLevel > matched.level && points === 0) {
+  // Non-decreasing level guarantee: if user previously reached a higher level, never downgrade
+  if (fallbackLevel && fallbackLevel > matched.level) {
     const cappedLvl = Math.min(MAX_LEVEL, Math.max(1, fallbackLevel));
-    matched = WEALTH_MILESTONES[cappedLvl - 1] || matched;
+    const fallbackMilestone = WEALTH_MILESTONES[cappedLvl - 1];
+    if (fallbackMilestone) {
+      matched = fallbackMilestone;
+    }
   }
 
   const level = Math.min(MAX_LEVEL, Math.max(1, matched.level));
@@ -75,7 +78,7 @@ export function calculateWealthLevel(diamonds: number = 0, fallbackLevel?: numbe
   if (level >= MAX_LEVEL) {
     return {
       level: MAX_LEVEL,
-      currentPoints: points,
+      currentPoints: Math.max(points, matched.min),
       tierMin: matched.min,
       tierNext: matched.min,
       progress: 100,
@@ -83,14 +86,15 @@ export function calculateWealthLevel(diamonds: number = 0, fallbackLevel?: numbe
     };
   }
 
+  const effectivePoints = Math.max(points, matched.min);
   const span = matched.next - matched.min;
-  const currentInTier = Math.max(0, points - matched.min);
+  const currentInTier = Math.max(0, effectivePoints - matched.min);
   const progress = span > 0 ? Math.min(100, Math.max(0, (currentInTier / span) * 100)) : 100;
-  const remaining = Math.max(0, matched.next - points);
+  const remaining = Math.max(0, matched.next - effectivePoints);
 
   return {
     level,
-    currentPoints: points,
+    currentPoints: effectivePoints,
     tierMin: matched.min,
     tierNext: matched.next,
     progress: Number(progress.toFixed(1)),
@@ -109,9 +113,12 @@ export function calculateLiveLevel(coins: number = 0, fallbackLevel?: number): L
     }
   }
 
-  if (fallbackLevel && fallbackLevel > matched.level && points === 0) {
+  if (fallbackLevel && fallbackLevel > matched.level) {
     const cappedLvl = Math.min(MAX_LEVEL, Math.max(1, fallbackLevel));
-    matched = LIVE_MILESTONES[cappedLvl - 1] || matched;
+    const fallbackMilestone = LIVE_MILESTONES[cappedLvl - 1];
+    if (fallbackMilestone) {
+      matched = fallbackMilestone;
+    }
   }
 
   const level = Math.min(MAX_LEVEL, Math.max(1, matched.level));
@@ -119,7 +126,7 @@ export function calculateLiveLevel(coins: number = 0, fallbackLevel?: number): L
   if (level >= MAX_LEVEL) {
     return {
       level: MAX_LEVEL,
-      currentPoints: points,
+      currentPoints: Math.max(points, matched.min),
       tierMin: matched.min,
       tierNext: matched.min,
       progress: 100,
@@ -127,14 +134,15 @@ export function calculateLiveLevel(coins: number = 0, fallbackLevel?: number): L
     };
   }
 
+  const effectivePoints = Math.max(points, matched.min);
   const span = matched.next - matched.min;
-  const currentInTier = Math.max(0, points - matched.min);
+  const currentInTier = Math.max(0, effectivePoints - matched.min);
   const progress = span > 0 ? Math.min(100, Math.max(0, (currentInTier / span) * 100)) : 100;
-  const remaining = Math.max(0, matched.next - points);
+  const remaining = Math.max(0, matched.next - effectivePoints);
 
   return {
     level,
-    currentPoints: points,
+    currentPoints: effectivePoints,
     tierMin: matched.min,
     tierNext: matched.next,
     progress: Number(progress.toFixed(1)),

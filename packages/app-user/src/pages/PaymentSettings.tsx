@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PiCaretLeftBold as ArrowLeft } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
 import { paymentApi } from '../api/payment.api';
+import client from '../api/client';
 
 export const PaymentSettings = () => {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export const PaymentSettings = () => {
     form.append('file', file);
     form.append('folder', 'user-payment');
     try {
-      const { data }: any = await (await import('../api/client')).default.post('/upload', form);
+      const { data }: any = await client.post('/upload', form);
       if (data.success) {
         const url = data.data?.url || '';
         if (target === 'bybit') setBybit((p) => ({ ...p, qrCode: url }));

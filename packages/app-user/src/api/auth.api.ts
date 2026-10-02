@@ -45,9 +45,10 @@ export const authApi = {
       purpose,
     }),
 
-  passwordLogin: (phone: string, password: string) =>
+  passwordLogin: (identifier: string, password: string) =>
     client.post<ApiResponse<{ token: string; user: any }>>('/auth/login', {
-      phone,
+      phone: identifier,
+      identifier,
       password,
     }),
 
@@ -56,15 +57,27 @@ export const authApi = {
       idToken,
     }),
 
+  facebookLogin: (idToken?: string, accessToken?: string) =>
+    client.post<ApiResponse<{ token: string; user: any }>>('/auth/facebook', {
+      idToken,
+      accessToken,
+    }),
+
   register: (payload: {
-    fullName?: string;
+    fullName: string;
     username?: string;
-    phone: string;
+    phone?: string;
     email?: string;
     nickname?: string;
     password?: string;
     confirmPassword?: string;
+    dob?: string;
+    birthday?: string;
+    gender?: 'male' | 'female' | 'other' | 'unspecified';
+    inviteCode?: string;
+    inviter?: string;
     verificationToken?: string;
+    idToken?: string;
     code?: string;
   }) =>
     client.post<ApiResponse<{ token: string; user: any }>>('/auth/register', payload),

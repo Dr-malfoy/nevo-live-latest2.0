@@ -1,4 +1,4 @@
-import { Chat, ChatMessage, User, LiveStream } from '../models';
+import { Chat, ChatMessage, User, LiveStream, Story, Note } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 
@@ -14,11 +14,11 @@ export const chatService = {
 
     let chat = await Chat.findOne({
       participants: { $all: pair },
-    }).populate('participants', 'uid nickname avatar level sellerType verification');
+    }).populate('participants', 'uid nickname avatar level sellerType verification country');
 
     if (!chat) {
       chat = await Chat.create({ participants: pair });
-      chat = await Chat.populate(chat, { path: 'participants', select: 'uid nickname avatar level sellerType verification' });
+      chat = await Chat.populate(chat, { path: 'participants', select: 'uid nickname avatar level sellerType verification country' });
     }
 
     return chat;
@@ -37,15 +37,40 @@ export const chatService = {
   },
 
   async getUserChats(userId: string, page: number, limit: number, readFilter?: 'unread' | 'seen') {
+    const currentUser = await User.findById(userId).select('following followers role isAgent agencyId').lean();
+    const followingSet = new Set((currentUser?.following || []).map((id: any) => id.toString()));
+    const followerSet = new Set((currentUser?.followers || []).map((id: any) => id.toString()));
+
     const total = await Chat.countDocuments({ participants: userId });
     let chats = await Chat.find({ participants: userId })
-      .populate('participants', 'uid nickname avatar level sellerType verification country')
+      .populate('participants', 'uid nickname avatar level sellerType verification country role isAgent agencyId')
       .populate('lastMessageBy', 'uid nickname')
       .sort({ lastMessageAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
-    // Add unread count + other participant per chat
+    const now = new Date();
+    // Get active stories & active notes for participants
+    const activeStories = await Story.find({ expiresAt: { $gt: now } }).select('userId views createdAt').lean();
+    const storyUserMap = new Map<string, { count: number; hasUnviewed: boolean }>();
+    for (const s of activeStories) {
+      if (!s.userId) continue;
+      const uId = s.userId.toString();
+      const hasViewed = Array.isArray(s.views) && s.views.some((v: any) => v.toString() === userId);
+      const cur = storyUserMap.get(uId) || { count: 0, hasUnviewed: false };
+      cur.count += 1;
+      if (!hasViewed) cur.hasUnviewed = true;
+      storyUserMap.set(uId, cur);
+    }
+
+    const activeNotes = await Note.find({ expiresAt: { $gt: now } }).select('userId text emoji createdAt expiresAt').lean();
+    const noteUserMap = new Map<string, { text: string; emoji: string; createdAt: Date }>();
+    for (const n of activeNotes) {
+      if (!n.userId) continue;
+      noteUserMap.set(n.userId.toString(), { text: n.text, emoji: n.emoji || '💭', createdAt: n.createdAt });
+    }
+
+    // Add unread count + other participant per chat + category tags
     let result = await Promise.all(
       chats.map(async (chat) => {
         const unread = await ChatMessage.countDocuments({
@@ -53,8 +78,42 @@ export const chatService = {
           senderId: { $ne: userId },
           read: false,
         });
-        const other = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
+        const otherDoc = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
         
+        let category: 'following' | 'friends' | 'strangers' | 'agency' | 'system' = 'strangers';
+        let isFriend = false;
+        let isFollowing = false;
+        let isAgency = false;
+        let isSystem = (chat.type as string) === 'official' || (chat.type as string) === 'system';
+
+        if (otherDoc) {
+          const oId = otherDoc._id.toString();
+          isFollowing = followingSet.has(oId);
+          isFriend = isFollowing && followerSet.has(oId);
+          isAgency = Boolean(otherDoc.isAgent || otherDoc.role === 'agent' || otherDoc.sellerType === 'official' || otherDoc.agencyId || (chat.type as string) === 'agency');
+
+          if (isSystem) category = 'system';
+          else if (isAgency) category = 'agency';
+          else if (isFriend) category = 'friends';
+          else if (isFollowing) category = 'following';
+          else category = 'strangers';
+        }
+
+        const otherStory = otherDoc ? storyUserMap.get(otherDoc._id.toString()) : undefined;
+        const otherNote = otherDoc ? noteUserMap.get(otherDoc._id.toString()) : undefined;
+
+        const other = otherDoc ? {
+          ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+          isFriend,
+          isFollowing,
+          isAgency,
+          category,
+          hasStory: Boolean(otherStory && otherStory.count > 0),
+          storyCount: otherStory ? otherStory.count : 0,
+          hasUnviewedStory: otherStory ? otherStory.hasUnviewed : false,
+          note: otherNote || null,
+        } : null;
+
         // Find last message details to include delivery/seen status
         const lastMsg = await ChatMessage.findOne({ chatId: chat._id }).sort({ createdAt: -1 }).lean();
 
@@ -62,6 +121,7 @@ export const chatService = {
           ...chat.toObject(),
           unread,
           other,
+          category,
           lastMessageStatus: lastMsg?.status || (lastMsg?.read ? 'seen' : lastMsg?.delivered ? 'delivered' : 'sent'),
           lastMessageSenderId: lastMsg?.senderId?.toString(),
         };

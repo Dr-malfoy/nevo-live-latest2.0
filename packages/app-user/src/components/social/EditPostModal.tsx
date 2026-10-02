@@ -10,6 +10,7 @@ import {
 } from 'react-icons/pi';
 import { momentsApi } from '../../api';
 import { useUIStore } from '../../stores';
+import { getMediaUrl } from '../../lib/media';
 import type { Moment } from '../../types';
 
 interface EditPostModalProps {
@@ -95,11 +96,12 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
     }
   };
 
-  const mediaSrc = moment.videoUrl || (moment.media && moment.media[0]);
+  const rawMediaSrc = moment.videoUrl || (moment.media && moment.media[0]);
+  const mediaSrc = getMediaUrl(rawMediaSrc);
   const isVideo =
     moment.mediaType === 'video' ||
     Boolean(moment.videoUrl) ||
-    Boolean(mediaSrc?.match(/\.(mp4|webm|mov|mkv)$/i));
+    Boolean(rawMediaSrc?.match(/\.(mp4|webm|mov|mkv)$/i));
 
   return (
     <div

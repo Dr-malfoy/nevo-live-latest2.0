@@ -24,3 +24,5 @@ export { referralApi, fanClubApi, historyApi, videoApi } from './social.api';
 export { agentApi } from './agent.api';
 export { partyApi } from './party.api';
 export { streamerApi } from './streamer.api';
+export { storyApi } from './story.api';
+export { noteApi } from './note.api';

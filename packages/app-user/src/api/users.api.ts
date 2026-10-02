@@ -75,4 +75,13 @@ export const usersApi = {
   /** Visitors from the last 7 days. Owner-only — the server rejects others. */
   getVisitors: (id?: string, page = 1) =>
     client.get<ApiResponse<ProfileVisitor[]>>(`/users/${id || 'me'}/visitors`, { params: { page } }),
+
+  /* ── Blacklist / Blocked Users ─────────────────────────────────── */
+  getBlacklist: () => client.get<ApiResponse<UserPublic[]>>('/users/me/blacklist'),
+  toggleBlockUser: (targetId: string) =>
+    client.post<ApiResponse<{ blocked: boolean }>>(`/users/me/blacklist/${targetId}`),
+  blockUser: (targetId: string) =>
+    client.post<ApiResponse<{ blocked: boolean }>>(`/users/me/blacklist/${targetId}`),
+  unblockUser: (targetId: string) =>
+    client.delete<ApiResponse<{ blocked: boolean }>>(`/users/me/blacklist/${targetId}`),
 };

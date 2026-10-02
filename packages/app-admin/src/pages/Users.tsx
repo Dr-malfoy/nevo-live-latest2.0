@@ -3,11 +3,18 @@ import { Search, BadgeCheck, Coins, Send, X, ArrowRight, RefreshCw, CheckCircle,
 import { adminApi } from '../api';
 import { DataTable } from '../components/DataTable';
 import { DiamondIcon, CoinIcon } from '../components/CurrencyIcon';
+import { HostBadge } from '../components/HostBadge';
 
 const SELLER_TYPES = [
   { value: 'none', label: 'None', icon: null },
   { value: 'official', label: 'Official', icon: BadgeCheck, cls: 'text-sky-400' },
   { value: 'paylor', label: 'Paylor', icon: Coins, cls: 'text-amber-400' },
+];
+
+const HOST_BADGES = [
+  { value: 'none', label: 'None' },
+  { value: 'alpha', label: 'Alpha Host' },
+  { value: 'aurora', label: 'Aurora Host' },
 ];
 
 export const Users = () => {
@@ -50,6 +57,11 @@ export const Users = () => {
 
   const handleSellerType = async (id: string, sellerType: 'none' | 'official' | 'paylor') => {
     await adminApi.setSellerType(id, sellerType);
+    load(page, search);
+  };
+
+  const handleHostBadge = async (id: string, hostBadge: 'alpha' | 'aurora' | 'none') => {
+    await adminApi.setHostBadge(id, hostBadge);
     load(page, search);
   };
 
@@ -140,6 +152,30 @@ export const Users = () => {
           aria-label={`Seller badge for ${r.nickname}`}
         >
           {SELLER_TYPES.map(({ value, label }) => (
+            <option key={value} value={value} className="text-white">
+              {label}
+            </option>
+          ))}
+        </select>
+      ),
+    },
+    {
+      key: 'hostBadge',
+      label: 'Host Badge',
+      render: (r: any) => (
+        <select
+          value={r.hostBadge || 'none'}
+          onChange={(e) => handleHostBadge(r._id, e.target.value as any)}
+          className={`bg-dark-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none ${
+            r.hostBadge === 'alpha'
+              ? 'text-yellow-300 border border-yellow-500/40'
+              : r.hostBadge === 'aurora'
+              ? 'text-pink-300 border border-pink-500/40'
+              : 'text-dark-300'
+          }`}
+          aria-label={`Host badge for ${r.nickname}`}
+        >
+          {HOST_BADGES.map(({ value, label }) => (
             <option key={value} value={value} className="text-white">
               {label}
             </option>

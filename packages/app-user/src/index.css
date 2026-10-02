@@ -213,4 +213,85 @@
   .hairline {
     @apply border-b border-line;
   }
+
+  /* ── PREMIUM 3D HOST BADGES (ALPHA & AURORA) ─────────────────────── */
+  @keyframes badge-shimmer-sweep {
+    0% {
+      transform: translateX(-160%) skewX(-20deg);
+    }
+    45%, 100% {
+      transform: translateX(200%) skewX(-20deg);
+    }
+  }
+
+  @keyframes badge-pulse-alpha {
+    0%, 100% {
+      box-shadow: 0 0 8px rgba(255, 215, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.65), inset 0 -1px 2px rgba(0, 0, 0, 0.9);
+    }
+    50% {
+      box-shadow: 0 0 16px rgba(255, 215, 0, 0.8), 0 3px 8px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -1px 3px rgba(0, 0, 0, 0.95);
+    }
+  }
+
+  @keyframes badge-pulse-aurora {
+    0%, 100% {
+      box-shadow: 0 0 8px rgba(255, 105, 180, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.7), inset 0 -1px 2px rgba(155, 89, 182, 0.6);
+    }
+    50% {
+      box-shadow: 0 0 16px rgba(255, 105, 180, 0.85), 0 0 24px rgba(155, 89, 182, 0.55), 0 3px 8px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -1px 3px rgba(155, 89, 182, 0.85);
+    }
+  }
+
+  @keyframes aurora-gradient-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  .badge-alpha-3d {
+    background: linear-gradient(135deg, #FFE57F 0%, #FFD700 28%, #8B6914 55%, #1F1B05 82%, #000000 100%);
+    border: 1px solid rgba(255, 223, 70, 0.85);
+    animation: badge-pulse-alpha 3s ease-in-out infinite;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .badge-alpha-3d::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: badge-shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+
+  .badge-aurora-3d {
+    background: linear-gradient(135deg, #9B59B6 0%, #C0392B 0%, #8E44AD 30%, #E91E63 65%, #FF69B4 100%);
+    background-size: 200% 200%;
+    border: 1px solid rgba(255, 182, 193, 0.85);
+    animation: badge-pulse-aurora 3s ease-in-out infinite, aurora-gradient-shift 6s ease infinite;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .badge-aurora-3d::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+    animation: badge-shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    pointer-events: none;
+  }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PiCaretLeftBold as ArrowLeft, PiPlusBold as Plus, PiDownloadSimpleBold as ArrowDownToLine, PiFlagFill as Flag } from 'react-icons/pi';
+import { PiCaretLeftBold as ArrowLeft, PiPlusBold as Plus, PiDownloadSimpleBold as ArrowDownToLine, PiFlagFill as Flag, PiCopyFill as Copy, PiCheckBold as Check } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
 import { Card, Loading } from '../components/ui';
 import { useAuthStore } from '../stores';
@@ -20,6 +20,7 @@ export const Wallet = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'orders' | 'withdraw' | 'history'>('orders');
   const [reportTarget, setReportTarget] = useState<{ type: 'transaction'; id: string } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -141,19 +142,53 @@ export const Wallet = () => {
             <p className="text-ink-faint text-sm text-center py-8">No transactions yet</p>
           ) : (
             <div className="space-y-2">
-              {transactions.map((tx) => (
-                <div key={tx._id} className="flex items-center justify-between p-3 bg-surface-sunken rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium capitalize">{tx.type.replace('_', ' ')}</p>
-                    {tx.description && <p className="text-xs text-ink-muted">{tx.description}</p>}
-                    <p className="text-xs text-ink-muted">{new Date(tx.createdAt).toLocaleString()}</p>
+              {transactions.map((tx) => {
+                const displayId = tx.txId || tx._id;
+                const isCopied = copiedId === displayId;
+                const isDeduct = ['gift_send', 'withdraw', 'coin_sale', 'game_bet'].includes(tx.type);
+
+                return (
+                  <div
+                    key={tx._id}
+                    onClick={() => navigate(`/transactions/${tx._id}`)}
+                    className="p-3 bg-surface-sunken hover:bg-surface-soft rounded-xl transition-colors cursor-pointer space-y-1.5 border border-transparent hover:border-line"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-ink">{displayId}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(displayId);
+                            setCopiedId(displayId);
+                            setTimeout(() => setCopiedId(null), 2000);
+                          }}
+                          className={`p-0.5 rounded transition-colors ${isCopied ? 'text-emerald-600' : 'text-ink-muted hover:text-ink'}`}
+                          title="Copy ID"
+                        >
+                          {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        {isCopied && <span className="text-[10px] font-bold text-emerald-600">Copied</span>}
+                      </div>
+
+                      <span className={`text-sm font-bold tabular-nums ${isDeduct ? 'text-red-500' : 'text-emerald-600'}`}>
+                        {isDeduct ? '-' : '+'}{tx.amount.toLocaleString()}
+                        <span className="text-[10px] ml-1 uppercase">{tx.currency}</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-ink-muted">
+                      <p className="font-medium capitalize text-ink">{tx.type.replace(/_/g, ' ')}</p>
+                      <p className="tabular-nums">{new Date(tx.createdAt).toLocaleString()}</p>
+                    </div>
+
+                    {tx.description && (
+                      <p className="text-[11px] text-ink-muted truncate">{tx.description}</p>
+                    )}
                   </div>
-                  <span className={`text-sm font-bold ${tx.type === 'gift_send' || tx.type === 'withdraw' || tx.type === 'coin_sale' ? 'text-red-400' : 'text-green-400'}`}>
-                    {tx.type === 'gift_send' || tx.type === 'withdraw' || tx.type === 'coin_sale' ? '-' : '+'}{tx.amount}
-                    <span className="text-[10px] ml-1">{tx.currency}</span>
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

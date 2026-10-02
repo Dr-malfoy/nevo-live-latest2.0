@@ -1,13 +1,16 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
+import { Capacitor } from '@capacitor/core';
 
-const isLocal =
+const isNative = Capacitor.isNativePlatform();
+const isLocalWeb =
+  !isNative &&
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
-  (isLocal ? 'http://localhost:5000' : 'https://nevo-live.onrender.com');
+  (isLocalWeb ? window.location.origin : 'https://nevo-live-latest.onrender.com');
 
 interface SocketState {
   socket: Socket | null;
@@ -18,7 +21,7 @@ interface SocketState {
   leaveRoom: (room: string) => void;
   joinCallRoom: (callId: string) => void;
   leaveCallRoom: (callId: string) => void;
-  joinMatch: (type: string) => void;
+  joinMatch: (type: string, gender?: 'male' | 'female' | 'all') => void;
   leaveMatch: () => void;
 }
 
@@ -73,8 +76,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     get().socket?.emit('call:leave-room', { callId });
   },
 
-  joinMatch: (type) => {
-    get().socket?.emit('match:join', { type });
+  joinMatch: (type, gender = 'all') => {
+    get().socket?.emit('match:join', { type, gender });
   },
 
   leaveMatch: () => {

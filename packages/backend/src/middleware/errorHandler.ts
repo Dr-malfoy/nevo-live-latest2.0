@@ -14,7 +14,7 @@ export class AppError extends Error {
 }
 
 export const errorHandler = (
-  err: Error,
+  err: any,
   _req: Request,
   res: Response,
   _next: NextFunction
@@ -28,10 +28,46 @@ export const errorHandler = (
     return;
   }
 
+  // Mongoose duplicate key error (E11000)
+  if (err && (err.code === 11000 || err.name === 'MongoServerError' && err.code === 11000)) {
+    const fields = Object.keys(err.keyValue || {}).join(', ');
+    const message = fields
+      ? `Duplicate value for field: ${fields}. This is already in use.`
+      : 'Duplicate entry detected. Please check your data and try again.';
+    res.status(400).json({
+      success: false,
+      error: message,
+      code: 'DUPLICATE_KEY',
+    });
+    return;
+  }
+
+  // Mongoose validation error
+  if (err && err.name === 'ValidationError' && err.errors) {
+    const messages = Object.values(err.errors).map((e: any) => e.message).join('; ');
+    res.status(400).json({
+      success: false,
+      error: messages || 'Validation error',
+      code: 'VALIDATION_ERROR',
+    });
+    return;
+  }
+
+  // Mongoose CastError (invalid ObjectId, etc.)
+  if (err && err.name === 'CastError') {
+    res.status(400).json({
+      success: false,
+      error: `Invalid format for ${err.path || 'field'}`,
+      code: 'INVALID_FORMAT',
+    });
+    return;
+  }
+
   console.error('Unhandled error:', err);
 
   res.status(500).json({
     success: false,
-    error: env.nodeEnv === 'production' ? 'Internal server error' : err.message,
+    error: env.nodeEnv === 'production' ? 'Internal server error' : (err?.message || 'Internal server error'),
   });
 };
+

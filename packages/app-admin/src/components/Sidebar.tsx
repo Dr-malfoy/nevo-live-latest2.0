@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck } from 'lucide-react';
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/users', icon: Users, label: 'Users' },
+  { to: '/hosts', icon: Award, label: 'Host Management' },
   { to: '/streams', icon: Radio, label: 'Streams' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
   { to: '/gifts', icon: Gift, label: 'Gifts' },

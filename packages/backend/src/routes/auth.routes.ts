@@ -7,6 +7,7 @@ import {
   verifyOtpSchema,
   passwordLoginSchema,
   googleLoginSchema,
+  facebookLoginSchema,
   registerSchema,
   resetPasswordSchema,
   searchAccountSchema,
@@ -20,6 +21,7 @@ router.post('/resend-otp', validate(resendOtpSchema), authController.resendOtp);
 router.post('/verify-otp', validate(verifyOtpSchema), authController.verifyOtp);
 router.post('/login', validate(passwordLoginSchema), authController.passwordLogin);
 router.post('/google', validate(googleLoginSchema), authController.googleLogin);
+router.post('/facebook', validate(facebookLoginSchema), authController.facebookLogin);
 router.post('/signup', validate(registerSchema), authController.register);
 router.post('/register', validate(registerSchema), authController.register);
 router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);

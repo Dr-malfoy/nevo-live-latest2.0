@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { sendError } from '../utils/response';
-import { User } from '../models';
+import { User, Agency } from '../models';
 import {
   requiresVerification,
   isVerified,
@@ -19,12 +19,29 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction): v
   next();
 };
 
-export const requireAgent = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.user?.role !== 'agent' && !req.user?.isAdmin) {
-    sendError(res, 'Agent access required', 403);
-    return;
+export const requireAgent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  if (req.user?.role === 'agent' || req.user?.isAgent || req.user?.role === 'admin' || req.user?.isAdmin) {
+    return next();
   }
-  next();
+  try {
+    const user = await User.findById(req.user?.userId).select('role isAgent isAdmin agencyId');
+    if (user && (user.role === 'agent' || user.isAgent || user.role === 'admin' || user.isAdmin)) {
+      if (req.user) {
+        req.user.role = user.role;
+        req.user.isAgent = user.isAgent;
+      }
+      return next();
+    }
+    const ownsAgency = await Agency.exists({ agentId: req.user?.userId });
+    if (ownsAgency) {
+      if (req.user) {
+        req.user.role = 'agent';
+        req.user.isAgent = true;
+      }
+      return next();
+    }
+  } catch {}
+  sendError(res, 'Agent access required', 403);
 };
 
 export const requireHost = (req: Request, res: Response, next: NextFunction): void => {

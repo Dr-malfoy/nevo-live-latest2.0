@@ -31,9 +31,10 @@ export const walletController = {
         res.status(400).json({ success: false, error: 'Target User ID/Agent ID, currency, and amount are required' });
         return;
       }
+      const adminId = req.user?.userId || '';
       const result = await walletService.transferCurrency(
-        req.user!.userId,
-        target,
+        adminId,
+        String(target),
         currency as 'diamond' | 'coin',
         Number(amount),
         req.ip

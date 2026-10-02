@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder } from '../models';
+import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig } from '../models';
+
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
+import { hostBadgeService } from '../services/hostBadge.service';
 import { hashPassword } from '../utils/hash';
 import { sendSuccess, sendPaginated } from '../utils/response';
 
@@ -413,4 +415,111 @@ export const adminController = {
       next(error);
     }
   },
+
+  // ─── Telegram Dynamic Config ───────────────────────────────────────
+
+  async getTelegramConfig(_req: Request, res: Response, next: NextFunction) {
+    try {
+      let config = await AppConfig.findOne({ key: 'telegram' });
+      if (!config) {
+        config = await AppConfig.create({
+          key: 'telegram',
+          value: {
+            channelUrl: 'https://t.me/nevolive_official',
+            supportUrl: 'https://t.me/nevolive_support',
+            groupUrl: 'https://t.me/nevolive_group',
+          },
+        });
+      }
+      sendSuccess(res, config.value, 'Telegram configuration');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateTelegramConfig(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { channelUrl, supportUrl, groupUrl } = req.body;
+      const value = {
+        channelUrl: channelUrl?.trim() || 'https://t.me/nevolive_official',
+        supportUrl: supportUrl?.trim() || 'https://t.me/nevolive_support',
+        groupUrl: groupUrl?.trim() || 'https://t.me/nevolive_group',
+      };
+
+      const config = await AppConfig.findOneAndUpdate(
+        { key: 'telegram' },
+        { $set: { value } },
+        { new: true, upsert: true }
+      );
+      sendSuccess(res, config.value, 'Telegram configuration updated');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Host Management — list hosts with weekly metrics, qualifications, and badges
+   */
+  async getHosts(req: Request, res: Response, next: NextFunction) {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const search = req.query.search as string;
+      const badge = req.query.badge as string;
+      const gender = req.query.gender as string;
+
+      const result = await hostBadgeService.getHostsWithStats({
+        page,
+        limit,
+        search,
+        badge,
+        gender,
+      });
+
+      sendPaginated(res, result.data, result.total, result.page, result.limit, {
+        weeklyBounds: result.weeklyBounds,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Host Management — manual badge assignment/removal (Alpha Host / Aurora Host / None)
+   */
+  async setHostBadge(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { hostBadge } = req.body;
+      if (!['alpha', 'aurora', 'none'].includes(hostBadge)) {
+        res.status(400).json({ success: false, error: 'Invalid badge. Must be alpha, aurora, or none' });
+        return;
+      }
+
+      const result = await hostBadgeService.setManualBadge(req.params.id, hostBadge);
+      sendSuccess(
+        res,
+        {
+          hostBadge: result.user.hostBadge,
+          hostBadgeType: result.user.hostBadgeType,
+          hostBadgeAssignedAt: result.user.hostBadgeAssignedAt,
+        },
+        `Host badge updated to ${hostBadge.toUpperCase()}`
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Host Management — trigger automatic badge recalculation across all hosts
+   */
+  async recalculateHostBadges(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await hostBadgeService.recalculateAllHostBadges();
+      sendSuccess(res, result, 'Host badges recalculated successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
 };
+

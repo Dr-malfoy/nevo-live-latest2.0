@@ -5,8 +5,8 @@ import { requireAgent, requireVerified } from '../middleware/roleGuard';
 
 const router = Router();
 
-// All agent routes require agent role + account verification (agency features)
-router.use(authenticate, requireAgent, requireVerified);
+// All agent routes require authenticated agent
+router.use(authenticate, requireAgent);
 
 // Dashboard summary
 router.get('/dashboard', agentController.getDashboard);

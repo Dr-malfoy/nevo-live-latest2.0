@@ -8,15 +8,16 @@ import { matchService } from '../services/match.service';
  * - disconnect → remove the user so they never get ghost-paired.
  */
 export const registerMatchHandlers = (socket: Socket): void => {
-  socket.on('match:join', async ({ type } = {}, ack) => {
+  socket.on('match:join', async ({ type, gender } = {}, ack) => {
     try {
       const userId = socket.data.user?.userId;
       if (!userId) return ack?.({ success: false, error: 'Not authenticated' });
 
-      const callType: 'audio' | 'video' = type === 'video' ? 'video' : 'audio';
+      const callType: 'audio' | 'video' = type === 'audio' ? 'audio' : 'video';
+      const targetGender = gender === 'male' || gender === 'female' ? gender : 'all';
       socket.data.matchType = callType;
-      await matchService.enqueue(userId, socket.id, callType);
-      ack?.({ success: true, waiting: true, type: callType });
+      await matchService.enqueue(userId, socket.id, callType, targetGender);
+      ack?.({ success: true, waiting: true, type: callType, gender: targetGender });
     } catch (err: any) {
       ack?.({ success: false, error: err?.message || 'Failed to join match queue' });
     }

@@ -106,7 +106,7 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
                 const resolveLevel = (u?: any): number => {
                   if (!u) return 1;
                   const rawLvl = Number(u.level) || 0;
-                  const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.diamonds, rawLvl).level;
+                  const wLvl = u.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(u.wealthExp || u.diamonds, u.wealthLevel || rawLvl).level;
                   const lLvl = u.liveLevel && u.liveLevel > 1 ? u.liveLevel : calculateLiveLevel(u.coins, rawLvl).level;
                   return Math.max(1, rawLvl, wLvl, lLvl);
                 };

@@ -1,12 +1,15 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 
-const isLocal =
+const isNative = Capacitor.isNativePlatform();
+const isLocalWeb =
+  !isNative &&
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
-  (isLocal ? '/api' : 'https://nevo-live.onrender.com/api');
+  (isLocalWeb ? '/api' : 'https://nevo-live-latest.onrender.com/api');
 
 const client = axios.create({
   baseURL: API_BASE,

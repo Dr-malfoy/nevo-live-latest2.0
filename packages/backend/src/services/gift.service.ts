@@ -41,9 +41,12 @@ export const giftService = {
     }
     sender.coins = updatedSender.coins;
 
-    // Add Diamonds to receiver (host takes 70% in diamonds, platform takes 30% in diamonds)
-    const hostDiamonds = Math.floor(totalCost * 0.7);
-    const adminDiamonds = Math.floor(totalCost * 0.3);
+    // Add Diamonds to receiver (standard host takes 70%, Alpha/Aurora premium host takes 75% with +5% bonus, remainder to admin)
+    const isPremiumBadge = receiver.hostBadge === 'alpha' || receiver.hostBadge === 'aurora';
+    const hostShareRate = isPremiumBadge ? 0.75 : 0.70;
+    const adminShareRate = isPremiumBadge ? 0.25 : 0.30;
+    const hostDiamonds = Math.floor(totalCost * hostShareRate);
+    const adminDiamonds = Math.floor(totalCost * adminShareRate);
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiverId },
       { $inc: { diamonds: hostDiamonds } },
@@ -51,7 +54,7 @@ export const giftService = {
     );
     if (updatedReceiver) receiver.diamonds = updatedReceiver.diamonds;
 
-    // Credit the platform's diamond inventory with the admin share (30%)
+    // Credit the platform's diamond inventory with the admin share
     const platform = await PlatformWallet.getWallet();
     await PlatformWallet.updateOne({ _id: platform._id }, { $inc: { diamonds: adminDiamonds } });
 
@@ -61,7 +64,12 @@ export const giftService = {
       if (adminUser) adminUserId = adminUser._id as any;
     }
 
-    // Create transactions (send in coins + receive 70% in diamonds + admin cut 30% in diamonds)
+    const hostShareLabel = isPremiumBadge
+      ? `75% share incl. +5% ${receiver.hostBadge === 'alpha' ? 'ALPHA' : 'AURORA'} HOST bonus`
+      : '70% share';
+    const adminShareLabel = isPremiumBadge ? '25% share' : '30% share';
+
+    // Create transactions (send in coins + receive diamonds + admin cut in diamonds)
     await Transaction.create([
       {
         userId: senderId,
@@ -84,7 +92,7 @@ export const giftService = {
         targetModel: 'User',
         giftId: gift._id,
         status: 'completed',
-        description: `Received ${quantity}x ${gift.name} from ${sender.nickname} (70% share: ${hostDiamonds} diamonds)`,
+        description: `Received ${quantity}x ${gift.name} from ${sender.nickname} (${hostShareLabel}: ${hostDiamonds} diamonds)`,
       },
       {
         userId: adminUserId || receiverId,
@@ -95,7 +103,7 @@ export const giftService = {
         targetModel: 'User',
         giftId: gift._id,
         status: 'completed',
-        description: `Admin cut (30% share: ${adminDiamonds} diamonds) from ${quantity}x ${gift.name}`,
+        description: `Admin cut (${adminShareLabel}: ${adminDiamonds} diamonds) from ${quantity}x ${gift.name}`,
       },
     ]);
 

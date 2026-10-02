@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { PiCaretLeftBold as ArrowLeft, PiCakeFill as Cake, PiCopyFill as Copy, PiCheckBold as Check, PiFlagFill as Flag, PiMapPinFill as MapPin, PiChatCircleFill as MessageCircle, PiUserFill as UserIcon } from 'react-icons/pi';
-import { chatApi, usersApi } from '../api';
+import {
+  PiCaretLeftBold as ArrowLeft,
+  PiCakeFill as Cake,
+  PiCopyFill as Copy,
+  PiCheckBold as Check,
+  PiFlagFill as Flag,
+  PiMapPinFill as MapPin,
+  PiChatCircleFill as MessageCircle,
+  PiUserFill as UserIcon,
+  PiPhoneFill as Phone,
+  PiVideoCameraFill as VideoCamera,
+} from 'react-icons/pi';
+import { chatApi, usersApi, callApi } from '../api';
 import {
   Avatar,
   FollowButton,
@@ -9,9 +20,12 @@ import {
   RoleTags,
   UserNameplate,
 } from '../components/user';
-import { useAuthStore } from '../stores';
+import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { ReportModal } from '../components/report/ReportModal';
 import { Loading } from '../components/ui';
+import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
+import { CallScreen } from '../components/call/CallScreen';
+import { requestMediaPermissions } from '../lib/permissions';
 import { countryLabel, flagEmoji } from '../lib/countries';
 import { levelTier, tierProgress, nextTierAt, vipInfo } from '../lib/levels';
 import type { PublicProfile as PublicProfileData } from '../types';
@@ -34,11 +48,30 @@ export const PublicProfile = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const socket = useSocketStore((s) => s.socket);
+  const showToast = useUIStore((s) => s.showToast);
 
   const [profile, setProfile] = useState<PublicProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Call state
+  const [insufficientCoins, setInsufficientCoins] = useState<{
+    visible: boolean;
+    reason?: string;
+    coinsPerMinute?: number;
+    balance?: number;
+    minBalance?: number;
+  }>({ visible: false });
+  const [activeCall, setActiveCall] = useState<{
+    callId: string;
+    channel: string;
+    type: 'audio' | 'video';
+    token: string;
+    coinsPerMinute: number;
+  } | null>(null);
+  const [callAccepted, setCallAccepted] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -61,6 +94,87 @@ export const PublicProfile = () => {
   }, [id]);
 
   const isSelf = !!profile && profile._id === user?._id;
+
+  // Socket listener for call accept & end
+  useEffect(() => {
+    if (!socket || !activeCall?.callId) return;
+
+    const onCallAccept = (payload: any) => {
+      if (payload?.callId === activeCall.callId) {
+        setCallAccepted(true);
+      }
+    };
+    const onCallEnd = (payload: any) => {
+      if (payload?.callId === activeCall.callId) {
+        setActiveCall(null);
+        setCallAccepted(false);
+      }
+    };
+
+    socket.on('call:accept', onCallAccept);
+    socket.on('call:end', onCallEnd);
+
+    return () => {
+      socket.off('call:accept', onCallAccept);
+      socket.off('call:end', onCallEnd);
+    };
+  }, [socket, activeCall?.callId]);
+
+
+
+  const startProfileCall = async (type: 'audio' | 'video') => {
+    if (!profile?._id) return;
+
+    // Check & request camera/mic permissions
+    const perm = await requestMediaPermissions(type);
+    if (!perm.granted) {
+      showToast(perm.error || 'Media permission denied', 'error');
+      return;
+    }
+
+    try {
+      // 1. Balance Check & Price Quote
+      const { data: quoteRes } = await callApi.getQuote(profile._id);
+      if (quoteRes.success && quoteRes.data) {
+        if (!quoteRes.data.canCall) {
+          setInsufficientCoins({
+            visible: true,
+            reason: quoteRes.data.reason,
+            coinsPerMinute: quoteRes.data.coinsPerMinute,
+            balance: quoteRes.data.balance,
+            minBalance: quoteRes.data.minBalance,
+          });
+          return;
+        }
+      }
+
+      // 2. Start Call Request
+      setCallAccepted(false);
+      const { data } = await callApi.create([profile._id], type, 'profile');
+      if (data.success && data.data) {
+        setActiveCall({
+          callId: data.data.callId,
+          channel: data.data.channel,
+          type: data.data.type,
+          token: data.data.token,
+          coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || 10000,
+        });
+      }
+    } catch (err: any) {
+      const errorData = err.response?.data;
+      if (err.response?.status === 402 || errorData?.error?.includes('Insufficient Coins')) {
+        setInsufficientCoins({
+          visible: true,
+          reason: errorData?.error || 'Insufficient Coins to start call',
+          coinsPerMinute: 10000,
+          balance: user?.coins || 0,
+          minBalance: 1000000,
+        });
+      } else {
+        showToast(errorData?.error || err.message || 'Could not start call', 'error');
+      }
+    }
+  };
 
   const handleMessage = async () => {
     if (!id) return;
@@ -128,13 +242,31 @@ export const PublicProfile = () => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           {!isSelf && (
-            <button
-              onClick={() => setShowReport(true)}
-              aria-label="Report this user"
-              className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center"
-            >
-              <Flag className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => startProfileCall('audio')}
+                aria-label="Audio call"
+                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center active:scale-95 transition-transform"
+                title="Audio Call"
+              >
+                <Phone className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => startProfileCall('video')}
+                aria-label="Video call"
+                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center active:scale-95 transition-transform"
+                title="Video Call"
+              >
+                <VideoCamera className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowReport(true)}
+                aria-label="Report this user"
+                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center"
+              >
+                <Flag className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -150,12 +282,28 @@ export const PublicProfile = () => {
             ringed
           />
           {!isSelf && (
-            <div className="flex items-center gap-2 pb-2 ml-auto">
+            <div className="flex items-center gap-1.5 pb-2 ml-auto flex-wrap justify-end">
+              <button
+                onClick={() => startProfileCall('audio')}
+                className="h-9 px-3 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold inline-flex items-center gap-1 active:bg-emerald-100 transition-colors shadow-2xs"
+                title="1:1 Audio Call"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                Call
+              </button>
+              <button
+                onClick={() => startProfileCall('video')}
+                className="h-9 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold inline-flex items-center gap-1 active:bg-indigo-100 transition-colors shadow-2xs"
+                title="1:1 Video Call"
+              >
+                <VideoCamera className="w-3.5 h-3.5" />
+                Video
+              </button>
               <button
                 onClick={handleMessage}
-                className="h-9 px-4 rounded-full bg-surface-sunken text-ink text-sm font-semibold inline-flex items-center gap-1.5"
+                className="h-9 px-3 rounded-full bg-surface-sunken text-ink text-xs font-semibold inline-flex items-center gap-1"
               >
-                <MessageCircle className="w-4 h-4" />
+                <MessageCircle className="w-3.5 h-3.5" />
                 Message
               </button>
               <FollowButton
@@ -166,6 +314,7 @@ export const PublicProfile = () => {
             </div>
           )}
         </div>
+
 
         <div className="mt-3">
           <UserNameplate user={profile as any} size="lg" showRoles={false} />
@@ -267,9 +416,40 @@ export const PublicProfile = () => {
       {showReport && (
         <ReportModal targetType="user" targetId={profile._id} onClose={() => setShowReport(false)} />
       )}
+
+      {/* Insufficient Coins Modal */}
+      <InsufficientCoinsModal
+        visible={insufficientCoins.visible}
+        reason={insufficientCoins.reason}
+        coinsPerMinute={insufficientCoins.coinsPerMinute}
+        balance={insufficientCoins.balance}
+        minBalance={insufficientCoins.minBalance}
+        onClose={() => setInsufficientCoins({ visible: false })}
+      />
+
+      {/* Active Call Screen */}
+      {activeCall && (
+        <CallScreen
+          outgoing={{
+            callId: activeCall.callId,
+            channel: activeCall.channel,
+            type: activeCall.type,
+            token: activeCall.token,
+            callee: { nickname: profile.nickname, avatar: profile.avatar, online: Boolean(profile.online) },
+          }}
+          accepted={callAccepted}
+          coinsPerMinute={activeCall.coinsPerMinute}
+          isAudience={true}
+          onClose={() => {
+            setActiveCall(null);
+            setCallAccepted(false);
+          }}
+        />
+      )}
     </div>
   );
 };
+
 
 function Chip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
