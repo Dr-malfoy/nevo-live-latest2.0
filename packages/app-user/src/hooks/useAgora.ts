@@ -22,6 +22,8 @@ interface UseAgoraOptions {
   role: 'host' | 'audience';
   /** Host captures/publishes the camera only when true (false = audio-only room). */
   videoEnabled?: boolean;
+  /** Whether microphone should be ON initially upon joining. Defaults to true for host, false for audience */
+  initialMicOn?: boolean;
   /** Called when the RTC connection is lost (network drop). */
   onNetworkLost?: () => void;
   /** Called when the RTC connection recovers. */
@@ -49,13 +51,14 @@ export const useAgora = () => {
   const streamIdRef = useRef<string | null>(null);
   const cleanupSignalingRef = useRef<(() => void) | null>(null);
 
-  const cameraOnRef = useRef(true);
-  const micOnRef = useRef(true);
+  const cameraOnRef = useRef(false);
+  const micOnRef = useRef(false);
   const joiningRef = useRef(false);
+  const togglingMicRef = useRef(false);
   const networkLostRef = useRef(false);
 
-  const [cameraOn, setCameraOn] = useState(true);
-  const [micOn, setMicOn] = useState(true);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [micOn, setMicOn] = useState(false);
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState('');
@@ -229,24 +232,30 @@ export const useAgora = () => {
     videoEnabled: boolean,
     role: 'host' | 'audience',
     socket?: any,
-    streamId?: string
+    streamId?: string,
+    shouldMicOn: boolean = false
   ) => {
-    if (role === 'host') {
+    if (role === 'host' || shouldMicOn) {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: videoEnabled ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
-            audio: true,
+            video: (role === 'host' && videoEnabled) ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
+            audio: shouldMicOn,
           });
           fallbackStreamRef.current = stream;
-          cameraOnRef.current = videoEnabled;
-          micOnRef.current = true;
-          setCameraOn(videoEnabled);
-          setMicOn(true);
+          cameraOnRef.current = (role === 'host' && videoEnabled);
+          micOnRef.current = shouldMicOn;
+          setCameraOn(cameraOnRef.current);
+          setMicOn(shouldMicOn);
         }
       } catch (mediaErr: any) {
         console.warn('[useAgora] Fallback media capture failed or denied:', mediaErr?.message);
       }
+    } else {
+      cameraOnRef.current = false;
+      micOnRef.current = false;
+      setCameraOn(false);
+      setMicOn(false);
     }
 
     if (socket && streamId) {
@@ -264,12 +273,15 @@ export const useAgora = () => {
       uid,
       role,
       videoEnabled = true,
+      initialMicOn,
       onNetworkLost,
       onNetworkRecover,
       socket,
       streamId,
     }: UseAgoraOptions) => {
       if (joiningRef.current) return;
+
+      const shouldMicOn = initialMicOn !== undefined ? initialMicOn : (role === 'host');
 
       if (clientRef.current) {
         try {
@@ -281,14 +293,34 @@ export const useAgora = () => {
       // If no valid Agora App ID is provided or in dev placeholder, gracefully fallback to local WebRTC
       if (!appId || appId === '89383e4dfc4a43a4954a30fa9984b4f6' || appId.trim() === '') {
         console.warn('[useAgora] No valid Agora App ID provided. Using browser WebRTC live relay mode.');
-        await initLocalMediaFallback(videoEnabled, role, socket, streamId);
+        await initLocalMediaFallback(videoEnabled, role, socket, streamId, shouldMicOn);
         return null;
       }
 
       joiningRef.current = true;
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
-      client.setClientRole(role === 'host' ? 'host' : 'audience');
+
+      // Set initial Agora client role: if host or shouldMicOn is true, 'host', otherwise 'audience'
+      const initialClientRole = (role === 'host' || shouldMicOn) ? 'host' : 'audience';
+      await client.setClientRole(initialClientRole);
+
+      // Handle browser audio autoplay policies
+      if (typeof window !== 'undefined') {
+        const unlockAudio = () => {
+          if (clientRef.current) {
+            clientRef.current.remoteUsers.forEach((remoteUser) => {
+              if (remoteUser.audioTrack && !remoteUser.audioTrack.isPlaying) {
+                remoteUser.audioTrack.play();
+              }
+            });
+          }
+          window.removeEventListener('click', unlockAudio);
+          window.removeEventListener('touchstart', unlockAudio);
+        };
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+      }
 
       client.on('connection-state-change', (cur, prev) => {
         if (cur === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
@@ -322,7 +354,11 @@ export const useAgora = () => {
             user.videoTrack?.play(container);
           }
           if (mediaType === 'audio') {
-            user.audioTrack?.play();
+            try {
+              user.audioTrack?.play();
+            } catch (playErr) {
+              console.warn('[useAgora] Audio autoplay failed for remote user:', user.uid, playErr);
+            }
           }
           setRemoteUsers((prev) => (prev.includes(user.uid) ? prev : [...prev, user.uid]));
         } catch (e) {
@@ -330,9 +366,13 @@ export const useAgora = () => {
         }
       });
 
-      client.on('user-unpublished', (user) => {
-        setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
-        document.getElementById(`remote-container-${user.uid}`)?.remove();
+      client.on('user-unpublished', (user, mediaType) => {
+        if (!mediaType || mediaType === 'video') {
+          document.getElementById(`remote-container-${user.uid}`)?.remove();
+        }
+        if (!user.hasAudio && !user.hasVideo) {
+          setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
+        }
       });
 
       client.on('user-left', (user) => {
@@ -343,7 +383,20 @@ export const useAgora = () => {
       try {
         await client.join(appId, channel, token, uid ?? 0);
 
-        if (role === 'host') {
+        if (role === 'host' && videoEnabled) {
+          const videoTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: { width: 640, height: 480, frameRate: 30 },
+          });
+          localVideoRef.current = videoTrack;
+          cameraOnRef.current = true;
+          setCameraOn(true);
+        } else {
+          localVideoRef.current = null;
+          cameraOnRef.current = false;
+          setCameraOn(false);
+        }
+
+        if (shouldMicOn) {
           const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
             AEC: true,
             ANS: true,
@@ -353,21 +406,21 @@ export const useAgora = () => {
           micOnRef.current = true;
           setMicOn(true);
 
-          let videoTrack: ICameraVideoTrack | null = null;
-          if (videoEnabled) {
-            videoTrack = await AgoraRTC.createCameraVideoTrack({
-              encoderConfig: { width: 640, height: 480, frameRate: 30 },
-            });
-            localVideoRef.current = videoTrack;
-            cameraOnRef.current = true;
-            setCameraOn(true);
-          } else {
-            localVideoRef.current = null;
-            cameraOnRef.current = false;
-            setCameraOn(false);
+          const tracksToPublish: any[] = [];
+          if (localVideoRef.current) tracksToPublish.push(localVideoRef.current);
+          if (audioTrack) tracksToPublish.push(audioTrack);
+          if (tracksToPublish.length > 0) {
+            await client.publish(tracksToPublish);
           }
+        } else {
+          // Off by default
+          localAudioRef.current = null;
+          micOnRef.current = false;
+          setMicOn(false);
 
-          await client.publish(videoEnabled && videoTrack ? [videoTrack, audioTrack] : [audioTrack]);
+          if (localVideoRef.current) {
+            await client.publish([localVideoRef.current]);
+          }
         }
 
         setJoined(true);
@@ -380,7 +433,7 @@ export const useAgora = () => {
         if (clientRef.current === client) clientRef.current = null;
 
         // Auto-fallback so live session stays usable with WebRTC
-        await initLocalMediaFallback(videoEnabled, role, socket, streamId);
+        await initLocalMediaFallback(videoEnabled, role, socket, streamId, shouldMicOn);
         return null;
       } finally {
         joiningRef.current = false;
@@ -453,25 +506,94 @@ export const useAgora = () => {
     }
   }, []);
 
-  const toggleMic = useCallback(async () => {
-    const next = !micOnRef.current;
-    micOnRef.current = next;
-    setMicOn(next);
+  const toggleMic = useCallback(async (desiredState?: boolean): Promise<boolean> => {
+    if (togglingMicRef.current) return micOnRef.current;
+    togglingMicRef.current = true;
 
-    // Agora track
-    if (localAudioRef.current) {
-      try {
-        await localAudioRef.current.setEnabled(next);
-      } catch (e) {
-        console.warn('live mic toggle error:', e);
+    try {
+      const next = desiredState !== undefined ? desiredState : !micOnRef.current;
+
+      if (next) {
+        // Turning mic ON
+        // 1. If Agora client active
+        if (clientRef.current) {
+          try {
+            await clientRef.current.setClientRole('host');
+          } catch (roleErr) {
+            console.warn('[useAgora] setClientRole error:', roleErr);
+          }
+
+          if (!localAudioRef.current) {
+            const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+              AEC: true,
+              ANS: true,
+              AGC: true,
+            });
+            localAudioRef.current = audioTrack;
+            await clientRef.current.publish([audioTrack]);
+            await audioTrack.setEnabled(true);
+          } else {
+            const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
+            if (!isPublished) {
+              await clientRef.current.publish([localAudioRef.current]);
+            }
+            await localAudioRef.current.setEnabled(true);
+          }
+        }
+
+        // 2. Fallback stream handling
+        if (fallbackStreamRef.current) {
+          const existingAudio = fallbackStreamRef.current.getAudioTracks()[0];
+          if (existingAudio) {
+            existingAudio.enabled = true;
+          } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const newAudioTrack = micStream.getAudioTracks()[0];
+            if (newAudioTrack) {
+              fallbackStreamRef.current.addTrack(newAudioTrack);
+              peerConnectionsRef.current.forEach((pc) => {
+                pc.addTrack(newAudioTrack, fallbackStreamRef.current!);
+              });
+            }
+          }
+        }
+
+        micOnRef.current = true;
+        setMicOn(true);
+        setError('');
+        return true;
+      } else {
+        // Turning mic OFF
+        if (localAudioRef.current) {
+          try {
+            await localAudioRef.current.setEnabled(false);
+          } catch (e) {
+            console.warn('live mic disable error:', e);
+          }
+        }
+
+        if (fallbackStreamRef.current) {
+          fallbackStreamRef.current.getAudioTracks().forEach((track) => {
+            track.enabled = false;
+          });
+        }
+
+        micOnRef.current = false;
+        setMicOn(false);
+        return false;
       }
-    }
-
-    // Fallback stream
-    if (fallbackStreamRef.current) {
-      fallbackStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = next;
-      });
+    } catch (err: any) {
+      console.error('[useAgora] Mic toggle failed:', err);
+      micOnRef.current = false;
+      setMicOn(false);
+      const isPermErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || err?.code === 'PERMISSION_DENIED';
+      const errMsg = isPermErr
+        ? 'Microphone permission denied. Please allow microphone access in your browser settings.'
+        : 'Failed to access microphone. Please check your audio device.';
+      setError(errMsg);
+      throw new Error(errMsg);
+    } finally {
+      togglingMicRef.current = false;
     }
   }, []);
 
@@ -540,10 +662,12 @@ export const useAgora = () => {
       }
 
       if (localVideoRef.current) {
+        localVideoRef.current.stop();
         localVideoRef.current.close();
         localVideoRef.current = null;
       }
       if (localAudioRef.current) {
+        localAudioRef.current.stop();
         localAudioRef.current.close();
         localAudioRef.current = null;
       }
@@ -567,10 +691,10 @@ export const useAgora = () => {
       console.warn('leave error:', e);
     }
     setJoined(false);
-    cameraOnRef.current = true;
-    micOnRef.current = true;
-    setCameraOn(true);
-    setMicOn(true);
+    cameraOnRef.current = false;
+    micOnRef.current = false;
+    setCameraOn(false);
+    setMicOn(false);
     setRemoteUsers([]);
     setError('');
   }, []);
@@ -585,8 +709,14 @@ export const useAgora = () => {
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       if (viewerPeerRef.current) viewerPeerRef.current.close();
-      if (localVideoRef.current) localVideoRef.current.close();
-      if (localAudioRef.current) localAudioRef.current.close();
+      if (localVideoRef.current) {
+        localVideoRef.current.stop();
+        localVideoRef.current.close();
+      }
+      if (localAudioRef.current) {
+        localAudioRef.current.stop();
+        localAudioRef.current.close();
+      }
       if (clientRef.current) clientRef.current.leave();
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -607,6 +737,7 @@ export const useAgora = () => {
     joined,
     cameraOn,
     micOn,
+    micOnRef,
     remoteUsers,
     error,
     joinChannel,

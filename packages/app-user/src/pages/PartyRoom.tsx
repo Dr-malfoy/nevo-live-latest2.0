@@ -99,7 +99,13 @@ export const PartyRoom = () => {
     };
   }, [id, navigate, showToast]);
 
-  const { joinChannel, toggleMic, micOn, leaveChannel, remoteUsers } = useAgora();
+  const { joinChannel, toggleMic, micOn, error: agoraError, leaveChannel, remoteUsers } = useAgora();
+
+  useEffect(() => {
+    if (agoraError) {
+      showToast(agoraError, 'error');
+    }
+  }, [agoraError, showToast]);
 
   useEffect(() => {
     if (room?.agoraChannel && room?.agoraToken) {
@@ -109,6 +115,7 @@ export const PartyRoom = () => {
         token: room.agoraToken,
         role: isHost ? 'host' : 'audience',
         videoEnabled: false,
+        initialMicOn: isHost ? true : false,
       }).catch(console.error);
     }
     return () => {
@@ -147,6 +154,20 @@ export const PartyRoom = () => {
       if (p?.roomId !== id || !p?.seats) return;
       setRoom((prev) => (prev ? { ...prev, seats: p.seats } : prev));
     };
+    const onMicChanged = (p: any) => {
+      if (!p?.userId) return;
+      setRoom((prev) => {
+        if (!prev) return prev;
+        const updatedSeats = prev.seats.map((s) => {
+          const sUid = typeof s.userId === 'object' && s.userId !== null ? (s.userId as any)._id : s.userId;
+          if (sUid === p.userId) {
+            return { ...s, isMuted: !p.enabled };
+          }
+          return s;
+        });
+        return { ...prev, seats: updatedSeats };
+      });
+    };
     const onViewerCount = (p: any) => {
       if (typeof p?.count === 'number') {
         setRoom((prev) => (prev ? { ...prev, viewerCount: p.count } : prev));
@@ -182,6 +203,7 @@ export const PartyRoom = () => {
     socket.on('room:chat-message', onMessage);
     socket.on('room:win', onWin);
     socket.on('room:seat:update', onSeat);
+    socket.on('room:mic-changed', onMicChanged);
     socket.on('room:viewer-count', onViewerCount);
     socket.on('room:gift', onGift);
     socket.on('room:closed', onClosed);
@@ -195,6 +217,7 @@ export const PartyRoom = () => {
       socket.off('room:chat-message', onMessage);
       socket.off('room:win', onWin);
       socket.off('room:seat:update', onSeat);
+      socket.off('room:mic-changed', onMicChanged);
       socket.off('room:viewer-count', onViewerCount);
       socket.off('room:gift', onGift);
       socket.off('room:closed', onClosed);
@@ -290,6 +313,31 @@ export const PartyRoom = () => {
     } else {
       await partyApi.leaveRoom(id).catch(() => {});
       navigate('/party', { replace: true });
+    }
+  };
+
+  const handleToggleMic = async () => {
+    try {
+      const nextState = !micOn;
+      const isEnabled = await toggleMic(nextState);
+      if (socket && id) {
+        socket.emit('room:mic-toggle', { roomId: id, enabled: isEnabled });
+      }
+      if (user && room) {
+        setRoom((prev) => {
+          if (!prev) return prev;
+          const updatedSeats = prev.seats.map((s) => {
+            const sUid = typeof s.userId === 'object' && s.userId !== null ? (s.userId as any)._id : s.userId;
+            if (sUid === user._id) {
+              return { ...s, isMuted: !isEnabled };
+            }
+            return s;
+          });
+          return { ...prev, seats: updatedSeats };
+        });
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to toggle microphone', 'error');
     }
   };
 
@@ -505,7 +553,7 @@ export const PartyRoom = () => {
         <MessageInput onSend={handleSendMessage} />
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => toggleMic()}
+            onClick={handleToggleMic}
             className={`relative w-9 h-9 rounded-full flex items-center justify-center ${micOn ? 'bg-white/10' : 'bg-red-500/80'}`}
             aria-label={micOn ? 'Mute' : 'Unmute'}
           >
