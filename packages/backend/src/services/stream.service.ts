@@ -2,6 +2,7 @@ import { LiveStream, User } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { generateAgoraToken, generateChannelName } from '../config/agora';
 import { getSkip } from '../utils/pagination';
+import { notificationService } from './notification.service';
 import crypto from 'crypto';
 
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
@@ -267,6 +268,36 @@ export const streamService = {
     });
 
     const populated = await stream.populate('hostId', HOST_FIELDS);
+
+    // Notify followers about the new live stream
+    try {
+      User.findById(hostId)
+        .select('followers nickname avatar')
+        .lean()
+        .then((hostDoc: any) => {
+          if (hostDoc?.followers && hostDoc.followers.length > 0) {
+            for (const followerId of hostDoc.followers) {
+              notificationService
+                .createNotification({
+                  userId: followerId.toString(),
+                  type: 'live_started',
+                  title: '🔴 Live Room Started',
+                  message: `${hostDoc.nickname || 'Someone you follow'} is now live: "${data.title}"`,
+                  senderId: hostId,
+                  senderInfo: {
+                    nickname: hostDoc.nickname,
+                    avatar: hostDoc.avatar,
+                  },
+                  targetUrl: `/stream/${stream._id}`,
+                  data: { streamId: stream._id.toString() },
+                })
+                .catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    } catch {}
+
     return toStreamDTO(populated);
   },
 

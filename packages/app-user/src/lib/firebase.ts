@@ -6,6 +6,8 @@ import {
   GoogleAuthProvider,
   FacebookAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
   PhoneAuthProvider,
   ConfirmationResult,
@@ -143,16 +145,10 @@ export const signInWithGoogle = async (): Promise<string> => {
   } catch (err: any) {
     if (
       err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/popup-closed-by-user' ||
-      err.code === 'auth/operation-not-supported-in-this-environment' ||
-      err.message?.includes('popup')
+      err.code === 'auth/operation-not-supported-in-this-environment'
     ) {
-      const { signInWithRedirect, getRedirectResult } = await import('firebase/auth');
       await signInWithRedirect(auth, provider);
-      const res = await getRedirectResult(auth);
-      if (res?.user) {
-        return await res.user.getIdToken();
-      }
+      return new Promise(() => {});
     }
     throw err;
   }
@@ -171,20 +167,46 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
   } catch (err: any) {
     if (
       err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/popup-closed-by-user' ||
-      err.code === 'auth/operation-not-supported-in-this-environment' ||
-      err.message?.includes('popup')
+      err.code === 'auth/operation-not-supported-in-this-environment'
     ) {
-      const { signInWithRedirect, getRedirectResult } = await import('firebase/auth');
       await signInWithRedirect(auth, provider);
-      const res = await getRedirectResult(auth);
-      if (res?.user) {
-        const idToken = await res.user.getIdToken();
-        const credential = FacebookAuthProvider.credentialFromResult(res);
-        return { idToken, accessToken: credential?.accessToken };
-      }
+      return new Promise(() => {});
     }
     throw err;
+  }
+};
+
+/**
+ * Checks if user is returning from a Firebase redirect flow (Google/Facebook).
+ */
+export const handleFirebaseRedirectResult = async (): Promise<{
+  providerId: 'facebook.com' | 'google.com' | string;
+  idToken: string;
+  accessToken?: string;
+} | null> => {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result || !result.user) return null;
+
+    const idToken = await result.user.getIdToken();
+    let accessToken: string | undefined;
+
+    const providerId =
+      result.providerId ||
+      (result as any)._tokenResponse?.providerId ||
+      result.user.providerData?.[0]?.providerId ||
+      '';
+
+    if (providerId.includes('facebook') || (result as any)._tokenResponse?.federatedId?.includes('facebook')) {
+      const credential = FacebookAuthProvider.credentialFromResult(result);
+      accessToken = credential?.accessToken;
+      return { providerId: 'facebook.com', idToken, accessToken };
+    }
+
+    return { providerId: 'google.com', idToken };
+  } catch (err) {
+    console.warn('Firebase getRedirectResult error:', err);
+    return null;
   }
 };
 

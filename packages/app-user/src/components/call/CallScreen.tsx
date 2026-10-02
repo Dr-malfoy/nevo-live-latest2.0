@@ -21,6 +21,7 @@ import { useVideoFilters, FILTERS } from '../../hooks/useVideoFilters';
 import { callApi, type CallParticipant } from '../../api/call.api';
 import { useSocketStore, useAuthStore } from '../../stores';
 import { CoinsFinishedOverlay } from './CoinsFinishedOverlay';
+import { ringtone } from '../../lib/ringtone';
 
 
 interface CallScreenProps {
@@ -338,8 +339,30 @@ export const CallScreen = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callConnected, isAudience, coinsPerMinute, session?.callId]);
 
+  // Incoming ringtone and vibration lifecycle with 45s timeout
+  useEffect(() => {
+    if (incoming && ringing && !callConnected) {
+      ringtone.start();
+      const timeout = setTimeout(() => {
+        if (!callConnected && !endedRef.current) {
+          handleReject();
+        }
+      }, 45000);
+      return () => {
+        clearTimeout(timeout);
+        ringtone.stop();
+      };
+    } else {
+      ringtone.stop();
+    }
+    return () => {
+      ringtone.stop();
+    };
+  }, [incoming, ringing, callConnected]);
+
   const handleAccept = async () => {
     if (!incoming) return;
+    ringtone.stop();
     try {
       setAnswering(true);
       setRinging(false);
@@ -363,6 +386,7 @@ export const CallScreen = ({
   };
 
   const handleReject = async () => {
+    ringtone.stop();
     if (endedRef.current) return;
     endedRef.current = true;
     if (incoming) await callApi.end(incoming.callId, 'rejected').catch(() => {});
@@ -514,35 +538,76 @@ export const CallScreen = ({
         }}
       />
 
-      {/* Audio-call / ringing backdrop */}
+      {/* Incoming Call / Ringing Backdrop */}
       {(ringing || !isVideo || !callConnected) && (
-        <div className="absolute inset-0 z-[1] bg-mesh flex flex-col items-center justify-center gap-6 px-6">
-          <div className="w-24 h-24 rounded-full bg-brand-primary/20 border border-brand-primary/40 flex items-center justify-center shadow-glow">
-            {isVideo ? (
-              <Video className="w-10 h-10 text-brand-primary" />
-            ) : (
-              <PhoneCall className={`w-10 h-10 text-brand-primary ${!callConnected ? 'animate-pulse' : ''}`} />
-            )}
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold">{other?.nickname || 'User'}</p>
-            <p className="text-dark-400 text-sm mt-1 font-medium">
+        <div className="absolute inset-0 z-[1] bg-mesh flex flex-col items-center justify-between py-16 px-6">
+          {/* Top Call Info */}
+          <div className="flex flex-col items-center text-center space-y-3 mt-4">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-white shadow-lg">
+              {isVideo ? (
+                <>
+                  <Video className="w-4 h-4 text-emerald-400" />
+                  <span>Incoming Video Call</span>
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="w-4 h-4 text-brand-primary" />
+                  <span>Incoming Audio Call</span>
+                </>
+              )}
+            </div>
+
+            <h2 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-md">
+              {other?.nickname || 'User'}
+            </h2>
+
+            <p className="text-sm text-white/70 font-medium">
               {!callConnected
-                ? (incoming
-                    ? 'Incoming call…'
-                    : isTargetOnline
-                      ? 'Ringing…'
-                      : 'Calling…')
+                ? incoming
+                  ? isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...'
+                  : isTargetOnline
+                  ? 'Ringing...'
+                  : 'Calling...'
                 : error || fmt(elapsed)}
             </p>
+
+            {coinsPerMinute > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/40 rounded-full text-xs font-semibold text-amber-300">
+                <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
+                <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
+              </div>
+            )}
           </div>
-          <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="lg" className="ring-4 ring-white/10" />
-          {roster.length > 0 && (
-            <div className="flex items-center gap-2 text-sm text-white/70">
-              <Users className="w-4 h-4" />
-              {roster.length} member{roster.length === 1 ? '' : 's'}
+
+          {/* Center Avatar with Pulsing Rings */}
+          <div className="relative flex items-center justify-center my-auto">
+            {incoming && ringing && !callConnected && (
+              <>
+                <motion.div
+                  animate={{ scale: [1, 1.4, 1.8], opacity: [0.6, 0.3, 0] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
+                  className="absolute w-36 h-36 rounded-full bg-brand-primary/30 border border-brand-primary/40 pointer-events-none"
+                />
+                <motion.div
+                  animate={{ scale: [1, 1.25, 1.5], opacity: [0.8, 0.4, 0] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut', delay: 0.6 }}
+                  className="absolute w-36 h-36 rounded-full bg-emerald-500/30 border border-emerald-400/40 pointer-events-none"
+                />
+              </>
+            )}
+
+            <div className="relative rounded-full ring-4 ring-white/20 shadow-2xl p-1 bg-black/40 backdrop-blur-sm">
+              <Avatar
+                src={other?.avatar}
+                nickname={other?.nickname || '?'}
+                size="xl"
+                className="w-28 h-28 sm:w-32 sm:h-32 text-2xl font-bold"
+              />
             </div>
-          )}
+          </div>
+
+          {/* Spacer for bottom controls */}
+          <div className="h-24" />
         </div>
       )}
 
@@ -718,22 +783,31 @@ export const CallScreen = ({
       {/* Bottom Controls Bar */}
       <div className="absolute bottom-8 inset-x-0 z-30 flex items-center justify-center gap-3 sm:gap-4 px-4">
         {incoming && ringing && !answering ? (
-          <>
-            <button
-              onClick={handleReject}
-              aria-label="Decline call"
-              className="w-14 h-14 rounded-full bg-red-600 btn-glow-pink flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-            >
-              <PhoneOff className="w-6 h-6 text-white" />
-            </button>
-            <button
-              onClick={handleAccept}
-              aria-label="Accept call"
-              className="w-14 h-14 rounded-full bg-green-600 shadow-[0_0_25px_rgba(34,197,94,0.6)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-            >
-              <PhoneCall className="w-6 h-6 text-white animate-bounce" />
-            </button>
-          </>
+          <div className="flex items-center justify-around w-full max-w-xs px-4">
+            {/* Decline Button */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleReject}
+                aria-label="Decline call"
+                className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-red-700 shadow-[0_0_30px_rgba(239,68,68,0.5)] border border-red-400/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+              >
+                <PhoneOff className="w-7 h-7 text-white" />
+              </button>
+              <span className="text-xs font-bold text-red-400">Decline</span>
+            </div>
+
+            {/* Accept Button */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleAccept}
+                aria-label="Accept call"
+                className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_35px_rgba(16,185,129,0.7)] border border-emerald-300/50 flex items-center justify-center hover:scale-110 active:scale-95 transition-all animate-pulse"
+              >
+                <PhoneCall className="w-7 h-7 text-white" />
+              </button>
+              <span className="text-xs font-bold text-emerald-400">Accept</span>
+            </div>
+          </div>
         ) : (
           <>
             {/* NEXT Match button */}

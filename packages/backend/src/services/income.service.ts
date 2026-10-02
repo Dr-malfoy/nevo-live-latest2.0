@@ -419,6 +419,27 @@ export const incomeService = {
       }
     } catch {}
 
+    // Send push + in-app notification to receiver
+    try {
+      const { notificationService } = await import('./notification.service');
+      notificationService
+        .createNotification({
+          userId: receiver._id.toString(),
+          type: 'coin_transfer',
+          title: 'Coin Transfer Received 💰',
+          message: `You received ${finalAmount.toLocaleString()} coins from ${updatedSender.nickname} (${updatedSender.uid})`,
+          senderId: senderId,
+          senderInfo: {
+            nickname: updatedSender.nickname,
+            avatar: updatedSender.avatar,
+            uid: updatedSender.uid,
+          },
+          targetUrl: '/wallet',
+          data: { amount: finalAmount, senderId, senderUid: updatedSender.uid },
+        })
+        .catch(() => {});
+    } catch {}
+
     return {
       points: amount,
       units: amount / TRANSFER_UNIT,

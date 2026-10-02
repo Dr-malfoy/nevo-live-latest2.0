@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { BottomNav, GoLiveFab, Header } from './components/layout';
@@ -7,6 +7,7 @@ import { useAuthStore, useSocketStore, useUIStore } from './stores';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import { CallScreen } from './components/call/CallScreen';
 import { usersApi } from './api';
+import { pushNotificationService } from './services/pushNotification';
 import {
   Login,
   Register,
@@ -117,6 +118,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
   const { socket, connect, disconnect } = useSocketStore();
   const showToast = useUIStore((s) => s.showToast);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [globalIncomingCall, setGlobalIncomingCall] = useState<{
     callId: string;
@@ -124,6 +126,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     type: 'audio' | 'video';
     initiatorId: string;
     token: string;
+    coinsPerMinute?: number;
     initiator: { nickname: string; avatar?: string } | null;
   } | null>(null);
   const [globalCallAccepted, setGlobalCallAccepted] = useState(false);
@@ -132,10 +135,37 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     if (isAuthenticated && token) {
       connect(token);
       fetchProfile();
+
+      // Initialize Push Notifications
+      pushNotificationService.init({
+        onIncomingCall: (callData) => {
+          if (!callData?.callId || callData.initiatorId === user?._id) return;
+          setGlobalIncomingCall({
+            callId: callData.callId,
+            channel: callData.channel,
+            type: callData.type,
+            initiatorId: callData.initiatorId,
+            token: callData.token,
+            coinsPerMinute: callData.coinsPerMinute,
+            initiator: {
+              nickname: callData.initiatorName || 'Someone',
+              avatar: callData.initiatorAvatar || '',
+            },
+          });
+          setGlobalCallAccepted(false);
+        },
+        onCallCancelled: (callId) => {
+          setGlobalIncomingCall((cur) => (cur?.callId === callId ? null : cur));
+        },
+        onNavigate: (url) => {
+          if (url) navigate(url);
+        },
+      });
     } else {
       disconnect();
+      pushNotificationService.unregister().catch(() => {});
     }
-  }, [isAuthenticated, token, connect, disconnect, fetchProfile]);
+  }, [isAuthenticated, token, connect, disconnect, fetchProfile, navigate, user?._id]);
 
   // Real-time balance sync (gifts, etc.) — keeps the persisted user fresh
   useEffect(() => {
@@ -203,14 +233,23 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
         type: payload.type,
         initiatorId: payload.initiatorId,
         token: payload.token,
+        coinsPerMinute: payload.coinsPerMinute,
         initiator: initiatorInfo || { nickname: 'User', avatar: '' },
       });
       setGlobalCallAccepted(false);
     };
 
+    const onCallEnd = (payload: any) => {
+      if (payload?.callId) {
+        setGlobalIncomingCall((cur) => (cur?.callId === payload.callId ? null : cur));
+      }
+    };
+
     socket.on('call:invite', onCallInvite);
+    socket.on('call:end', onCallEnd);
     return () => {
       socket.off('call:invite', onCallInvite);
+      socket.off('call:end', onCallEnd);
     };
   }, [socket, location.pathname, user?._id]);
 
@@ -221,6 +260,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
         <CallScreen
           incoming={globalIncomingCall}
           accepted={globalCallAccepted}
+          coinsPerMinute={globalIncomingCall.coinsPerMinute}
           onClose={(outcome) => {
             setGlobalIncomingCall(null);
             setGlobalCallAccepted(false);

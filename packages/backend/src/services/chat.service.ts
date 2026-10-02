@@ -1,6 +1,7 @@
 import { Chat, ChatMessage, User, LiveStream, Story, Note } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
+import { pushNotificationService } from './pushNotification.service';
 
 export const chatService = {
   async getOrCreateChat(userId: string, otherUserId: string) {
@@ -267,8 +268,9 @@ export const chatService = {
 
     // Real-time delivery to the other participant
     if (recipientId) {
+      const recipientIdStr = recipientId.toString();
       try {
-        getIO().to(`user:${recipientId.toString()}`).emit('chat:message', {
+        getIO().to(`user:${recipientIdStr}`).emit('chat:message', {
           chatId,
           message: msg.toObject(),
           senderId,
@@ -276,6 +278,37 @@ export const chatService = {
       } catch {
         // socket not initialized
       }
+
+      // Send Mobile Push Notification
+      try {
+        User.findById(senderId)
+          .select('nickname avatar uid')
+          .lean()
+          .then((sender: any) => {
+            const senderName = sender?.nickname || 'Someone';
+            const displayBody =
+              extras.kind === 'gift'
+                ? `🎁 Sent you ${extras.giftCount || 1} ${extras.giftName || 'gift'}`
+                : extras.kind === 'voice'
+                ? '🎤 Sent a voice message'
+                : extras.kind === 'image'
+                ? '📷 Sent a photo'
+                : text;
+
+            pushNotificationService.sendToUser(recipientIdStr, {
+              title: senderName,
+              body: displayBody,
+              imageUrl: sender?.avatar || undefined,
+              data: {
+                type: 'message',
+                chatId: String(chatId),
+                senderId: String(senderId),
+                targetUrl: `/chat/${chatId}`,
+              },
+            }).catch(() => {});
+          })
+          .catch(() => {});
+      } catch {}
     }
 
     return msg;

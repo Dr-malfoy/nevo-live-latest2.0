@@ -24,6 +24,7 @@ import {
   verifyPhoneOtp,
   signInWithGoogle,
   signInWithFacebook,
+  handleFirebaseRedirectResult,
   mapFirebaseAuthError,
 } from '../lib/firebase';
 import { ConfirmationResult } from 'firebase/auth';
@@ -53,6 +54,34 @@ export const Login = () => {
   const [cooldown, setCooldown] = useState(0);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  // Check if returning from social redirect (Google/Facebook)
+  useEffect(() => {
+    let active = true;
+    handleFirebaseRedirectResult()
+      .then(async (result) => {
+        if (!active || !result) return;
+        setIsActionLoading(true);
+        if (result.providerId === 'facebook.com' || result.accessToken) {
+          await loginWithFacebook(result.idToken, result.accessToken);
+          showToast('Signed in with Facebook!', 'success');
+        } else {
+          await loginWithGoogle(result.idToken);
+          showToast('Signed in with Google!', 'success');
+        }
+        navigate('/', { replace: true });
+      })
+      .catch((err) => {
+        console.error('Redirect auth error:', err);
+        setLocalError(mapFirebaseAuthError(err));
+      })
+      .finally(() => {
+        if (active) setIsActionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Cooldown countdown timer
   useEffect(() => {

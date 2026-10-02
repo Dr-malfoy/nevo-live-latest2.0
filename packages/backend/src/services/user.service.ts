@@ -5,6 +5,7 @@ import { hashPassword, comparePassword } from '../utils/hash';
 import { getSkip } from '../utils/pagination';
 import { getFirebaseApp } from '../config/firebase';
 import { uploadService } from './upload.service';
+import { notificationService } from './notification.service';
 
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
@@ -342,6 +343,45 @@ export const userService = {
         { $addToSet: { followers: currentUserId } }
       ),
     ]);
+
+    // Send push + in-app notification
+    try {
+      const [caller, target] = await Promise.all([
+        User.findById(currentUserId).select('nickname avatar uid').lean(),
+        User.findById(targetUserId).select('following').lean(),
+      ]);
+
+      const isMutual = (target as any)?.following?.some((id: any) => id.toString() === currentUserId);
+      if (isMutual) {
+        notificationService.createNotification({
+          userId: targetUserId,
+          type: 'friend_request_accepted',
+          title: 'Friend Request Accepted 🎉',
+          message: `${(caller as any)?.nickname || 'Someone'} followed you back. You are now friends!`,
+          senderId: currentUserId,
+          senderInfo: {
+            nickname: (caller as any)?.nickname,
+            avatar: (caller as any)?.avatar,
+            uid: (caller as any)?.uid,
+          },
+          targetUrl: `/user/${currentUserId}`,
+        }).catch(() => {});
+      } else {
+        notificationService.createNotification({
+          userId: targetUserId,
+          type: 'follower',
+          title: 'New Follower 🌟',
+          message: `${(caller as any)?.nickname || 'Someone'} started following you`,
+          senderId: currentUserId,
+          senderInfo: {
+            nickname: (caller as any)?.nickname,
+            avatar: (caller as any)?.avatar,
+            uid: (caller as any)?.uid,
+          },
+          targetUrl: `/user/${currentUserId}`,
+        }).catch(() => {});
+      }
+    } catch {}
 
     const [followers, followingCount] = await Promise.all([
       User.countDocuments({ followers: targetUserId }),

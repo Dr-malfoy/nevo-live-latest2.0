@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import { generateAgoraToken } from '../config/agora';
 import { getIO } from '../socket';
 import { chatService } from './chat.service';
+import { pushNotificationService } from './pushNotification.service';
 import crypto from 'crypto';
 
 /** Hard cap on group call participants (user requirement). */
@@ -151,6 +152,7 @@ export const callService = {
     const token = generateAgoraToken(channel, 0, 'publisher');
     const callId = call._id.toString();
 
+    const initiatorProfile = await User.findById(initiatorId).select('nickname avatar').lean() as any;
     const invite = {
       callId,
       channel,
@@ -158,11 +160,24 @@ export const callService = {
       callSource: source,
       initiatorId,
       token,
+      initiator: initiatorProfile ? { nickname: initiatorProfile.nickname, avatar: initiatorProfile.avatar } : undefined,
       participantCount: participants.length,
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,
     };
-    for (const id of recipients) emitSafe('call:invite', `user:${id}`, invite);
+    for (const id of recipients) {
+      emitSafe('call:invite', `user:${id}`, invite);
+      pushNotificationService.sendIncomingCallPush(id, {
+        callId,
+        channel,
+        type,
+        initiatorId,
+        initiatorName: initiatorProfile?.nickname || 'User',
+        initiatorAvatar: initiatorProfile?.avatar || '',
+        token,
+        coinsPerMinute,
+      }).catch((err) => console.warn('[call] Error sending incoming call push:', err));
+    }
 
     return {
       callId,
@@ -486,7 +501,10 @@ export const callService = {
         .filter((id) => id !== userId);
 
       const endPayload = { callId: callIdStr, outcome: call.status, endedById: userId };
-      for (const id of others) emitSafe('call:end', `user:${id}`, endPayload);
+      for (const id of others) {
+        emitSafe('call:end', `user:${id}`, endPayload);
+        pushNotificationService.sendCallCancelledPush(id, callIdStr).catch(() => {});
+      }
       emitSafe('call:member-left', `call:${callIdStr}`, { callId: callIdStr, userId });
 
       // Finalize billing if this was a priced call

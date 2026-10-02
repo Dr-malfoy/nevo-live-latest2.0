@@ -22,6 +22,27 @@ export const officialNotificationService = {
       icon: data.icon || '',
     });
     emitSafe('official:new', doc.toObject());
+
+    // Broadcast push notification to all active users
+    try {
+      const { DeviceToken } = await import('../models/DeviceToken');
+      const { pushNotificationService } = await import('./pushNotification.service');
+      const userIds = await DeviceToken.find({ isActive: true }).distinct('userId');
+      for (const uId of userIds) {
+        pushNotificationService
+          .sendToUser(uId.toString(), {
+            title: `📢 ${data.title}`,
+            body: data.message,
+            data: {
+              type: 'system',
+              category: 'system',
+              targetUrl: '/notifications/official',
+            },
+          })
+          .catch(() => {});
+      }
+    } catch {}
+
     return doc;
   },
 
