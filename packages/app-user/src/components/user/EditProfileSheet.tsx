@@ -3,6 +3,7 @@ import { PiCameraFill as Camera, PiImageFill as ImageIcon, PiXBold as X } from '
 import { usersApi, uploadApi } from '../../api';
 import { useAuthStore, useUIStore } from '../../stores';
 import { allCountries, flagEmoji } from '../../lib/countries';
+import { getMediaUrl } from '../../lib/media';
 import { Avatar } from './Avatar';
 import type { Gender } from '../../types';
 
@@ -165,7 +166,7 @@ export const EditProfileSheet = ({ isOpen, onClose }: EditProfileSheetProps) => 
               className="w-14 h-10 rounded-lg bg-surface-sunken flex items-center justify-center overflow-hidden shrink-0 disabled:opacity-60"
             >
               {user.cover ? (
-                <img src={user.cover} alt="" className="w-full h-full object-cover" />
+                <img src={getMediaUrl(user.cover)} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
               ) : (
                 <ImageIcon className="w-4 h-4 text-ink-faint" />
               )}

@@ -7,6 +7,7 @@ import { optional } from '../api/pending';
 import { roomsApi } from '../api/rooms.api';
 import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
+import { getMediaUrl } from '../lib/media';
 
 const streamTypes = [
   { value: 'video', label: 'Video', icon: Video },
@@ -152,7 +153,7 @@ export const GoLive = () => {
             className="w-full aspect-video flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line-strong hover:border-brand-primary transition-all bg-surface-sunken"
           >
             {thumbnailPreview ? (
-              <img src={thumbnailPreview} alt="Thumbnail preview" className="w-full h-full object-cover rounded-xl" />
+              <img src={getMediaUrl(thumbnailPreview)} alt="Thumbnail preview" className="w-full h-full object-cover rounded-xl" crossOrigin="anonymous" />
             ) : (
               <>
                 <Upload className="w-8 h-8 text-ink-muted" />

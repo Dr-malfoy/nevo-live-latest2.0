@@ -30,6 +30,8 @@ import {
   PiBroomFill as Broom,
   PiUserFill as UserIcon,
   PiProhibitFill as Prohibit,
+  PiImageFill as ImageIcon,
+  PiCameraFill as CameraIcon,
 } from 'react-icons/pi';
 import { chatApi, callApi, giftsApi, uploadApi, reportApi, usersApi } from '../api';
 import { optional } from '../api/pending';
@@ -41,6 +43,7 @@ import { CallScreen } from '../components/call/CallScreen';
 import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { requestMediaPermissions } from '../lib/permissions';
+import { getMediaUrl } from '../lib/media';
 import type { Gift } from '../types';
 import type { ChatStreak } from '../api/chat.api';
 import { markChatDeleted } from '../lib/deletedChats';
@@ -204,6 +207,8 @@ export const ChatThread = () => {
   callRef.current = call;
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const {
     recording,
@@ -689,6 +694,45 @@ export const ChatThread = () => {
     }
   };
 
+  const handleSendImage = async (file: File) => {
+    if (!file || !chatId) return;
+    setUploadingImage(true);
+    const tempId = `temp-img-${Date.now()}`;
+    const localPreview = URL.createObjectURL(file);
+
+    const optimisticMsg = {
+      _id: tempId,
+      senderId: user?._id,
+      message: 'Photo',
+      kind: 'image',
+      imageUrl: localPreview,
+      createdAt: new Date().toISOString(),
+      read: false,
+      delivered: false,
+      status: 'sending',
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+
+    try {
+      const url = await uploadApi.upload(file, 'chat-images');
+      const { data } = await chatApi.sendMessage(chatId, 'Photo', {
+        kind: 'image',
+        imageUrl: url,
+      });
+      if (data.success && data.data) {
+        setMessages((prev) => prev.map((m) => (m._id === tempId ? data.data : m)));
+      }
+    } catch (err: any) {
+      setMessages((prev) =>
+        prev.map((m) => (m._id === tempId ? { ...m, failed: true, status: 'failed' } : m))
+      );
+      showToast('Failed to upload and send image', 'error');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   // Group messages by day
   const withSeparators = useMemo(() => {
     const out: { type: 'day'; label: string; key: string }[] | any[] = [];
@@ -821,12 +865,26 @@ export const ChatThread = () => {
                         : 'bg-white text-ink rounded-bl-xs border border-slate-100'
                     } ${isFailed ? 'opacity-70 ring-1 ring-red-400' : ''}`}
                   >
-                    {item.kind === 'voice' ? (
+                    {item.kind === 'image' || item.imageUrl ? (
+                      <div className="rounded-xl overflow-hidden max-w-xs cursor-pointer">
+                        <img
+                          src={getMediaUrl(item.imageUrl || item.message)}
+                          alt="Photo message"
+                          loading="lazy"
+                          className="w-full max-h-72 object-cover rounded-xl shadow-xs hover:opacity-95 transition-opacity"
+                          crossOrigin="anonymous"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(getMediaUrl(item.imageUrl || item.message), '_blank');
+                          }}
+                        />
+                      </div>
+                    ) : item.kind === 'voice' ? (
                       <VoiceBubble url={item.voiceUrl} duration={item.voiceDuration} mine={mine} />
                     ) : item.kind === 'gift' ? (
                       <div className="flex items-center gap-2.5">
                         {item.giftIcon ? (
-                          <img src={item.giftIcon} alt="" className="w-9 h-9 object-contain shrink-0" />
+                          <img src={getMediaUrl(item.giftIcon)} alt="" className="w-9 h-9 object-contain shrink-0" crossOrigin="anonymous" />
                         ) : (
                           <GiftIcon className="w-6 h-6 text-pink-300" />
                         )}
@@ -1062,6 +1120,21 @@ export const ChatThread = () => {
           </button>
           {!editingMessage && (
             <button
+              onClick={() => imageInputRef.current?.click()}
+              disabled={uploadingImage}
+              aria-label="Send photo"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted hover:text-primary-600 transition-colors"
+              title="Send photo"
+            >
+              {uploadingImage ? (
+                <span className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <ImageIcon className="w-5 h-5" />
+              )}
+            </button>
+          )}
+          {!editingMessage && (
+            <button
               onClick={() => setShowGift(true)}
               aria-label="More"
               className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted"
@@ -1070,6 +1143,18 @@ export const ChatThread = () => {
             </button>
           )}
         </div>
+
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleSendImage(f);
+            e.target.value = '';
+          }}
+        />
 
         {input.trim() ? (
           <button

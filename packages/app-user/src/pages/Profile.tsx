@@ -43,6 +43,7 @@ import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
 import { usersApi } from '../api';
 import { countryLabel } from '../lib/countries';
+import { getMediaUrl } from '../lib/media';
 import { calculateWealthLevel, calculateLiveLevel } from '../lib/userLevels';
 import type { ProfileStats } from '../types';
 
@@ -158,7 +159,7 @@ export const Profile = () => {
       <div className="relative">
         <div className="h-44 w-full overflow-hidden bg-wash relative group">
           {user.cover ? (
-            <img src={user.cover} alt="Cover photo" className="w-full h-full object-cover" />
+            <img src={getMediaUrl(user.cover)} alt="Cover photo" className="w-full h-full object-cover" crossOrigin="anonymous" />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-purple-200 via-pink-100 to-rose-200 opacity-60" />
           )}

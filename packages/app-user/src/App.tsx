@@ -8,6 +8,7 @@ import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import { CallScreen } from './components/call/CallScreen';
 import { usersApi } from './api';
 import { pushNotificationService } from './services/pushNotification';
+import { handleFirebaseRedirectResult } from './lib/firebase';
 import {
   Login,
   Register,
@@ -131,6 +132,26 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
   } | null>(null);
   const [globalCallAccepted, setGlobalCallAccepted] = useState(false);
 
+  // Automatically process returning OAuth redirect result (e.g. Facebook / Google login redirect)
+  useEffect(() => {
+    handleFirebaseRedirectResult()
+      .then(async (redirectData) => {
+        if (!redirectData) return;
+        if (redirectData.providerId === 'facebook.com') {
+          await useAuthStore.getState().loginWithFacebook(redirectData.idToken, redirectData.accessToken);
+          showToast('Signed in with Facebook!', 'success');
+          navigate('/', { replace: true });
+        } else if (redirectData.providerId === 'google.com') {
+          await useAuthStore.getState().loginWithGoogle(redirectData.idToken);
+          showToast('Signed in with Google!', 'success');
+          navigate('/', { replace: true });
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect login error:', err);
+      });
+  }, [navigate, showToast]);
+
   useEffect(() => {
     if (isAuthenticated && token) {
       connect(token);
@@ -252,6 +273,34 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       socket.off('call:end', onCallEnd);
     };
   }, [socket, location.pathname, user?._id]);
+
+  // Native Android full-screen intent / notification action listener
+  useEffect(() => {
+    const onNativeIncomingCall = (e: any) => {
+      const detail = e.detail;
+      if (!detail || !detail.callId) return;
+      setGlobalIncomingCall({
+        callId: detail.callId,
+        channel: detail.channel,
+        type: detail.type === 'video' ? 'video' : 'audio',
+        initiatorId: detail.initiatorId || '',
+        token: detail.token || '',
+        coinsPerMinute: detail.coinsPerMinute ? Number(detail.coinsPerMinute) : 0,
+        initiator: {
+          nickname: detail.initiatorName || 'Someone',
+          avatar: detail.initiatorAvatar || '',
+        },
+      });
+      if (detail.autoAccept) {
+        setGlobalCallAccepted(true);
+      }
+    };
+
+    window.addEventListener('nativeIncomingCall', onNativeIncomingCall);
+    return () => {
+      window.removeEventListener('nativeIncomingCall', onNativeIncomingCall);
+    };
+  }, []);
 
   return (
     <>

@@ -27,6 +27,7 @@ import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModa
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
 import { countryLabel, flagEmoji } from '../lib/countries';
+import { getMediaUrl } from '../lib/media';
 import { levelTier, tierProgress, nextTierAt, vipInfo } from '../lib/levels';
 import type { PublicProfile as PublicProfileData } from '../types';
 
@@ -229,7 +230,7 @@ export const PublicProfile = () => {
       <div className="relative">
         <div className="h-40 w-full overflow-hidden bg-wash">
           {profile.cover && (
-            <img src={profile.cover} alt="" className="w-full h-full object-cover" />
+            <img src={getMediaUrl(profile.cover)} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
           )}
         </div>
 

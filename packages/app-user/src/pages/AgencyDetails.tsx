@@ -24,6 +24,7 @@ import { Avatar } from '../components/user';
 import { Loading } from '../components/ui';
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
+import { getMediaUrl } from '../lib/media';
 
 export const AgencyDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -238,7 +239,7 @@ export const AgencyDetails = () => {
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
           {agency.cover ? (
             <div className="h-28 w-full relative overflow-hidden bg-slate-900">
-              <img src={agency.cover} alt="Cover" className="w-full h-full object-cover" />
+              <img src={getMediaUrl(agency.cover)} alt="Cover" className="w-full h-full object-cover" crossOrigin="anonymous" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
             </div>
           ) : null}
@@ -248,9 +249,10 @@ export const AgencyDetails = () => {
               <div className={`relative shrink-0 ${agency.cover ? '-mt-10' : ''}`}>
                 {agency.avatar ? (
                   <img
-                    src={agency.avatar}
+                    src={getMediaUrl(agency.avatar)}
                     alt={agency.name}
                     className="w-18 h-18 rounded-2xl object-cover ring-4 ring-white shadow-md bg-white"
+                    crossOrigin="anonymous"
                   />
                 ) : (
                   <div className="w-18 h-18 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white font-black text-2xl shadow-md ring-4 ring-white">

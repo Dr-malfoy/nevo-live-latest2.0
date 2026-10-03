@@ -360,7 +360,7 @@ export const CallScreen = ({
     };
   }, [incoming, ringing, callConnected]);
 
-  const handleAccept = async () => {
+  const handleAccept = useCallback(async () => {
     if (!incoming) return;
     ringtone.stop();
     try {
@@ -383,7 +383,14 @@ export const CallScreen = ({
       setRinging(false);
       setCallConnected(true);
     }
-  };
+  }, [incoming, socket, currentUser?._id, startCall]);
+
+  // If call was accepted from native notification action / lock screen
+  useEffect(() => {
+    if (incoming && accepted && !answering && !callConnected) {
+      handleAccept();
+    }
+  }, [incoming, accepted, answering, callConnected, handleAccept]);
 
   const handleReject = async () => {
     ringtone.stop();

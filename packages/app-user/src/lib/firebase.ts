@@ -137,18 +137,14 @@ export const signInWithGoogle = async (): Promise<string> => {
     }
   }
 
-  // Web Browser Flow
+  // Web Browser Flow: Use popup exclusively to avoid third-party storage partitioning errors
   try {
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
     return idToken;
   } catch (err: any) {
-    if (
-      err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/operation-not-supported-in-this-environment'
-    ) {
-      await signInWithRedirect(auth, provider);
-      return new Promise(() => {});
+    if (err.code === 'auth/popup-blocked') {
+      throw new Error('Google sign-in popup was blocked by your browser. Please allow popups for localhost:3000.');
     }
     throw err;
   }
@@ -158,6 +154,7 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
   const provider = new FacebookAuthProvider();
   provider.setCustomParameters({ display: 'popup' });
 
+  // Web Browser Flow: Use popup exclusively to avoid third-party storage partitioning errors
   try {
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
@@ -165,12 +162,8 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
     const accessToken = credential?.accessToken;
     return { idToken, accessToken };
   } catch (err: any) {
-    if (
-      err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/operation-not-supported-in-this-environment'
-    ) {
-      await signInWithRedirect(auth, provider);
-      return new Promise(() => {});
+    if (err.code === 'auth/popup-blocked') {
+      throw new Error('Facebook sign-in popup was blocked by your browser. Please allow popups for localhost:3000.');
     }
     throw err;
   }
@@ -204,8 +197,12 @@ export const handleFirebaseRedirectResult = async (): Promise<{
     }
 
     return { providerId: 'google.com', idToken };
-  } catch (err) {
-    console.warn('Firebase getRedirectResult error:', err);
+  } catch (err: any) {
+    // Gracefully ignore missing initial state on page loads when no redirect was performed
+    if (err?.code === 'auth/missing-initial-state' || err?.message?.includes('missing initial state')) {
+      return null;
+    }
+    console.warn('Firebase getRedirectResult notice:', err);
     return null;
   }
 };
@@ -231,6 +228,12 @@ export const mapFirebaseAuthError = (err: any): string => {
   }
   if (code === 'auth/popup-closed-by-user') {
     return 'Login window was closed before completing authentication.';
+  }
+  if (code === 'auth/popup-blocked') {
+    return 'Popup window was blocked by your browser. Please allow popups for this site.';
+  }
+  if (code === 'auth/missing-initial-state' || message?.includes('missing initial state')) {
+    return 'Authentication session expired or browser storage is partitioned. Please sign in using the popup or Phone / Password.';
   }
   if (code === 'auth/account-exists-with-different-credential') {
     return 'An account already exists with this email using another sign-in method.';

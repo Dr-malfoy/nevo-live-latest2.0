@@ -148,6 +148,32 @@ export const pushNotificationService = {
   },
 
   /**
+   * Check current push notification permission status
+   */
+  async checkPermissions(): Promise<'granted' | 'denied' | 'prompt'> {
+    if (!Capacitor.isNativePlatform()) return 'granted';
+    try {
+      const status = await PushNotifications.checkPermissions();
+      return status.receive;
+    } catch {
+      return 'denied';
+    }
+  },
+
+  /**
+   * Request push notification permission
+   */
+  async requestPermissions(): Promise<'granted' | 'denied' | 'prompt'> {
+    if (!Capacitor.isNativePlatform()) return 'granted';
+    try {
+      const status = await PushNotifications.requestPermissions();
+      return status.receive;
+    } catch {
+      return 'denied';
+    }
+  },
+
+  /**
    * Unregister push token on logout
    */
   async unregister() {

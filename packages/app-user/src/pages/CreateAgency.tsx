@@ -14,6 +14,7 @@ import {
 } from 'react-icons/pi';
 import { agencyApi, uploadApi } from '../api';
 import { useAuthStore, useUIStore } from '../stores';
+import { getMediaUrl } from '../lib/media';
 
 const PRESET_AVATARS = [
   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -170,14 +171,14 @@ export const CreateAgency = () => {
         {/* Banner with dynamic Cover preview */}
         <div className="rounded-2xl p-5 text-white shadow-md relative overflow-hidden mb-5 bg-slate-900 min-h-[140px] flex flex-col justify-end">
           {cover && (
-            <img src={cover} alt="Cover Preview" className="absolute inset-0 w-full h-full object-cover opacity-40" />
+            <img src={getMediaUrl(cover)} alt="Cover Preview" className="absolute inset-0 w-full h-full object-cover opacity-40" crossOrigin="anonymous" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/40 to-transparent pointer-events-none" />
 
           <div className="relative z-10 flex items-center gap-3">
             <div className="w-14 h-14 rounded-2xl overflow-hidden ring-2 ring-white/50 shrink-0 bg-slate-800 shadow-md">
               {avatar ? (
-                <img src={avatar} alt="Logo" className="w-full h-full object-cover" />
+                <img src={getMediaUrl(avatar)} alt="Logo" className="w-full h-full object-cover" crossOrigin="anonymous" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/50">
                   <PiBuildingsFill className="w-8 h-8" />
@@ -225,7 +226,7 @@ export const CreateAgency = () => {
             <div className="flex items-center gap-3">
               <div className="relative w-16 h-16 rounded-2xl overflow-hidden ring-2 ring-indigo-500/20 shrink-0 bg-slate-100">
                 {avatar ? (
-                  <img src={avatar} alt="Logo" className="w-full h-full object-cover" />
+                  <img src={getMediaUrl(avatar)} alt="Logo" className="w-full h-full object-cover" crossOrigin="anonymous" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400">
                     <PiCameraFill className="w-6 h-6" />
@@ -292,7 +293,7 @@ export const CreateAgency = () => {
             <div className="space-y-2">
               <div className="relative h-20 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                 {cover ? (
-                  <img src={cover} alt="Cover" className="w-full h-full object-cover" />
+                  <img src={getMediaUrl(cover)} alt="Cover" className="w-full h-full object-cover" crossOrigin="anonymous" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-medium">
                     No cover banner selected
