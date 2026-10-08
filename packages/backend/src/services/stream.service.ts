@@ -1,9 +1,10 @@
-import { LiveStream, User } from '../models';
+import { LiveStream, User, WatchHistory } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { generateAgoraToken, generateChannelName } from '../config/agora';
 import { getSkip } from '../utils/pagination';
 import { notificationService } from './notification.service';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
@@ -42,7 +43,7 @@ const staleBeforeDate = () => new Date(Date.now() - HEARTBEAT_STALE_MS);
 
 /** Host fields every stream card needs, incl. country flag + presence dot + premium badges. */
 const HOST_FIELDS =
-  'uid nickname avatar level isAgent role sellerType coins diamonds wealthExp verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
+  'uid nickname avatar level isAgent role sellerType coins diamonds wealthExp liveStreamSeconds liveStreamMinutes equippedBadge verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
 
 /**
  * Requirement #1 — country filter.
@@ -79,9 +80,11 @@ const toStreamDTO = (doc: any) => {
     const wealthLevel = rawHost?.wealthLevel && rawHost.wealthLevel > 1
       ? rawHost.wealthLevel
       : calculateWealthLevel(wealthExp, rawHost?.level).level;
+    const liveStreamSeconds = rawHost?.liveStreamSeconds || 0;
+    const liveStreamMinutes = rawHost?.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);
     const liveLevel = rawHost?.liveLevel && rawHost.liveLevel > 1
       ? rawHost.liveLevel
-      : calculateLiveLevel(rawHost?.coins, rawHost?.level).level;
+      : calculateLiveLevel(liveStreamMinutes, rawHost?.level).level;
     const level = rawHost?.level && rawHost.level > 1
       ? rawHost.level
       : Math.max(wealthLevel, liveLevel, 1);
@@ -90,6 +93,8 @@ const toStreamDTO = (doc: any) => {
       ...rawHost,
       wealthLevel,
       liveLevel,
+      liveStreamSeconds,
+      liveStreamMinutes,
       level,
       hostBadge: rawHost.hostBadge || 'none',
       hostBadgeType: rawHost.hostBadgeType || 'none',
@@ -240,11 +245,32 @@ export const streamService = {
 
   async createStream(hostId: string, data: { title: string; cover?: string; type: 'video' | 'voice' | 'game'; category: string }) {
     // One host = one live session. End any previous live stream for this host
-    // (including stale ones) so duplicates never accumulate (#22/#23).
-    await LiveStream.updateMany(
-      { hostId, status: 'live' },
-      { $set: { status: 'ended', endedAt: new Date(), viewerCount: 0, viewers: [] } }
-    );
+    // and credit any completed streaming duration.
+    try {
+      const prevStreams = await LiveStream.find({ hostId, status: 'live' });
+      for (const prev of prevStreams) {
+        const endedAt = new Date();
+        prev.status = 'ended';
+        prev.endedAt = endedAt;
+        prev.viewerCount = 0;
+        prev.viewers = [];
+        await prev.save();
+        const durationSec = Math.max(0, Math.floor((endedAt.getTime() - new Date(prev.startedAt).getTime()) / 1000));
+        if (durationSec > 0) {
+          const { calculateLiveLevel } = await import('../utils/userLevels');
+          const hostDoc = await User.findById(hostId);
+          if (hostDoc) {
+            const newSec = (hostDoc.liveStreamSeconds || 0) + durationSec;
+            const newMin = Math.floor(newSec / 60);
+            hostDoc.liveStreamSeconds = newSec;
+            hostDoc.liveStreamMinutes = newMin;
+            hostDoc.liveLevel = Math.max(hostDoc.liveLevel || 1, calculateLiveLevel(newMin, hostDoc.liveLevel).level);
+            hostDoc.level = Math.max(hostDoc.level || 1, hostDoc.wealthLevel || 1, hostDoc.liveLevel);
+            await hostDoc.save();
+          }
+        }
+      }
+    } catch {}
 
     const agoraChannel = generateChannelName(hostId);
     // Wildcard publisher token (uid 0) — valid for whatever uid the host's client joins with.
@@ -252,7 +278,11 @@ export const streamService = {
 
     // Denormalise the host's country so the feed filter stays a single
     // indexed match instead of a per-request join.
-    const host = await User.findById(hostId).select('country');
+    const host = await User.findById(hostId).select('country gender');
+    if (!host) throw new AppError('Host not found', 404);
+    if (!host.gender || host.gender === 'unspecified') {
+      throw new AppError('Gender selection is mandatory before going live. Please select your gender in profile.', 400);
+    }
 
     const stream = await LiveStream.create({
       hostId,
@@ -320,14 +350,16 @@ export const streamService = {
   async getViewers(streamId: string) {
     const { calculateWealthLevel, calculateLiveLevel } = await import('../utils/userLevels');
     const stream = await LiveStream.findById(streamId)
-      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel wealthExp isVip hasPurchasedDiamonds noble diamonds coins exp')
+      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equippedBadge isVip hasPurchasedDiamonds noble diamonds coins exp')
       .lean();
     if (!stream) throw new AppError('Stream not found', 404);
     return (stream.viewers || []).map((v: any) => {
       const isVip = Boolean(v.isVip || v.hasPurchasedDiamonds || v.noble || (v.diamonds && v.diamonds > 0));
       const wealthExp = Math.max(v.wealthExp || 0, v.diamonds || 0);
       const wealthLevel = v.wealthLevel && v.wealthLevel > 1 ? v.wealthLevel : calculateWealthLevel(wealthExp, v.level).level;
-      const liveLevel = v.liveLevel && v.liveLevel > 1 ? v.liveLevel : calculateLiveLevel(v.coins, v.level).level;
+      const liveStreamSeconds = v.liveStreamSeconds || 0;
+      const liveStreamMinutes = v.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);
+      const liveLevel = v.liveLevel && v.liveLevel > 1 ? v.liveLevel : calculateLiveLevel(liveStreamMinutes, v.level).level;
       const level = v.level && v.level > 1 ? v.level : Math.max(wealthLevel, liveLevel, 1);
       return {
         userId: v._id?.toString() || v.uid,
@@ -336,8 +368,11 @@ export const streamService = {
         level,
         wealthLevel,
         liveLevel,
+        liveStreamSeconds,
+        liveStreamMinutes,
         isVip,
         noble: v.noble,
+        equippedBadge: v.equippedBadge,
         diamonds: v.diamonds || 0,
         coins: v.coins || 0,
       };
@@ -364,6 +399,24 @@ export const streamService = {
         { _id: streamId, viewers: { $ne: userId } },
         { $addToSet: { viewers: userId }, $inc: { viewerCount: 1, totalViewers: 1 } }
       );
+
+      // Record in WatchHistory
+      WatchHistory.findOneAndUpdate(
+        {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: 'live',
+          targetId: stream._id,
+        },
+        {
+          $set: {
+            title: stream.title || 'Live Stream',
+            cover: stream.cover || '',
+            hostId: stream.hostId,
+            watchedAt: new Date(),
+          },
+        },
+        { upsert: true, new: true }
+      ).catch(() => {});
     }
 
     // Host needs publisher token to publish video/audio; viewers get subscriber token.
@@ -411,11 +464,33 @@ export const streamService = {
     const stream = await LiveStream.findOne({ _id: streamId, hostId });
     if (!stream) throw new AppError('Stream not found or not authorized', 404);
 
+    const endedAt = new Date();
     stream.status = 'ended';
-    stream.endedAt = new Date();
+    stream.endedAt = endedAt;
     stream.viewerCount = 0;
     stream.viewers = [];
     await stream.save();
+
+    // Calculate duration in seconds and credit to host
+    const durationSeconds = Math.max(0, Math.floor((endedAt.getTime() - new Date(stream.startedAt).getTime()) / 1000));
+    if (durationSeconds > 0) {
+      try {
+        const { calculateLiveLevel } = await import('../utils/userLevels');
+        const host = await User.findById(hostId);
+        if (host) {
+          const newSeconds = (host.liveStreamSeconds || 0) + durationSeconds;
+          const newMinutes = Math.floor(newSeconds / 60);
+          const liveInfo = calculateLiveLevel(newMinutes, host.liveLevel);
+          host.liveStreamSeconds = newSeconds;
+          host.liveStreamMinutes = newMinutes;
+          host.liveLevel = Math.max(host.liveLevel || 1, liveInfo.level);
+          host.level = Math.max(host.level || 1, host.wealthLevel || 1, host.liveLevel);
+          await host.save();
+        }
+      } catch (err) {
+        console.error('[stream] Error updating host live stream duration:', err);
+      }
+    }
 
     return toStreamDTO(stream);
   },

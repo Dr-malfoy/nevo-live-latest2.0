@@ -45,7 +45,20 @@ function generateMilestones(baseExp: number, growthFactor: number): LevelMilesto
 }
 
 export const WEALTH_MILESTONES: LevelMilestone[] = generateMilestones(100, 1.4);
-export const LIVE_MILESTONES: LevelMilestone[] = generateMilestones(100, 1.4);
+// Live Level milestones based on live stream broadcast duration (in minutes)
+export const LIVE_MILESTONES: LevelMilestone[] = generateMilestones(10, 1.35);
+
+export function formatLiveTime(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} min${minutes === 1 ? '' : 's'}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  if (remainingMins === 0) {
+    return `${hours} hr${hours === 1 ? '' : 's'}`;
+  }
+  return `${hours}h ${remainingMins}m`;
+}
 
 export function calculateWealthLevel(diamonds: number = 0, fallbackLevel?: number): LevelInfo {
   const points = Math.max(0, diamonds || 0);
@@ -96,8 +109,11 @@ export function calculateWealthLevel(diamonds: number = 0, fallbackLevel?: numbe
   };
 }
 
-export function calculateLiveLevel(coins: number = 0, fallbackLevel?: number): LevelInfo {
-  const points = Math.max(0, coins || 0);
+/**
+ * Live Level is calculated from the user's total live streaming time (in minutes).
+ */
+export function calculateLiveLevel(liveStreamMinutes: number = 0, fallbackLevel?: number): LevelInfo {
+  const points = Math.max(0, liveStreamMinutes || 0);
 
   let matched = LIVE_MILESTONES[0];
   for (let i = LIVE_MILESTONES.length - 1; i >= 0; i--) {

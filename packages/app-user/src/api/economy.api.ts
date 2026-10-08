@@ -12,6 +12,7 @@ import type { ApiResponse } from '../types';
 /* ── Store (#45–#49, #51) — §4.0 ──────────────────────────────────── */
 
 export type StoreCategory =
+  | 'badge'
   | 'popular'
   | 'honor'
   | 'rare_id'
@@ -25,15 +26,17 @@ export interface StoreItem {
   _id: string;
   category: StoreCategory;
   name: string;
+  description?: string;
   image?: string;
   preview?: string;
   /** rare_id only — the id being sold, e.g. "40004". */
   displayId?: string;
-  rarity?: 'SSR' | 'SR' | null;
+  rarity?: 'SSR' | 'SR' | 'common' | 'rare' | 'epic' | 'legendary' | 'vip' | string | null;
   priceCoins?: number | null;
+  priceDiamonds?: number | null;
   priceTickets?: number | null;
   durationDays?: number | null;
-  badge?: 'NEW' | 'HOT' | null;
+  badge?: 'NEW' | 'HOT' | string | null;
   giftable?: boolean;
   requiredHonorLevel?: number;
   dailyLimit?: number | null;
@@ -47,8 +50,15 @@ export interface BagItem {
   itemId: string;
   category: StoreCategory;
   name: string;
+  description?: string;
   icon?: string;
+  image?: string;
+  preview?: string;
+  rarity?: string | null;
+  displayId?: string | null;
+  source?: 'purchased' | 'earned' | 'gift' | 'reward' | string;
   expiresAt?: string | null;
+  acquiredAt?: string | null;
   equipped: boolean;
   isNew: boolean;
 }
@@ -84,16 +94,70 @@ export interface SpinResult {
   balances?: { coins?: number; diamonds?: number; tickets?: number };
 }
 
+export interface ActivityTask {
+  key: string;
+  label: string;
+  note?: string;
+  metric: string;
+  target: number;
+  unit?: string;
+  reward: {
+    currency: 'coins' | 'diamonds';
+    amount: number;
+  };
+  goTo?: string;
+  actionLabel?: string;
+  order: number;
+  progress: number;
+  state: 'todo' | 'claimable' | 'claimed';
+}
+
+export interface ActivityPrize {
+  rankFrom: number;
+  rankTo: number;
+  amount: number;
+  title?: string;
+}
+
 export interface ActivityItem {
   _id: string;
+  key: string;
   title: string;
+  tagline?: string;
+  description?: string;
   banner?: string;
+  badge?: string;
   prizePool: number;
-  currency: 'coin' | 'diamond';
+  currency: 'coins' | 'diamonds' | 'coin' | 'diamond';
   startAt: string;
   endAt: string;
   status: 'ongoing' | 'closed';
+  featured?: boolean;
+  rules?: string[];
+  rulesUrl?: string;
+  prizes?: ActivityPrize[];
+  tasks?: ActivityTask[];
+  completedTasksCount?: number;
+  totalTasksCount?: number;
+  claimableCoins?: number;
+  userStats?: {
+    totalEarnedCoins: number;
+    claimableCoins: number;
+    completedCount: number;
+  };
   note?: string;
+}
+
+export interface ActivityRewardRecord {
+  _id: string;
+  activityKey: string;
+  activityTitle: string;
+  taskKey: string;
+  taskLabel: string;
+  rewardAmount: number;
+  currency: string;
+  dateKey: string;
+  claimedAt: string;
 }
 
 export interface GameWinner {
@@ -111,7 +175,7 @@ export const storeApi = {
   getHonor: () =>
     client.get<ApiResponse<{ honorLevel: number; items: StoreItem[] }>>('/store/honor'),
 
-  buy: (itemId: string, payWith: 'coins' | 'tickets', giftToUserId?: string) =>
+  buy: (itemId: string, payWith: 'coins' | 'diamonds' | 'tickets', giftToUserId?: string) =>
     client.post<ApiResponse>('/store/buy', { itemId, payWith, giftToUserId }),
 
   getBag: () => client.get<ApiResponse<{ items: BagItem[]; hasNew: boolean }>>('/users/me/bag'),
@@ -130,6 +194,25 @@ export const gamesApi = {
 
   getActivities: (status: 'ongoing' | 'closed' = 'ongoing') =>
     client.get<ApiResponse<ActivityItem[]>>('/activities', { params: { status } }),
+
+  getActivity: (key: string) =>
+    client.get<ApiResponse<ActivityItem>>(`/activities/${key}`),
+
+  claimActivityTask: (activityKey: string, taskKey: string) =>
+    client.post<ApiResponse<{ rewardAmount: number; newCoinsBalance: number }>>(
+      `/activities/${activityKey}/claim/${taskKey}`
+    ),
+
+  claimAllActivityTasks: () =>
+    client.post<ApiResponse<{ claimedCount: number; totalCoinsClaimed: number; newCoinsBalance: number }>>(
+      '/activities/claim-all'
+    ),
+
+  getActivityRewards: () =>
+    client.get<ApiResponse<ActivityRewardRecord[]>>('/activities/rewards'),
+
+  recordProgress: (metric: string, increment = 1) =>
+    client.post<ApiResponse>('/activities/progress', { metric, increment }),
 
   getLuckySpin: () => client.get<ApiResponse<LuckySpinState>>('/lucky-spin'),
 

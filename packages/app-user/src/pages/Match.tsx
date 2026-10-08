@@ -16,10 +16,12 @@ import { useSocketStore, useAuthStore } from '../stores';
 import { callApi } from '../api';
 import { CallScreen } from '../components/call';
 import { Avatar } from '../components/user';
+import { requestMediaPermissions } from '../lib/permissions';
 
 type Phase = 'idle' | 'searching' | 'calling';
 type CallType = 'audio' | 'video';
 export type GenderFilter = 'male' | 'female' | 'all';
+
 
 interface MatchInvite {
   callId: string;
@@ -68,14 +70,23 @@ export const Match = () => {
     return () => clearInterval(t);
   }, [phase]);
 
-  const startSearching = useCallback(() => {
+  const startSearching = useCallback(async () => {
     setError('');
+
+    // Pre-flight check media permissions
+    const perm = await requestMediaPermissions(callType);
+    if (!perm.granted) {
+      setError(perm.error || 'Camera/Microphone permissions required for call');
+      return;
+    }
+
     setInvite(null);
     setCallAccepted(false);
     activeCallRef.current = '';
     setPhase('searching');
     joinMatch(callType, genderFilter);
   }, [joinMatch, callType, genderFilter]);
+
 
   const stopAndLeave = useCallback(() => {
     leaveMatch();
@@ -102,14 +113,19 @@ export const Match = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Incoming match invite → accept and open the call.
+  // Incoming match event → instantly open and join the call.
   useEffect(() => {
     if (!socket) return;
-    const onInvite = async (payload: any) => {
-      // Only handle invites while we're actually searching for a match.
+
+    const handleMatch = (payload: any) => {
+      // Only handle events while we're searching
       if (phase !== 'searching') return;
       if (!payload?.callId || !payload?.channel || !payload?.token) return;
-      if (payload.initiatorId && payload.initiatorId === activeCallRef.current) return;
+
+      // Dequeue from matchmaking pool immediately
+      leaveMatch();
+
+      const peerInfo = payload.peer || payload.callee || payload.initiator || { nickname: 'User' };
 
       setInvite({
         callId: payload.callId,
@@ -117,47 +133,34 @@ export const Match = () => {
         type: payload.type === 'video' ? 'video' : 'audio',
         initiatorId: payload.initiatorId,
         token: payload.token,
-        initiator: payload.initiator || null,
+        initiator: peerInfo,
       });
       activeCallRef.current = payload.callId;
-
-      // Accept on the caller's behalf (no ringing screen — random match is auto-accept).
-      try {
-        const { data } = await callApi.accept(payload.callId);
-        if (data.success && data.data) {
-          setCallAccepted(true);
-          setInvite((prev) => prev && {
-            ...prev,
-            channel: data.data.channel,
-            token: data.data.token,
-            type: data.data.type,
-          });
-        }
-      } catch {
-        // Fall back to the invite payload — join with the invite token.
-        setCallAccepted(true);
-      }
+      setCallAccepted(true);
       setPhase('calling');
     };
-    socket.on('call:invite', onInvite);
-    return () => {
-      socket.off('call:invite', onInvite);
-    };
-  }, [socket, phase]);
 
-  // Call ended by the peer → return to searching (auto re-match).
-  const handleCallClose = useCallback((outcome?: 'ended' | 'rejected') => {
+    socket.on('call:matched', handleMatch);
+    socket.on('call:invite', handleMatch);
+
+    return () => {
+      socket.off('call:matched', handleMatch);
+      socket.off('call:invite', handleMatch);
+    };
+  }, [socket, phase, leaveMatch]);
+
+
+
+  // Call ended or closed → cleanly reset state and return to idle setup screen.
+  // The user must explicitly press "Start Random Match" to match again.
+  const handleCallClose = useCallback((_outcome?: 'ended' | 'rejected') => {
+    leaveMatch();
     setInvite(null);
     setCallAccepted(false);
     activeCallRef.current = '';
-    if (outcome === 'rejected' || outcome === 'ended') {
-      // Peer left — go back to searching for the next stranger.
-      setPhase('searching');
-      joinMatch(callType, genderFilter);
-    } else {
-      setPhase('idle');
-    }
-  }, [joinMatch, callType, genderFilter]);
+    setPhase('idle');
+  }, [leaveMatch]);
+
 
   // Next — end the current call and immediately re-enter the queue.
   const handleNext = useCallback(async () => {

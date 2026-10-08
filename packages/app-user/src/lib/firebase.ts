@@ -6,7 +6,6 @@ import {
   GoogleAuthProvider,
   FacebookAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
   getRedirectResult,
   signInWithCredential,
   PhoneAuthProvider,
@@ -60,7 +59,6 @@ export const setupRecaptcha = (containerId: string): RecaptchaVerifier => {
     return activeRecaptchaVerifier;
   } catch (err) {
     console.warn('Error setting up reCAPTCHA:', err);
-    // Return or construct new verifier
     activeRecaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
       size: 'invisible',
       callback: () => {},
@@ -105,7 +103,6 @@ export const verifyPhoneOtp = async (
     return { idToken, user: result.user };
   }
 
-  // Fallback to PhoneAuthProvider credential if only string verification ID
   const credential = PhoneAuthProvider.credential(confirmationOrVerificationId as string, code);
   const result = await auth.signInWithCredential(credential);
   const idToken = await result.user?.getIdToken();
@@ -133,18 +130,18 @@ export const signInWithGoogle = async (): Promise<string> => {
         return (await res.user.getIdToken()) || idToken;
       }
     } catch (nativeErr: any) {
-      console.warn('Native Google Auth popup issue, attempting web fallback:', nativeErr);
+      console.warn('Native Google Auth issue, attempting web popup fallback:', nativeErr);
     }
   }
 
-  // Web Browser Flow: Use popup exclusively to avoid third-party storage partitioning errors
+  // Web Browser Popup Flow
   try {
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
     return idToken;
   } catch (err: any) {
     if (err.code === 'auth/popup-blocked') {
-      throw new Error('Google sign-in popup was blocked by your browser. Please allow popups for localhost:3000.');
+      throw new Error('Google sign-in popup was blocked by your browser. Please allow popups.');
     }
     throw err;
   }
@@ -154,7 +151,24 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
   const provider = new FacebookAuthProvider();
   provider.setCustomParameters({ display: 'popup' });
 
-  // Web Browser Flow: Use popup exclusively to avoid third-party storage partitioning errors
+  // Native Android/iOS Facebook Login Sheet
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { FacebookLogin } = await import('@capacitor-community/facebook-login');
+      const res = await FacebookLogin.login({ permissions: ['public_profile', 'email'] });
+      if (res?.accessToken?.token) {
+        const fbAccessToken = res.accessToken.token;
+        const credential = FacebookAuthProvider.credential(fbAccessToken);
+        const firebaseResult = await signInWithCredential(auth, credential);
+        const idToken = await firebaseResult.user.getIdToken();
+        return { idToken, accessToken: fbAccessToken };
+      }
+    } catch (nativeErr: any) {
+      console.warn('[FacebookAuth] Native Facebook Login warning, trying web popup fallback:', nativeErr);
+    }
+  }
+
+  // Web Browser Flow
   try {
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
@@ -163,7 +177,7 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
     return { idToken, accessToken };
   } catch (err: any) {
     if (err.code === 'auth/popup-blocked') {
-      throw new Error('Facebook sign-in popup was blocked by your browser. Please allow popups for localhost:3000.');
+      throw new Error('Facebook sign-in popup was blocked by your browser. Please allow popups.');
     }
     throw err;
   }
@@ -233,13 +247,13 @@ export const mapFirebaseAuthError = (err: any): string => {
     return 'Popup window was blocked by your browser. Please allow popups for this site.';
   }
   if (code === 'auth/missing-initial-state' || message?.includes('missing initial state')) {
-    return 'Authentication session expired or browser storage is partitioned. Please sign in using the popup or Phone / Password.';
+    return 'Authentication session expired. Please sign in using Facebook or Phone / Password.';
   }
   if (code === 'auth/account-exists-with-different-credential') {
     return 'An account already exists with this email using another sign-in method.';
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'This sign-in provider (e.g. Facebook / Phone) is not enabled in Firebase Console. Please enable it in Firebase Authentication or use Phone / Gmail / Password.';
+    return 'This sign-in provider is not enabled in Firebase Console. Please enable it in Firebase Authentication or use Phone / Gmail / Password.';
   }
   if (code === 'auth/network-request-failed') {
     return 'Network connection error. Please check your internet connection.';

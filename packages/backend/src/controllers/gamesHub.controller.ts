@@ -55,13 +55,44 @@ export const gamesHubController = {
   async getActivities(req: Request, res: Response, next: NextFunction) {
     try {
       const { status } = req.query as { status?: string };
-      sendSuccess(res, await gamesHubService.getActivities(status));
+      const userId = req.user?.userId;
+      sendSuccess(res, await gamesHubService.getActivities(status, userId));
     } catch (error) { next(error); }
   },
 
   async getActivity(req: Request, res: Response, next: NextFunction) {
     try {
-      sendSuccess(res, await gamesHubService.getActivity(req.params.key));
+      const userId = req.user?.userId;
+      sendSuccess(res, await gamesHubService.getActivity(req.params.key, userId));
+    } catch (error) { next(error); }
+  },
+
+  async claimActivityTask(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { key, taskKey } = req.params;
+      const result = await gamesHubService.claimActivityTask(req.user!.userId, key, taskKey);
+      sendSuccess(res, result, 'Activity coins collected successfully!');
+    } catch (error) { next(error); }
+  },
+
+  async claimAllActivityTasks(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await gamesHubService.claimAllActivityTasks(req.user!.userId);
+      sendSuccess(res, result, 'All ready activity coins collected successfully!');
+    } catch (error) { next(error); }
+  },
+
+  async getActivityRewards(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await gamesHubService.getActivityRewards(req.user!.userId));
+    } catch (error) { next(error); }
+  },
+
+  async recordLiveProgress(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { metric, increment } = req.body;
+      await gamesHubService.recordLiveActivity(req.user!.userId, metric || 'live_watch_minutes', Number(increment) || 1);
+      sendSuccess(res, { recorded: true });
     } catch (error) { next(error); }
   },
 };

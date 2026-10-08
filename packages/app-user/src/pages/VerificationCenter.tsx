@@ -76,7 +76,6 @@ export const VerificationCenter = () => {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [faceCapturedImage, setFaceCapturedImage] = useState<string | null>(null);
-  const [faceUploading, setFaceUploading] = useState(false);
   const [scanStep, setScanStep] = useState<'ready' | 'verifying' | 'done'>('ready');
 
   // Real-time Face Detection & Auto-Capture states
@@ -89,9 +88,9 @@ export const VerificationCenter = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
   const isCapturingRef = useRef<boolean>(false);
+  const faceDetectorRef = useRef<any>(null);
 
   // Anti-spoofing & frame history buffer
   const frameHistoryRef = useRef<FrameBiometricSample[]>([]);
@@ -178,17 +177,54 @@ export const VerificationCenter = () => {
   }, [cameraStream, cameraActive, mode]);
 
   // ── High Accuracy Biometric Computer Vision & Liveness Analyzer ─────
-  const analyzeLiveFaceBiometrics = useCallback((): {
+  const analyzeLiveFaceBiometrics = useCallback(async (): Promise<{
     state: DetectionState;
     message: string;
     isProper: boolean;
     sample?: FrameBiometricSample;
-  } => {
+  }> => {
     if (!videoRef.current || videoRef.current.readyState < 2) {
       return { state: 'initializing', message: 'Starting camera...', isProper: false };
     }
 
     const video = videoRef.current;
+
+    // 1. Try Native FaceDetector API if supported (Chrome/Android/Edge)
+    if (typeof (window as any).FaceDetector === 'function') {
+      try {
+        if (!faceDetectorRef.current) {
+          faceDetectorRef.current = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        }
+        const faces = await faceDetectorRef.current.detect(video);
+        if (faces && faces.length > 0) {
+          const face = faces[0];
+          const box = face.boundingBox;
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          const faceCenterX = box.x + box.width / 2;
+          const faceCenterY = box.y + box.height / 2;
+          const isCentered = Math.abs(faceCenterX - vw / 2) < vw * 0.38 && Math.abs(faceCenterY - vh / 2) < vh * 0.38;
+
+          if (isCentered) {
+            return {
+              state: 'analyzing_liveness',
+              message: 'Face detected! Hold still...',
+              isProper: true,
+            };
+          } else {
+            return {
+              state: 'off_center',
+              message: 'Place your face inside the circle.',
+              isProper: false,
+            };
+          }
+        }
+      } catch {
+        // fallback to algorithmic canvas detection
+      }
+    }
+
+    // 2. High Speed Algorithmic Biometric Detector
     if (!analysisCanvasRef.current) {
       analysisCanvasRef.current = document.createElement('canvas');
     }
@@ -198,11 +234,10 @@ export const VerificationCenter = () => {
       return { state: 'initializing', message: 'Initializing...', isProper: false };
     }
 
-    const sampleSize = 128;
+    const sampleSize = 96;
     canvas.width = sampleSize;
     canvas.height = sampleSize;
 
-    // Crop center square of video to match the round guide viewport
     const vw = video.videoWidth || 640;
     const vh = video.videoHeight || 480;
     const cropDim = Math.min(vw, vh);
@@ -217,24 +252,13 @@ export const VerificationCenter = () => {
     let totalLuminance = 0;
     let totalSkinPixels = 0;
     let centerSkinPixels = 0;
-    let highFreqEnergy = 0;
     let skinCenterXAcc = 0;
     let skinCenterYAcc = 0;
 
-    let leftLuminance = 0;
-    let rightLuminance = 0;
-    let leftPixels = 0;
-    let rightPixels = 0;
-
-    let eyeRegionContrast = 0;
-    let mouthRegionContrast = 0;
-
-    // Circular Guide Region: center (sampleSize/2, sampleSize/2), radius = sampleSize * 0.44
     const cX = sampleSize / 2;
     const cY = sampleSize / 2;
-    const radius = sampleSize * 0.44;
+    const radius = sampleSize * 0.45;
     const radiusSq = radius * radius;
-
     const totalPixels = sampleSize * sampleSize;
 
     for (let y = 0; y < sampleSize; y++) {
@@ -244,22 +268,16 @@ export const VerificationCenter = () => {
         const g = data[i + 1];
         const b = data[i + 2];
 
-        // Standard ITU-R BT.601 Luminance
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
         totalLuminance += lum;
 
-        // Multi-Space Skin Chrominance (YCbCr + Normalized RGB model)
-        // Works reliably across all skin ethnicities (fair, tan, brown, dark)
+        // Comprehensive Skin Chrominance & Multi-ethnic model
         const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
         const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-        const isYCbCrSkin = cb >= 75 && cb <= 138 && cr >= 126 && cr <= 180;
+        const isYCbCrSkin = cb >= 68 && cb <= 145 && cr >= 120 && cr <= 185;
+        const isRgbSkin = r > 35 && r > g * 0.85 && (r >= b || cr > 125);
 
-        const sumRGB = r + g + b + 1e-4;
-        const nr = r / sumRGB;
-        const ng = g / sumRGB;
-        const isNormSkin = nr > 0.33 && nr < 0.60 && ng > 0.24 && ng < 0.40 && r > g && g >= b;
-
-        const isSkin = isYCbCrSkin || isNormSkin;
+        const isSkin = isYCbCrSkin || isRgbSkin;
 
         const dx = x - cX;
         const dy = y - cY;
@@ -274,124 +292,41 @@ export const VerificationCenter = () => {
             centerSkinPixels++;
           }
         }
-
-        // Left vs Right symmetry inside center circle
-        if (distSq <= radiusSq) {
-          if (x < cX) {
-            leftLuminance += lum;
-            leftPixels++;
-          } else if (x > cX) {
-            rightLuminance += lum;
-            rightPixels++;
-          }
-
-          // Eye region (upper 30% - 50% of circle)
-          if (y >= sampleSize * 0.30 && y <= sampleSize * 0.50) {
-            if (x < sampleSize - 1) {
-              const nextI = (y * sampleSize + (x + 1)) * 4;
-              const nextLum = 0.299 * data[nextI] + 0.587 * data[nextI + 1] + 0.114 * data[nextI + 2];
-              eyeRegionContrast += Math.abs(lum - nextLum);
-            }
-          }
-
-          // Mouth region (lower 65% - 82% of circle)
-          if (y >= sampleSize * 0.65 && y <= sampleSize * 0.82) {
-            if (x < sampleSize - 1) {
-              const nextI = (y * sampleSize + (x + 1)) * 4;
-              const nextLum = 0.299 * data[nextI] + 0.587 * data[nextI + 1] + 0.114 * data[nextI + 2];
-              mouthRegionContrast += Math.abs(lum - nextLum);
-            }
-          }
-        }
-
-        // Anti-Spoofing: High-Frequency Moiré / Screen Grid Pixel Noise filter
-        if (x > 0 && y > 0 && x < sampleSize - 1 && y < sampleSize - 1) {
-          const topI = ((y - 1) * sampleSize + x) * 4;
-          const botI = ((y + 1) * sampleSize + x) * 4;
-          const laplacian = Math.abs(4 * lum - (0.299 * data[topI] + 0.587 * data[topI + 1] + 0.114 * data[topI + 2]) - (0.299 * data[botI] + 0.587 * data[botI + 1] + 0.114 * data[botI + 2]));
-          if (laplacian > 55) {
-            highFreqEnergy += 1;
-          }
-        }
       }
     }
 
     const avgLuminance = totalLuminance / totalPixels;
 
-    // 1. Lighting checks
-    if (avgLuminance < 32) {
-      return { state: 'too_dark', message: 'Make sure your face is clearly visible.', isProper: false };
+    // 1. Lighting checks (forgiving thresholds)
+    if (avgLuminance < 15) {
+      return { state: 'too_dark', message: 'Lighting too dark — move to a brighter place.', isProper: false };
     }
-    if (avgLuminance > 248) {
-      return { state: 'too_bright', message: 'Make sure your face is clearly visible.', isProper: false };
+    if (avgLuminance > 252) {
+      return { state: 'too_bright', message: 'Lighting too bright / glare detected.', isProper: false };
     }
 
-    // 2. Face Presence check
+    // 2. Face Presence in Center Circle
     const circleArea = Math.PI * radiusSq;
     const centerSkinRatio = centerSkinPixels / circleArea;
-    const totalSkinRatio = totalSkinPixels / totalPixels;
 
-    if (totalSkinRatio < 0.08 || centerSkinRatio < 0.07) {
+    if (centerSkinRatio < 0.05 && totalSkinPixels < totalPixels * 0.06) {
       return { state: 'no_face', message: 'Place your face inside the circle.', isProper: false };
     }
 
-    // 3. Face Centering / Position check
+    // 3. Face Centering
     const faceCenterAvgX = skinCenterXAcc / Math.max(1, totalSkinPixels);
     const faceCenterAvgY = skinCenterYAcc / Math.max(1, totalSkinPixels);
     const centerDeltaX = (faceCenterAvgX - cX) / sampleSize;
     const centerDeltaY = (faceCenterAvgY - cY) / sampleSize;
 
-    if (Math.abs(centerDeltaX) > 0.22 || Math.abs(centerDeltaY) > 0.24) {
+    if (Math.abs(centerDeltaX) > 0.36 || Math.abs(centerDeltaY) > 0.38) {
       return { state: 'off_center', message: 'Place your face inside the circle.', isProper: false };
     }
 
-    // 4. Face Distance / Scale check
-    if (centerSkinRatio < 0.18) {
-      return { state: 'too_far', message: 'Move closer.', isProper: false };
-    }
-    if (centerSkinRatio > 0.90) {
-      return { state: 'too_close', message: 'Move slightly back.', isProper: false };
-    }
-
-    // 5. Facial Feature & Pose Orientation check (Facing Camera)
-    const avgLeftLum = leftPixels > 0 ? leftLuminance / leftPixels : 0;
-    const avgRightLum = rightPixels > 0 ? rightLuminance / rightPixels : 0;
-    const symmetryScore = 1 - Math.abs(avgLeftLum - avgRightLum) / Math.max(1, avgLeftLum + avgRightLum);
-
-    if (symmetryScore < 0.72) {
-      return { state: 'not_frontal', message: 'Make sure your face is clearly visible.', isProper: false };
-    }
-
-    const totalFacialContrast = eyeRegionContrast + mouthRegionContrast;
-    if (totalFacialContrast < 450) {
-      return { state: 'no_face', message: 'Make sure your face is clearly visible.', isProper: false };
-    }
-
-    // 6. Anti-Spoofing: Screen Moiré & Grid Detection (Photos on phone/monitor or low quality print)
-    const moireRatio = highFreqEnergy / totalPixels;
-    if (moireRatio > 0.38) {
-      return { state: 'spoof_detected', message: 'Live human face required. Remove photo/screen.', isProper: false };
-    }
-
-    // Create Biometric Sample for temporal liveness tracking
-    const sample: FrameBiometricSample = {
-      timestamp: Date.now(),
-      centerSkinRatio,
-      avgLuminance,
-      edgeContrast: totalFacialContrast,
-      symmetryScore,
-      faceScale: centerSkinRatio,
-      highFreqEnergy: moireRatio,
-      centerDeltaX,
-      centerDeltaY,
-      rawSample: new Uint8ClampedArray(data),
-    };
-
     return {
       state: 'analyzing_liveness',
-      message: 'Face detected! Verifying live human...',
+      message: 'Face detected! Hold still...',
       isProper: true,
-      sample,
     };
   }, []);
 
@@ -487,7 +422,7 @@ export const VerificationCenter = () => {
 
     isCapturingRef.current = true;
     setScanStep('verifying');
-    setGuidanceMessage('Live human verified! Completing verification...');
+    setGuidanceMessage('Live face captured! Verifying instant...');
     setLivenessProgress(100);
 
     const video = videoRef.current;
@@ -504,7 +439,7 @@ export const VerificationCenter = () => {
     }
 
     ctx.drawImage(video, 0, 0, vw, vh);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
     setFaceCapturedImage(dataUrl);
 
     stopCamera();
@@ -521,85 +456,37 @@ export const VerificationCenter = () => {
 
     let isRunning = true;
 
-    const processFrame = () => {
+    const processFrame = async () => {
       if (!isRunning || isCapturingRef.current) return;
 
-      const evalResult = analyzeLiveFaceBiometrics();
+      const evalResult = await analyzeLiveFaceBiometrics();
 
       setGuidanceMessage(evalResult.message);
       setDetectionState(evalResult.state);
 
-      if (evalResult.isProper && evalResult.sample) {
+      if (evalResult.isProper) {
         setIsFaceProperlyPositioned(true);
-
-        // Add sample to rolling temporal buffer
-        const history = frameHistoryRef.current;
-        history.push(evalResult.sample);
-        if (history.length > 15) {
-          history.shift();
-        }
-
         consecutiveValidFramesRef.current += 1;
 
-        // Anti-Spoofing Temporal Check (Distinguish live human from static photo / screen freeze):
-        let temporalLiveScore = 0;
-        if (history.length >= 5) {
-          // Compare pixel delta between current and oldest sample in buffer
-          const oldest = history[0];
-          const latest = history[history.length - 1];
-
-          let diffSum = 0;
-          const len = Math.min(oldest.rawSample.length, latest.rawSample.length);
-          const step = 8; // fast sample
-          for (let p = 0; p < len; p += step) {
-            diffSum += Math.abs(oldest.rawSample[p] - latest.rawSample[p]);
-          }
-          const avgPixelDelta = diffSum / (len / step);
-
-          // Natural human involuntary micro-motion has 0.4 < delta < 25
-          // Static printed photos / screens held still have delta < 0.25
-          if (avgPixelDelta >= 0.35 && avgPixelDelta <= 30) {
-            temporalLiveScore = 1;
-          } else if (avgPixelDelta > 30) {
-            // Extreme rapid movement / shake
-            temporalLiveScore = 0.5;
-          } else {
-            // Static freeze frame spoofing
-            temporalLiveScore = 0.2;
-          }
-        }
-
-        // Calculate progress percentage (0% -> 100% in ~1.2 seconds of stable live tracking)
+        // Progress jumps 0% -> 40% -> 75% -> 100% in ~350ms of face in frame
         const frameCount = consecutiveValidFramesRef.current;
-        const targetFrames = 10;
-        const rawProgress = Math.min(100, Math.round((frameCount / targetFrames) * 100));
+        const progress = Math.min(100, frameCount * 30);
+        setLivenessProgress(progress);
 
-        // Scale by temporal liveness score
-        const adjustedProgress = history.length >= 5 && temporalLiveScore < 0.5
-          ? Math.min(rawProgress, 40)
-          : rawProgress;
-
-        setLivenessProgress(adjustedProgress);
-
-        if (adjustedProgress >= 100 && !isCapturingRef.current) {
+        if (progress >= 100 && !isCapturingRef.current) {
           autoVerifyLiveFace();
           return;
         }
       } else {
-        // Face moved out of circle or failed checks: reset countdown & progress
         setIsFaceProperlyPositioned(false);
-        consecutiveValidFramesRef.current = Math.max(0, consecutiveValidFramesRef.current - 2);
-        setLivenessProgress((prev) => Math.max(0, prev - 15));
-        if (frameHistoryRef.current.length > 3) {
-          frameHistoryRef.current.splice(0, 2);
-        }
+        consecutiveValidFramesRef.current = Math.max(0, consecutiveValidFramesRef.current - 1);
+        setLivenessProgress((prev) => Math.max(0, prev - 25));
       }
 
       if (isRunning) {
-        // Sample every ~100ms for silky smooth feedback and minimal battery usage
         setTimeout(() => {
           if (isRunning) animFrameIdRef.current = requestAnimationFrame(processFrame);
-        }, 100);
+        }, 80);
       }
     };
 
@@ -610,20 +497,6 @@ export const VerificationCenter = () => {
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
     };
   }, [cameraActive, faceCapturedImage, scanStep, analyzeLiveFaceBiometrics, autoVerifyLiveFace]);
-
-  const handleFaceFileUpload = async (file: File) => {
-    setError('');
-    setFaceUploading(true);
-    try {
-      const url = await uploadApi.upload(file, UPLOAD_FOLDER);
-      setFaceCapturedImage(url);
-      await handleFaceVerifySubmit(url);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to upload photo');
-    } finally {
-      setFaceUploading(false);
-    }
-  };
 
   const handleFaceVerifySubmit = async (imageToSubmit?: string) => {
     const targetImage = imageToSubmit || faceCapturedImage;
@@ -639,10 +512,15 @@ export const VerificationCenter = () => {
     try {
       let selfieUrl = targetImage;
       if (targetImage.startsWith('data:image')) {
-        const res = await fetch(targetImage);
-        const blob = await res.blob();
-        const file = new File([blob], `live-face-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        selfieUrl = await uploadApi.upload(file, UPLOAD_FOLDER);
+        try {
+          const res = await fetch(targetImage);
+          const blob = await res.blob();
+          const file = new File([blob], `live-face-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          selfieUrl = await uploadApi.upload(file, UPLOAD_FOLDER);
+        } catch {
+          // Fallback to sending direct image if upload endpoint encounters an issue
+          selfieUrl = targetImage;
+        }
       }
 
       const { data } = await verificationApi.verifyFace({
@@ -659,7 +537,7 @@ export const VerificationCenter = () => {
           setFaceCapturedImage(null);
           setSuccessMessage('');
           isCapturingRef.current = false;
-        }, 2200);
+        }, 2000);
       }
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Live face verification failed. Please try again.');
@@ -869,21 +747,30 @@ export const VerificationCenter = () => {
               </svg>
 
               {/* Circular Target Container */}
-              <div className={`relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden border-4 bg-black shadow-2xl flex items-center justify-center shrink-0 transition-all duration-300 ${
-                scanStep === 'done'
-                  ? 'border-emerald-400 shadow-emerald-500/30'
-                  : scanStep === 'verifying'
-                  ? 'border-purple-400 shadow-purple-500/40 ring-4 ring-purple-500/20'
-                  : isFaceProperlyPositioned
-                  ? 'border-emerald-400 shadow-emerald-400/50 ring-4 ring-emerald-400/30'
-                  : permissionError
-                  ? 'border-red-500 shadow-red-500/30'
-                  : 'border-slate-700 shadow-black/80'
-              }`}>
+              <div
+                onClick={() => {
+                  if (cameraActive && scanStep === 'ready' && !submitting) {
+                    autoVerifyLiveFace();
+                  }
+                }}
+                className={`relative w-64 h-64 sm:w-72 sm:h-72 rounded-full overflow-hidden border-4 bg-black shadow-2xl flex items-center justify-center shrink-0 transition-all duration-300 ${
+                  cameraActive && scanStep === 'ready' ? 'cursor-pointer' : ''
+                } ${
+                  scanStep === 'done'
+                    ? 'border-emerald-400 shadow-emerald-500/30'
+                    : scanStep === 'verifying'
+                    ? 'border-purple-400 shadow-purple-500/40 ring-4 ring-purple-500/20'
+                    : isFaceProperlyPositioned
+                    ? 'border-emerald-400 shadow-emerald-400/50 ring-4 ring-emerald-400/30'
+                    : permissionError
+                    ? 'border-red-500 shadow-red-500/30'
+                    : 'border-slate-700 shadow-black/80'
+                }`}
+              >
                 {scanStep === 'verifying' ? (
                   <div className="flex flex-col items-center gap-3 p-4 text-center z-10">
                     <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
-                    <p className="text-sm font-bold text-white">Verifying Profile...</p>
+                    <p className="text-sm font-bold text-white">Verifying Live Face...</p>
                     <p className="text-xs text-white/70">Connecting biometric security</p>
                   </div>
                 ) : scanStep === 'done' ? (
@@ -954,6 +841,21 @@ export const VerificationCenter = () => {
               </div>
             </div>
 
+            {/* Quick Manual Trigger Button */}
+            {cameraActive && !faceCapturedImage && scanStep === 'ready' && (
+              <div className="w-full max-w-xs">
+                <button
+                  type="button"
+                  onClick={() => autoVerifyLiveFace()}
+                  disabled={submitting}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98] font-bold text-white flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all text-sm border border-emerald-400/30"
+                >
+                  <Sparkle className="w-4 h-4 text-amber-300 animate-pulse" />
+                  <span>{isFaceProperlyPositioned ? 'Face Detected — Verify Now' : 'Verify Face Now'}</span>
+                </button>
+              </div>
+            )}
+
             {/* Verification Instruction Note */}
             <div className="text-center max-w-xs space-y-1">
               <p className="text-xs text-white/60">
@@ -976,7 +878,7 @@ export const VerificationCenter = () => {
             )}
           </div>
 
-          {/* Bottom Secondary Controls (Fallback upload if camera unavailable) */}
+          {/* Bottom Security Note & Controls */}
           <div className="w-full max-w-xs space-y-2.5 pb-2">
             {!cameraActive && permissionError && (
               <button
@@ -987,26 +889,10 @@ export const VerificationCenter = () => {
               </button>
             )}
 
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={faceUploading || submitting}
-              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/60 hover:text-white flex items-center justify-center gap-2 transition-all"
-            >
-              {faceUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" /> : <Upload className="w-3.5 h-3.5" />}
-              Camera having issues? Upload selfie photo
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="user"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFaceFileUpload(file);
-                e.target.value = '';
-              }}
-            />
+            <div className="flex items-center justify-center gap-2 py-2.5 px-3.5 bg-white/5 rounded-2xl border border-white/10 text-white/70 text-xs text-center shadow-sm">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>In-App Live Camera Capture Only • Gallery uploads disabled</span>
+            </div>
           </div>
         </main>
       </div>

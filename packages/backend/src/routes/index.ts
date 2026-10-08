@@ -34,8 +34,10 @@ export { default as fanclubRoutes } from './fanclub.routes';
 export { default as fangroupRoutes } from './fangroup.routes';
 export { default as streamerRoutes } from './streamer.routes';
 export { default as gamesHubRoutes } from './gamesHub.routes';
+export { default as activityRoutes } from './activity.routes';
 export { default as storyRoutes } from './story.routes';
 export { default as noteRoutes } from './note.routes';
-
-
+export { default as videoRoutes } from './video.routes';
+export { default as historyRoutes } from './history.routes';
+export { default as achievementRoutes } from './achievement.routes';
 

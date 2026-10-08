@@ -7,7 +7,7 @@ export interface ICallDocument extends Document {
   channel: string;
   type: 'audio' | 'video';
   /** Where the call was initiated from. */
-  callSource: 'profile' | 'messenger';
+  callSource: 'profile' | 'messenger' | 'match';
   status: 'ringing' | 'active' | 'ended' | 'missed' | 'rejected';
   maxParticipants: number;
   /** #72 — 1-to-1 pricing, locked in when the call is accepted. */
@@ -42,7 +42,8 @@ const callSchema = new Schema<ICallDocument>(
     initiatorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     channel: { type: String, required: true },
     type: { type: String, enum: ['audio', 'video'], default: 'audio' },
-    callSource: { type: String, enum: ['profile', 'messenger'], default: 'messenger', index: true },
+    callSource: { type: String, enum: ['profile', 'messenger', 'match'], default: 'messenger', index: true },
+
     maxParticipants: { type: Number, default: 10 },
     hostId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     audienceId: { type: Schema.Types.ObjectId, ref: 'User', index: true },

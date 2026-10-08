@@ -17,8 +17,8 @@ export interface VerificationState {
 
 export interface VerificationRequest {
   _id: string;
-  userId: string;
-  verificationType: 'face' | 'nid' | 'both';
+  userId: string | UserPublic;
+  verificationType?: 'face' | 'nid' | 'both';
   accountType?: 'host' | 'agency' | 'user';
   fullName?: string;
   olaId?: string;
@@ -33,6 +33,14 @@ export interface VerificationRequest {
   rejectionReason?: string;
   submittedAt: string;
   reviewedAt?: string;
+  reviewedBy?: string | UserPublic;
+  auditLog?: {
+    action: 'SUBMITTED' | 'OPENED' | 'APPROVED' | 'REJECTED' | 'RESUBMITTED' | 'REVOKED';
+    adminId?: string;
+    from: string;
+    to: string;
+    timestamp: string;
+  }[];
   createdAt: string;
 }
 
@@ -48,6 +56,7 @@ export interface User {
   /** ISO 3166-1 alpha-2, uppercase. Empty when not set. */
   country?: string;
   gender?: Gender;
+  genderUpdatedAt?: string;
   birthday?: string;
   bio?: string;
   tags?: string[];
@@ -60,6 +69,8 @@ export interface User {
   wealthLevel?: number;
   liveLevel?: number;
   wealthExp?: number;
+  liveStreamSeconds?: number;
+  liveStreamMinutes?: number;
   exp: number;
   diamonds: number;
   coins: number;
@@ -75,6 +86,7 @@ export interface User {
   hostBadgeType?: 'manual' | 'auto' | 'none';
   hostBadgeAssignedAt?: string;
   hostBadgeExpiresAt?: string;
+  equippedBadge?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
   verification?: VerificationState;
   following: string[];
   followers: string[];
@@ -89,6 +101,7 @@ export interface UserPublic {
   cover?: string;
   country?: string;
   gender?: Gender;
+  genderUpdatedAt?: string;
   bio?: string;
   tags?: string[];
   online?: boolean;
@@ -98,6 +111,8 @@ export interface UserPublic {
   wealthLevel?: number;
   liveLevel?: number;
   wealthExp?: number;
+  liveStreamSeconds?: number;
+  liveStreamMinutes?: number;
   isAgent: boolean;
   role?: 'admin' | 'agent' | 'host' | 'user';
   noble?: { type: string; expiry: string };
@@ -108,6 +123,7 @@ export interface UserPublic {
   hostBadgeType?: 'manual' | 'auto' | 'none';
   hostBadgeAssignedAt?: string;
   hostBadgeExpiresAt?: string;
+  equippedBadge?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
   verification?: VerificationState;
   coins?: number;
   diamonds?: number;
@@ -148,31 +164,6 @@ export interface LiveCountry {
   count: number;
 }
 
-export interface VerificationRequest {
-  _id: string;
-  userId: string | UserPublic;
-  accountType: 'host' | 'agency';
-  fullName: string;
-  olaId: string;
-  dateOfBirth: string;
-  documentType: 'nid' | 'olaid';
-  documentFrontUrl: string;
-  documentBackUrl: string;
-  selfieUrl: string;
-  status: 'pending' | 'under_review' | 'verified' | 'rejected';
-  rejectionReason?: string;
-  submittedAt: string;
-  reviewedAt?: string;
-  reviewedBy?: string | UserPublic;
-  auditLog: {
-    action: 'SUBMITTED' | 'OPENED' | 'APPROVED' | 'REJECTED' | 'RESUBMITTED' | 'REVOKED';
-    adminId?: string;
-    from: string;
-    to: string;
-    timestamp: string;
-  }[];
-  createdAt: string;
-}
 
 export interface LiveStream {
   _id: string;

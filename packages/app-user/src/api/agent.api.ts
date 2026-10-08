@@ -92,12 +92,68 @@ export interface HostGroup {
   memberCount: number;
 }
 
+export interface AgentRechargeRequest {
+  _id: string;
+  userId: { _id: string; uid?: string; nickname?: string; avatar?: string; phone?: string };
+  agentId: string;
+  paymentMethod: string;
+  amountBdt: number;
+  diamonds: number;
+  coins: number;
+  screenshot?: string;
+  transactionId?: string;
+  accountNumber?: string;
+  status: 'pending' | 'confirmed' | 'rejected';
+  adminNote?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AgentWithdrawalRequest {
+  _id: string;
+  userId: { _id: string; uid?: string; nickname?: string; avatar?: string; phone?: string };
+  agentId: string;
+  currency: 'diamond' | 'coin';
+  amount: number;
+  amountBdt: number;
+  method: string;
+  accountNumber: string;
+  status: 'pending' | 'approved' | 'rejected' | 'paid';
+  adminNote?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AgentPendingCounts {
+  pendingRecharges: number;
+  pendingWithdrawals: number;
+  totalPending: number;
+}
+
 export const agentApi = {
   /* ── Exists ─────────────────────────────────────────────────────── */
   getDashboard: () => client.get<ApiResponse<any>>('/agent/dashboard'),
+  getPendingCounts: () => client.get<ApiResponse<AgentPendingCounts>>('/agent/pending-counts'),
   getCustomers: (params?: any) => client.get<ApiResponse<any[]>>('/agent/customers', { params }),
   getWallet: () => client.get<ApiResponse<any>>('/agent/wallet'),
   getOrders: (params?: any) => client.get<ApiResponse<any[]>>('/agent/orders', { params }),
+
+  /* ── Recharge & Withdrawal Requests ────────────────────────────── */
+  getRechargeRequests: (params?: { page?: number; limit?: number; status?: string }) =>
+    client.get<ApiResponse<{ data: AgentRechargeRequest[]; total: number }>>('/agent/recharge-requests', { params }),
+  approveRecharge: (id: string) =>
+    client.put<ApiResponse<AgentRechargeRequest>>(`/agent/recharge-requests/${id}/approve`),
+  rejectRecharge: (id: string, note?: string) =>
+    client.put<ApiResponse<AgentRechargeRequest>>(`/agent/recharge-requests/${id}/reject`, { note }),
+
+  getWithdrawalRequests: (params?: { page?: number; limit?: number; status?: string }) =>
+    client.get<ApiResponse<{ data: AgentWithdrawalRequest[]; total: number }>>('/agent/withdrawal-requests', { params }),
+  approveWithdrawal: (id: string) =>
+    client.put<ApiResponse<AgentWithdrawalRequest>>(`/agent/withdrawal-requests/${id}/approve`),
+  rejectWithdrawal: (id: string, note?: string) =>
+    client.put<ApiResponse<AgentWithdrawalRequest>>(`/agent/withdrawal-requests/${id}/reject`, { note }),
+  markWithdrawalPaid: (id: string) =>
+    client.put<ApiResponse<AgentWithdrawalRequest>>(`/agent/withdrawal-requests/${id}/paid`),
 
   /* ── Not built yet — §4.7 ───────────────────────────────────────── */
   getEarnings: (range: AgentRange = '30d') =>

@@ -14,6 +14,9 @@ import {
   PiPaperPlaneRightFill as SendIcon,
   PiXBold as X,
   PiCoinFill as CoinIcon,
+  PiSpeakerHighFill as SpeakerIcon,
+  PiWifiHighBold as WifiIcon,
+  PiFastForwardFill as FastForwardIcon,
 } from 'react-icons/pi';
 import { Avatar } from '../user';
 import { useCall, type CallChatMessage } from '../../hooks/useCall';
@@ -22,7 +25,6 @@ import { callApi, type CallParticipant } from '../../api/call.api';
 import { useSocketStore, useAuthStore } from '../../stores';
 import { CoinsFinishedOverlay } from './CoinsFinishedOverlay';
 import { ringtone } from '../../lib/ringtone';
-
 
 interface CallScreenProps {
   /** Incoming call payload (from socket) — callee answers with accept. */
@@ -52,7 +54,6 @@ interface CallScreenProps {
   /** Whether the current user is the paying audience member. */
   isAudience?: boolean;
 }
-
 
 interface RosterEntry extends CallParticipant {
   /** True when this user is not the local user (i.e., a remote member). */
@@ -90,9 +91,9 @@ export const CallScreen = ({
   const currentUser = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
 
-  const [answering, setAnswering] = useState(false);
-  const [ringing, setRinging] = useState(!!incoming || !!outgoing);
-  const [callConnected, setCallConnected] = useState(false);
+  const [answering, setAnswering] = useState(Boolean(accepted));
+  const [ringing, setRinging] = useState(!accepted && (!!incoming || !!outgoing));
+  const [callConnected, setCallConnected] = useState(Boolean(accepted));
   const [elapsed, setElapsed] = useState(0);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
 
@@ -117,7 +118,6 @@ export const CallScreen = ({
   const endedRef = useRef(false);
   const callIdRef = useRef<string>('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
-
 
   const session = incoming
     ? { callId: incoming.callId, channel: incoming.channel, type: incoming.type, token: incoming.token }
@@ -244,7 +244,6 @@ export const CallScreen = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, session?.callId, chatOpen]);
 
-
   // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatOpen) {
@@ -253,9 +252,9 @@ export const CallScreen = ({
     }
   }, [chatMessages, chatOpen]);
 
-  // Join when session is known (outgoing joins immediately; incoming after answering).
+  // Join when session is known
   useEffect(() => {
-    if (!session || (!answering && !outgoing)) return;
+    if (!session || (!answering && !outgoing && !accepted)) return;
 
     startCall({
       channel: session.channel,
@@ -266,19 +265,19 @@ export const CallScreen = ({
       currentUserId: currentUser?._id,
     })
       .then(() => {
-        if (answering) {
+        if (answering || accepted || outgoing) {
           setRinging(false);
           setCallConnected(true);
         }
       })
       .catch(() => {
-        if (answering) {
+        if (answering || accepted || outgoing) {
           setRinging(false);
           setCallConnected(true);
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.callId, answering]);
+  }, [session?.callId, answering, outgoing, accepted]);
 
   // Re-attach local preview if cameraOn changes to true
   useEffect(() => {
@@ -287,11 +286,12 @@ export const CallScreen = ({
     }
   }, [joined, isVideo, cameraOn, playLocalPreview]);
 
-  // Callee accepted or remote track joined → the outgoing caller stops ringing and connects call
+  // Callee accepted or remote track joined
   useEffect(() => {
     if (accepted || remoteUsers.length > 0) {
       setRinging(false);
       setCallConnected(true);
+      setAnswering(true);
     }
   }, [accepted, remoteUsers.length]);
 
@@ -305,18 +305,12 @@ export const CallScreen = ({
     return () => clearInterval(t);
   }, [callConnected]);
 
-  /**
-   * Billing heartbeat — audience only, priced calls only.
-   * Fires every 60 s to trigger a server-side coin deduction.
-   * Only active after call is connected.
-   */
+  // Billing heartbeat — audience only, priced calls only (fires every 60 s)
   useEffect(() => {
     if (!callConnected || !isAudience || coinsPerMinute <= 0 || !session?.callId) return;
 
-    // Fire first tick immediately at 60 s (handled by setInterval below).
     billingIntervalRef.current = setInterval(() => {
       if (!session?.callId || endedRef.current) return;
-      // Socket-based heartbeat
       socket?.emit('call:billing-tick', { callId: session.callId }, (res: any) => {
         if (res?.result?.coinsFinished) {
           setCoinsFinished(true);
@@ -328,7 +322,7 @@ export const CallScreen = ({
           updateUser({ coins: res.result.audienceCoins });
         }
       });
-    }, 60_000); // 60 seconds
+    }, 60_000);
 
     return () => {
       if (billingIntervalRef.current) {
@@ -339,7 +333,7 @@ export const CallScreen = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callConnected, isAudience, coinsPerMinute, session?.callId]);
 
-  // Incoming ringtone and vibration lifecycle with 45s timeout
+  // Incoming ringtone and vibration lifecycle
   useEffect(() => {
     if (incoming && ringing && !callConnected) {
       ringtone.start();
@@ -385,7 +379,6 @@ export const CallScreen = ({
     }
   }, [incoming, socket, currentUser?._id, startCall]);
 
-  // If call was accepted from native notification action / lock screen
   useEffect(() => {
     if (incoming && accepted && !answering && !callConnected) {
       handleAccept();
@@ -405,9 +398,7 @@ export const CallScreen = ({
     if (endedRef.current) return;
     endedRef.current = true;
     if (session) {
-      // End the call on the server (also triggers billing finalization server-side)
       await callApi.end(session.callId, 'ended').catch(() => {});
-      // Belt-and-suspenders: also call finalize explicitly for priced calls
       if (isAudience && coinsPerMinute > 0) {
         callApi.finalize(session.callId).catch(() => {});
       }
@@ -416,7 +407,6 @@ export const CallScreen = ({
     onClose('ended');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.callId, isAudience, coinsPerMinute]);
-
 
   const handleSendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -452,173 +442,269 @@ export const CallScreen = ({
     'grid-cols-3';
 
   const remoteNames = roster.filter((r) => r.remote).map((r) => r.nickname);
-
-  // Recent floating messages (last 3 messages) for in-call heads-up display
   const floatingMessages = chatMessages.slice(-3);
+
+  // Soundwave animation bars for Voice/Audio calls
+  const waveBars = [
+    { height: [12, 36, 18, 48, 24], duration: 1.1 },
+    { height: [20, 52, 28, 64, 20], duration: 0.9 },
+    { height: [14, 40, 20, 56, 16], duration: 1.2 },
+    { height: [24, 60, 32, 72, 28], duration: 0.8 },
+    { height: [18, 46, 22, 58, 20], duration: 1.0 },
+    { height: [22, 54, 30, 68, 24], duration: 0.85 },
+    { height: [12, 32, 16, 42, 14], duration: 1.15 },
+  ];
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black text-white flex flex-col overflow-hidden"
+      className="fixed inset-0 z-[100] bg-neutral-950 text-white flex flex-col overflow-hidden select-none"
       role="dialog"
       aria-label={isVideo ? 'Video call' : 'Audio call'}
     >
-      {/* Video area — remote video tiles render here */}
+      {/* 1. Underlying Video Canvas (Remote streams attach here) */}
       <div id="call-video-area" className="absolute inset-0 bg-neutral-950" />
 
-      {/* Remote video grid (video calls) */}
+      {/* 2. Fullscreen Remote Video Grid (Video Call mode) */}
       {joined && isVideo && remoteUsers.length > 0 && (
-        <div className={`absolute inset-0 grid ${gridClass} gap-0.5`}>
-          {remoteUsers.map((uid) => (
-            <div key={String(uid)} className="relative bg-black/40 min-h-0 min-w-0">
-              <div id={`remote-container-${uid}`} className="absolute inset-0 w-full h-full" />
-              <span className="absolute bottom-2 left-2 text-xs font-medium text-white/90 bg-black/60 backdrop-blur-md rounded-lg px-2.5 py-1 pointer-events-none border border-white/10">
-                {remoteNames[remoteUsers.indexOf(uid)] || `Member ${uid}`}
-              </span>
+        <div className={`absolute inset-0 grid ${gridClass} gap-1 bg-black`}>
+          {remoteUsers.map((uid, idx) => (
+            <div key={String(uid)} className="relative w-full h-full bg-neutral-900 overflow-hidden flex items-center justify-center">
+              <div id={`remote-container-${uid}`} className="absolute inset-0 w-full h-full object-cover" />
+              {/* Remote user nameplate badge */}
+              <div className="absolute bottom-24 sm:bottom-28 left-4 z-10 pointer-events-none">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-xl border border-white/15 shadow-lg">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs font-semibold text-white/95 max-w-[140px] truncate">
+                    {remoteNames[idx] || `Host ${uid}`}
+                  </span>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Local preview (video calls) — small PiP */}
+      {/* 3. Audio Call Background (Deep cinematic mesh & live glowing waves) */}
+      {(!isVideo || ringing || !callConnected) && (
+        <div className="absolute inset-0 z-[1] bg-gradient-to-b from-neutral-900 via-neutral-950 to-black flex flex-col items-center justify-between py-12 px-6 overflow-hidden">
+          {/* Ambient decorative glowing orbs */}
+          <div className="absolute top-1/4 -left-20 w-80 h-80 bg-brand-primary/20 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute bottom-1/3 -right-20 w-80 h-80 bg-pink-500/15 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+
+          {/* Top header details inside audio screen */}
+          <div className="flex flex-col items-center text-center space-y-3 mt-6 sm:mt-10 z-10">
+            {/* Call type badge */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 text-xs font-semibold tracking-wide text-white/90 shadow-xl"
+            >
+              {isVideo ? (
+                <>
+                  <Video className="w-4 h-4 text-emerald-400" />
+                  <span>1:1 Video Call</span>
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="w-4 h-4 text-brand-primary" />
+                  <span>1:1 Audio Voice Call</span>
+                </>
+              )}
+            </motion.div>
+
+            {/* Caller Name */}
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight drop-shadow-lg">
+              {other?.nickname || 'Partner'}
+            </h2>
+
+            {/* Connection / Status indicator */}
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${callConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'}`} />
+              <p className="text-xs sm:text-sm text-white/70 font-medium tracking-wide">
+                {!callConnected
+                  ? incoming
+                    ? 'Incoming call...'
+                    : isTargetOnline
+                    ? 'Ringing...'
+                    : 'Calling...'
+                  : `Connected · ${fmt(elapsed)}`}
+              </p>
+            </div>
+
+            {/* Pricing badge if call is paid */}
+            {coinsPerMinute > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-500/15 border border-amber-500/35 rounded-full text-xs font-bold text-amber-300 shadow-sm"
+              >
+                <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
+                <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Center Avatar with Pulsing Radar Rings & Sound Waveform */}
+          <div className="relative flex flex-col items-center justify-center my-auto z-10">
+            {/* Animated radar rings for ringing state */}
+            {incoming && ringing && !callConnected && (
+              <>
+                <motion.div
+                  animate={{ scale: [1, 1.45, 1.9], opacity: [0.6, 0.25, 0] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut' }}
+                  className="absolute w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-brand-primary/30 border border-brand-primary/40 pointer-events-none"
+                />
+                <motion.div
+                  animate={{ scale: [1, 1.3, 1.6], opacity: [0.7, 0.35, 0] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut', delay: 0.6 }}
+                  className="absolute w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-emerald-500/30 border border-emerald-400/40 pointer-events-none"
+                />
+              </>
+            )}
+
+            {/* Main Avatar Container */}
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="relative p-1.5 rounded-full bg-gradient-to-tr from-brand-primary/40 via-white/10 to-pink-500/40 backdrop-blur-2xl ring-2 ring-white/20 shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            >
+              <Avatar
+                src={other?.avatar}
+                nickname={other?.nickname || '?'}
+                size="xl"
+                className="w-28 h-28 sm:w-36 sm:h-36 text-3xl font-extrabold shadow-inner"
+              />
+            </motion.div>
+
+            {/* Live Audio Equalizer Waveform Bars (Active when call is connected) */}
+            {callConnected && !isVideo && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-1.5 mt-8 px-4 py-2 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10"
+              >
+                <SpeakerIcon className="w-4 h-4 text-emerald-400 mr-1 shrink-0" />
+                <div className="flex items-center gap-1 h-8">
+                  {waveBars.map((bar, i) => (
+                    <motion.span
+                      key={i}
+                      animate={{
+                        height: bar.height,
+                      }}
+                      transition={{
+                        duration: bar.duration,
+                        repeat: Infinity,
+                        repeatType: 'reverse',
+                        ease: 'easeInOut',
+                      }}
+                      className="w-1.5 rounded-full bg-gradient-to-t from-emerald-500 via-teal-400 to-cyan-300"
+                    />
+                  ))}
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-300 ml-1.5 tracking-wider">
+                  HD VOICE
+                </span>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Bottom spacer to prevent overlay collision */}
+          <div className="h-28" />
+        </div>
+      )}
+
+      {/* 4. Draggable Local Video Preview (PiP for Video Calls) */}
       <AnimatePresence>
-        {joined && isVideo && cameraOn && (
+        {joined && isVideo && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="absolute top-4 right-4 w-28 sm:w-32 h-40 sm:h-44 rounded-2xl overflow-hidden border border-white/20 z-20 shadow-2xl bg-dark-900"
+            drag
+            dragMomentum={false}
+            dragConstraints={{ left: -300, right: 0, top: 0, bottom: 450 }}
+            initial={{ opacity: 0, scale: 0.85, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            className="absolute top-16 right-4 z-30 w-32 sm:w-36 h-48 sm:h-52 rounded-3xl overflow-hidden shadow-2xl bg-neutral-900 border border-white/20 backdrop-blur-md cursor-grab active:cursor-grabbing group"
           >
-            {/* The local video container applies CSS beauty filter styling smoothly */}
-            <div
-              id="call-local-video-container"
-              className="w-full h-full relative"
-              style={{ filter: activeFilter.css }}
-            />
-            <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[9px] font-bold text-white/90">
-              You {activeFilter.id !== 'natural' && `· ${activeFilter.label}`}
+            {cameraOn ? (
+              <div
+                id="call-local-video-container"
+                className="w-full h-full relative object-cover"
+                style={{ filter: activeFilter.css }}
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900/95 text-white/50 space-y-2 p-2 text-center">
+                <VideoOff className="w-7 h-7 text-white/40" />
+                <span className="text-[10px] font-semibold">Camera Off</span>
+              </div>
+            )}
+
+            {/* PiP Header Tags & Flip camera shortcut */}
+            <div className="absolute top-2 inset-x-2 flex items-center justify-between pointer-events-auto">
+              <span className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[9px] font-bold text-white/90 border border-white/10">
+                You {activeFilter.id !== 'natural' && `· ${activeFilter.label}`}
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  switchCamera();
+                }}
+                className="p-1.5 rounded-full bg-black/60 backdrop-blur-md text-white/90 hover:text-white border border-white/10 shadow hover:scale-110 active:scale-95 transition-all"
+                title="Flip Camera"
+              >
+                <CameraRotate className="w-3.5 h-3.5" />
+              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Top Header Information (Timer & Participant Info) */}
+      {/* 5. Floating Top Bar Header (Status, Timer, Billing, Participants) */}
       {joined && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-          {callConnected ? (
-            <div className="glass-chip px-3 py-1.5 flex items-center gap-2 bg-black/50 backdrop-blur-md rounded-full border border-white/15">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span className="text-xs font-bold text-white tracking-wider">{fmt(elapsed)}</span>
-            </div>
-          ) : (
-            <div className="glass-chip px-3 py-1.5 flex items-center gap-2 bg-black/50 backdrop-blur-md rounded-full border border-white/15">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-xs font-semibold text-white/90 tracking-wide">
-                {incoming ? 'Incoming...' : isTargetOnline ? 'Ringing...' : 'Calling...'}
+        <header className="absolute top-4 inset-x-4 z-30 flex items-center justify-between pointer-events-none">
+          {/* Left: Call Timer Capsule */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/50 backdrop-blur-xl border border-white/15 shadow-xl">
+              <span className={`w-2.5 h-2.5 rounded-full ${callConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-pulse'}`} />
+              <span className="text-xs font-bold text-white tracking-widest font-mono">
+                {callConnected ? fmt(elapsed) : 'CONNECTING'}
               </span>
             </div>
-          )}
-          {/* Billing info chip — audience only, priced calls */}
-          {isAudience && coinsPerMinute > 0 && (
-            <div className="glass-chip px-2.5 py-1.5 flex items-center gap-1.5 bg-amber-500/80 backdrop-blur-md rounded-full border border-amber-400/50 text-xs text-white font-semibold">
-              <CoinIcon className="w-3.5 h-3.5" />
-              <span>{coinsPerMinute.toLocaleString()}/min</span>
+
+            {/* Network HD Indicator */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 text-[11px] font-semibold text-white/75">
+              <WifiIcon className="w-3.5 h-3.5 text-emerald-400" />
+              <span>HD</span>
             </div>
-          )}
-          {roster.length > 0 && (
-            <div className="glass-chip px-2.5 py-1.5 flex items-center gap-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/15 text-xs text-white/80">
-              <Users className="w-3.5 h-3.5" />
-              <span>{roster.length}</span>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
 
-      {/* Coins Finished overlay — shown when audience runs out of coins mid-call */}
-      <CoinsFinishedOverlay
-        visible={coinsFinished}
-        onClose={() => {
-          setCoinsFinished(false);
-          onClose('ended');
-        }}
-      />
+          {/* Right: Coins Billing & Roster */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            {isAudience && coinsPerMinute > 0 && (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-xl border border-amber-400/40 text-xs font-bold text-amber-300 shadow-lg"
+              >
+                <CoinIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="tabular-nums">{coinsPerMinute.toLocaleString()}/min</span>
+              </motion.div>
+            )}
 
-      {/* Incoming Call / Ringing Backdrop */}
-      {(ringing || !isVideo || !callConnected) && (
-        <div className="absolute inset-0 z-[1] bg-mesh flex flex-col items-center justify-between py-16 px-6">
-          {/* Top Call Info */}
-          <div className="flex flex-col items-center text-center space-y-3 mt-4">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-white shadow-lg">
-              {isVideo ? (
-                <>
-                  <Video className="w-4 h-4 text-emerald-400" />
-                  <span>Incoming Video Call</span>
-                </>
-              ) : (
-                <>
-                  <PhoneCall className="w-4 h-4 text-brand-primary" />
-                  <span>Incoming Audio Call</span>
-                </>
-              )}
-            </div>
-
-            <h2 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-md">
-              {other?.nickname || 'User'}
-            </h2>
-
-            <p className="text-sm text-white/70 font-medium">
-              {!callConnected
-                ? incoming
-                  ? isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...'
-                  : isTargetOnline
-                  ? 'Ringing...'
-                  : 'Calling...'
-                : error || fmt(elapsed)}
-            </p>
-
-            {coinsPerMinute > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/40 rounded-full text-xs font-semibold text-amber-300">
-                <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
-                <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
+            {roster.length > 2 && (
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-black/50 backdrop-blur-xl border border-white/15 text-xs text-white/80">
+                <Users className="w-3.5 h-3.5" />
+                <span>{roster.length}</span>
               </div>
             )}
           </div>
-
-          {/* Center Avatar with Pulsing Rings */}
-          <div className="relative flex items-center justify-center my-auto">
-            {incoming && ringing && !callConnected && (
-              <>
-                <motion.div
-                  animate={{ scale: [1, 1.4, 1.8], opacity: [0.6, 0.3, 0] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
-                  className="absolute w-36 h-36 rounded-full bg-brand-primary/30 border border-brand-primary/40 pointer-events-none"
-                />
-                <motion.div
-                  animate={{ scale: [1, 1.25, 1.5], opacity: [0.8, 0.4, 0] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut', delay: 0.6 }}
-                  className="absolute w-36 h-36 rounded-full bg-emerald-500/30 border border-emerald-400/40 pointer-events-none"
-                />
-              </>
-            )}
-
-            <div className="relative rounded-full ring-4 ring-white/20 shadow-2xl p-1 bg-black/40 backdrop-blur-sm">
-              <Avatar
-                src={other?.avatar}
-                nickname={other?.nickname || '?'}
-                size="xl"
-                className="w-28 h-28 sm:w-32 sm:h-32 text-2xl font-bold"
-              />
-            </div>
-          </div>
-
-          {/* Spacer for bottom controls */}
-          <div className="h-24" />
-        </div>
+        </header>
       )}
 
-      {/* Floating in-call chat overlay (when chat drawer is closed) */}
+      {/* 6. Floating Heads-Up Live Messages Toast (When chat drawer is closed) */}
       {joined && !chatOpen && floatingMessages.length > 0 && (
         <div className="absolute bottom-28 left-4 z-20 max-w-[280px] sm:max-w-xs space-y-1.5 pointer-events-none">
           {floatingMessages.map((msg) => (
@@ -626,49 +712,58 @@ export const CallScreen = ({
               key={msg.id}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              className="bg-black/65 backdrop-blur-md rounded-2xl px-3 py-1.5 border border-white/10 shadow-lg text-xs"
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-black/70 backdrop-blur-xl rounded-2xl px-3.5 py-2 border border-white/15 shadow-xl text-xs flex items-start gap-2"
             >
-              <span className="font-bold text-brand-secondary mr-1.5">
-                {msg.sender._id === currentUser?._id ? 'You' : msg.sender.nickname}:
-              </span>
-              <span className="text-white/90">{msg.text}</span>
+              <Avatar
+                src={msg.sender.avatar}
+                nickname={msg.sender.nickname}
+                size="xs"
+                className="shrink-0 mt-0.5"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-[10px] text-brand-secondary truncate">
+                  {msg.sender._id === currentUser?._id ? 'You' : msg.sender.nickname}
+                </p>
+                <p className="text-white/95 text-xs break-words">{msg.text}</p>
+              </div>
             </motion.div>
           ))}
         </div>
       )}
 
-      {/* Beauty Filter Picker Sheet */}
+      {/* 7. Beauty Filter Carousel Drawer (Video Calls) */}
       <AnimatePresence>
         {filterPickerOpen && isVideo && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="absolute bottom-28 inset-x-4 sm:max-w-md sm:mx-auto z-30 bg-dark-900/90 backdrop-blur-xl rounded-2xl p-4 border border-white/15 shadow-2xl"
+            initial={{ opacity: 0, y: 60, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 60, scale: 0.95 }}
+            className="absolute bottom-28 inset-x-4 sm:max-w-md sm:mx-auto z-40 bg-neutral-900/90 backdrop-blur-2xl rounded-3xl p-4 border border-white/20 shadow-2xl"
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 px-1">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-pink-400" />
-                <h4 className="text-sm font-bold text-white">Beauty Filters</h4>
+                <h4 className="text-sm font-bold text-white tracking-wide">Video Filter Presets</h4>
               </div>
               <button
                 onClick={() => setFilterPickerOpen(false)}
-                className="p-1 rounded-full text-white/60 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
               {FILTERS.map((f) => {
                 const isSelected = activeFilter.id === f.id;
                 return (
                   <button
                     key={f.id}
                     onClick={() => applyFilter(f.id)}
-                    className={`shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
+                    className={`shrink-0 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all border ${
                       isSelected
-                        ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white border-transparent shadow-glow-sm scale-105'
-                        : 'bg-white/5 text-white/75 border-white/10 hover:bg-white/15'
+                        ? 'bg-gradient-to-r from-pink-500 to-brand-primary text-white border-transparent shadow-[0_0_15px_rgba(236,72,153,0.5)] scale-105'
+                        : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/15'
                     }`}
                   >
                     {f.label}
@@ -680,20 +775,20 @@ export const CallScreen = ({
         )}
       </AnimatePresence>
 
-      {/* In-Call Text Chat Drawer */}
+      {/* 8. Responsive In-Call Text Chat Drawer */}
       <AnimatePresence>
         {chatOpen && (
           <motion.div
             initial={{ opacity: 0, y: '100%' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-            className="absolute inset-x-0 bottom-0 top-1/3 sm:top-1/4 z-40 bg-dark-950/95 backdrop-blur-2xl rounded-t-3xl flex flex-col border-t border-white/15 shadow-2xl"
+            transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+            className="absolute inset-x-0 bottom-0 top-1/3 sm:top-1/4 sm:max-w-md sm:left-auto sm:right-6 z-40 bg-neutral-950/95 backdrop-blur-3xl rounded-t-3xl sm:rounded-3xl flex flex-col border border-white/15 shadow-2xl overflow-hidden"
           >
-            {/* Chat header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-white/5">
               <div className="flex items-center gap-2">
-                <ChatIcon className="w-5 h-5 text-brand-primary" />
+                <ChatIcon className="w-4 h-4 text-brand-primary" />
                 <h3 className="font-bold text-sm text-white">Call Messages</h3>
                 <span className="text-xs text-white/50">({chatMessages.length})</span>
               </div>
@@ -705,13 +800,13 @@ export const CallScreen = ({
               </button>
             </div>
 
-            {/* Chat messages list */}
+            {/* Messages list */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {chatMessages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-white/40 text-xs text-center">
-                  <ChatIcon className="w-8 h-8 mb-2 opacity-50" />
-                  <p>No messages yet.</p>
-                  <p>Say hello to everyone in the call!</p>
+                <div className="h-full flex flex-col items-center justify-center text-white/40 text-xs text-center space-y-2 py-8">
+                  <ChatIcon className="w-8 h-8 opacity-40" />
+                  <p className="font-medium">No messages yet.</p>
+                  <p className="text-[11px] text-white/30">Send a quick message during the call</p>
                 </div>
               ) : (
                 chatMessages.map((msg) => {
@@ -730,10 +825,10 @@ export const CallScreen = ({
                         />
                       )}
                       <div
-                        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-xs ${
+                        className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-xs shadow-md ${
                           isMe
-                            ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white rounded-br-none shadow-glow-sm'
-                            : 'bg-dark-800/90 text-white/90 border border-white/10 rounded-bl-none'
+                            ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-br-none'
+                            : 'bg-neutral-800/90 text-white/95 border border-white/10 rounded-bl-none'
                         }`}
                       >
                         {!isMe && (
@@ -753,21 +848,21 @@ export const CallScreen = ({
             {/* Chat input box */}
             <form
               onSubmit={handleSendMessage}
-              className="p-3 border-t border-white/10 bg-dark-900/80 flex items-center gap-2"
+              className="p-3 border-t border-white/10 bg-neutral-900/90 flex items-center gap-2"
             >
               <input
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Type a message..."
-                className="flex-1 bg-dark-800/90 border border-white/10 rounded-full px-4 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-brand-primary transition-colors"
+                className="flex-1 bg-neutral-800/90 border border-white/10 rounded-full px-4 py-2.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-brand-primary transition-colors"
               />
               <button
                 type="submit"
                 disabled={!messageText.trim()}
                 className={`p-2.5 rounded-full flex items-center justify-center transition-all ${
                   messageText.trim()
-                    ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-glow-sm hover:scale-105 active:scale-95'
+                    ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:scale-105 active:scale-95'
                     : 'bg-white/10 text-white/30 cursor-not-allowed'
                 }`}
               >
@@ -778,94 +873,106 @@ export const CallScreen = ({
         )}
       </AnimatePresence>
 
-      {/* Error state */}
+      {/* 9. Coins Finished Modal Overlay */}
+      <CoinsFinishedOverlay
+        visible={coinsFinished}
+        onClose={() => {
+          setCoinsFinished(false);
+          onClose('ended');
+        }}
+      />
+
+      {/* 10. Error notice bar */}
       {error && (
-        <div className="absolute bottom-24 inset-x-0 z-20 flex justify-center px-6 pointer-events-none">
-          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-full px-4 py-2 backdrop-blur-md">
+        <div className="absolute bottom-24 inset-x-0 z-30 flex justify-center px-6 pointer-events-none">
+          <div className="text-xs text-rose-300 bg-rose-950/80 border border-rose-500/40 rounded-full px-4 py-2 backdrop-blur-xl shadow-lg">
             {error}
-          </p>
+          </div>
         </div>
       )}
 
-      {/* Bottom Controls Bar */}
-      <div className="absolute bottom-8 inset-x-0 z-30 flex items-center justify-center gap-3 sm:gap-4 px-4">
+      {/* 11. Responsive Floating Bottom Control Dock */}
+      <footer className="absolute bottom-6 sm:bottom-8 inset-x-0 z-30 flex items-center justify-center px-4 pointer-events-none">
         {incoming && ringing && !answering ? (
-          <div className="flex items-center justify-around w-full max-w-xs px-4">
-            {/* Decline Button */}
+          /* Incoming Call Action Controls (Decline & Accept) */
+          <div className="pointer-events-auto flex items-center justify-around w-full max-w-sm px-6 py-4 rounded-3xl bg-black/40 backdrop-blur-2xl border border-white/15 shadow-2xl">
+            {/* Decline Action */}
             <div className="flex flex-col items-center gap-2">
               <button
                 onClick={handleReject}
                 aria-label="Decline call"
-                className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-red-700 shadow-[0_0_30px_rgba(239,68,68,0.5)] border border-red-400/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+                className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-500 to-red-700 shadow-[0_0_30px_rgba(244,63,94,0.5)] border border-rose-400/40 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all"
               >
-                <PhoneOff className="w-7 h-7 text-white" />
+                <PhoneOff className="w-7 h-7" />
               </button>
-              <span className="text-xs font-bold text-red-400">Decline</span>
+              <span className="text-xs font-bold text-rose-400 tracking-wide">Decline</span>
             </div>
 
-            {/* Accept Button */}
+            {/* Accept Action */}
             <div className="flex flex-col items-center gap-2">
               <button
                 onClick={handleAccept}
                 aria-label="Accept call"
-                className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_35px_rgba(16,185,129,0.7)] border border-emerald-300/50 flex items-center justify-center hover:scale-110 active:scale-95 transition-all animate-pulse"
+                className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_35px_rgba(16,185,129,0.7)] border border-emerald-300/50 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all animate-pulse"
               >
-                <PhoneCall className="w-7 h-7 text-white" />
+                <PhoneCall className="w-7 h-7" />
               </button>
-              <span className="text-xs font-bold text-emerald-400">Accept</span>
+              <span className="text-xs font-bold text-emerald-400 tracking-wide">Accept</span>
             </div>
           </div>
         ) : (
-          <>
-            {/* NEXT Match button */}
+          /* Active / Dialing Call Control Dock */
+          <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3.5 px-4 sm:px-5 py-3 rounded-full bg-neutral-950/70 backdrop-blur-2xl border border-white/15 shadow-2xl">
+            {/* NEXT Match button (Random Match mode) */}
             {joined && onNext && (
               <button
                 onClick={onNext}
                 aria-label="Next match"
-                className="w-11 h-11 rounded-full glass-chip flex items-center justify-center text-[10px] font-black tracking-wider bg-white/10 hover:bg-white/20 border border-white/20 text-white active:scale-95 transition-all shadow-md"
+                className="h-11 sm:h-12 px-3.5 rounded-full flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-lg hover:scale-105 active:scale-95 transition-all"
                 title="Next match"
               >
-                NEXT
+                <span>NEXT</span>
+                <FastForwardIcon className="w-4 h-4" />
               </button>
             )}
 
             {joined && (
               <>
-                {/* 1. Text Chat Toggle */}
+                {/* 1. Chat Drawer Toggle */}
                 <button
                   onClick={() => {
                     setChatOpen(!chatOpen);
                     setFilterPickerOpen(false);
                   }}
                   aria-label="Toggle text chat"
-                  className={`relative w-11 h-11 rounded-full glass-chip flex items-center justify-center transition-all border ${
+                  className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                     chatOpen
-                      ? 'bg-brand-primary text-white border-brand-primary shadow-glow-sm'
-                      : 'bg-black/50 text-white/90 border-white/15 hover:bg-white/15'
+                      ? 'bg-brand-primary text-white border-brand-primary shadow-[0_0_15px_rgba(99,102,241,0.5)]'
+                      : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                   }`}
-                  title="Text Chat"
+                  title="In-call chat"
                 >
                   <ChatIcon className="w-5 h-5" />
                   {unreadChatCount > 0 && !chatOpen && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-pink-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-pink-500 text-white text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
                       {unreadChatCount}
                     </span>
                   )}
                 </button>
 
-                {/* 2. Flip Camera Toggle (Video Calls) */}
+                {/* 2. Flip Camera (Video calls) */}
                 {isVideo && (
                   <button
                     onClick={switchCamera}
                     aria-label="Flip camera"
-                    className="w-11 h-11 rounded-full glass-chip flex items-center justify-center bg-black/50 text-white/90 border border-white/15 hover:bg-white/15 active:scale-95 transition-all"
-                    title="Flip Camera"
+                    className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
+                    title="Flip camera"
                   >
                     <CameraRotate className="w-5 h-5" />
                   </button>
                 )}
 
-                {/* 3. Beauty Filter Toggle (Video Calls) */}
+                {/* 3. Beauty Filter (Video calls) */}
                 {isVideo && (
                   <button
                     onClick={() => {
@@ -873,26 +980,26 @@ export const CallScreen = ({
                       setChatOpen(false);
                     }}
                     aria-label="Beauty filter"
-                    className={`w-11 h-11 rounded-full glass-chip flex items-center justify-center transition-all border ${
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                       filterPickerOpen || activeFilter.id !== 'natural'
-                        ? 'bg-pink-600 text-white border-pink-400 shadow-[0_0_15px_rgba(244,114,182,0.5)]'
-                        : 'bg-black/50 text-white/90 border-white/15 hover:bg-white/15'
+                        ? 'bg-pink-500 text-white border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.6)]'
+                        : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                     }`}
-                    title="Beauty Filter"
+                    title="Beauty filters"
                   >
                     <Sparkles className="w-5 h-5" />
                   </button>
                 )}
 
-                {/* 4. Camera On/Off Toggle (Video Calls) */}
+                {/* 4. Camera Toggle (Video calls) */}
                 {isVideo && (
                   <button
                     onClick={toggleCamera}
                     aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
-                    className={`w-11 h-11 rounded-full glass-chip flex items-center justify-center transition-all border ${
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                       cameraOn
-                        ? 'bg-black/50 text-white/90 border-white/15 hover:bg-white/15'
-                        : 'bg-red-500/30 text-red-400 border-red-500/50'
+                        ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
+                        : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
                     }`}
                     title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
                   >
@@ -900,14 +1007,14 @@ export const CallScreen = ({
                   </button>
                 )}
 
-                {/* 5. Microphone On/Off Toggle */}
+                {/* 5. Microphone Toggle */}
                 <button
                   onClick={toggleMic}
                   aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
-                  className={`w-11 h-11 rounded-full glass-chip flex items-center justify-center transition-all border ${
+                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                     micOn
-                      ? 'bg-black/50 text-white/90 border-white/15 hover:bg-white/15'
-                      : 'bg-red-500/30 text-red-400 border-red-500/50'
+                      ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
+                      : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
                   }`}
                   title={micOn ? 'Mute microphone' : 'Unmute microphone'}
                 >
@@ -916,18 +1023,18 @@ export const CallScreen = ({
               </>
             )}
 
-            {/* Hangup / End call button */}
+            {/* 6. End Call Button */}
             <button
               onClick={handleHangup}
               aria-label="End call"
-              className="w-13 h-13 rounded-full bg-gradient-to-br from-red-500 to-red-700 btn-glow-pink flex items-center justify-center p-3.5 hover:scale-105 active:scale-95 transition-transform"
+              className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-rose-600 via-red-600 to-rose-700 shadow-[0_0_20px_rgba(225,29,72,0.6)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
               title="End call"
             >
-              <PhoneOff className="w-6 h-6 text-white" />
+              <PhoneOff className="w-6 h-6" />
             </button>
-          </>
+          </div>
         )}
-      </div>
+      </footer>
     </motion.div>
   );
 };

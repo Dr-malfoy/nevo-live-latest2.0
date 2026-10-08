@@ -1,24 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
-import { Moment } from '../models';
+import { Moment, WatchHistory } from '../models';
 import { sendSuccess, sendPaginated, sendError } from '../utils/response';
 import { getIO } from '../socket';
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
-const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel wealthExp exp sellerType verification diamonds coins noble isVip';
+const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes exp sellerType verification diamonds coins noble isVip';
 
 const decorateUser = (plain: any) => {
   if (!plain) return plain;
   const raw = typeof plain.toObject === 'function' ? plain.toObject() : { ...plain };
   const diamonds = Math.max(0, raw?.diamonds ?? 0);
-  const coins = Math.max(0, raw?.coins ?? 0);
   const wealthExp = Math.max(raw?.wealthExp || 0, diamonds);
   const wealthLevel = raw?.wealthLevel && raw.wealthLevel > 1 ? raw.wealthLevel : calculateWealthLevel(wealthExp, raw?.level).level;
-  const liveLevel = raw?.liveLevel && raw.liveLevel > 1 ? raw.liveLevel : calculateLiveLevel(coins, raw?.level).level;
+  const liveStreamSeconds = raw?.liveStreamSeconds || 0;
+  const liveStreamMinutes = raw?.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);
+  const liveLevel = raw?.liveLevel && raw.liveLevel > 1 ? raw.liveLevel : calculateLiveLevel(liveStreamMinutes, raw?.level).level;
   const level = raw?.level && raw.level > 1 ? raw.level : Math.max(wealthLevel, liveLevel, 1);
   return {
     ...raw,
     wealthLevel,
     liveLevel,
+    liveStreamSeconds,
+    liveStreamMinutes,
     level,
   };
 };
@@ -53,9 +56,24 @@ export const momentController = {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
+      const { userId, mediaType } = req.query as { userId?: string; mediaType?: string };
 
-      const total = await Moment.countDocuments();
-      const moments = await Moment.find()
+      const query: any = {};
+      if (userId) {
+        query.userId = userId;
+      }
+      if (mediaType === 'video') {
+        query.$or = [
+          { mediaType: 'video' },
+          { videoUrl: { $exists: true, $ne: '' } },
+          { media: { $regex: /\.(mp4|webm|mov|mkv)$/i } }
+        ];
+      } else if (mediaType === 'image') {
+        query.mediaType = 'image';
+      }
+
+      const total = await Moment.countDocuments(query);
+      const moments = await Moment.find(query)
         .populate('userId', USER_FIELDS)
         .populate('comments.userId', USER_FIELDS)
         .sort({ createdAt: -1 })
@@ -264,6 +282,45 @@ export const momentController = {
       });
 
       sendSuccess(res, { shareCount: moment.shareCount }, 'Moment shared');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async recordView(req: Request, res: Response, next: NextFunction) {
+    try {
+      const moment = await Moment.findByIdAndUpdate(
+        req.params.id,
+        { $inc: { viewCount: 1 } },
+        { new: true }
+      );
+      if (!moment) {
+        sendError(res, 'Moment not found', 404);
+        return;
+      }
+
+      if (req.user?.userId) {
+        try {
+          await WatchHistory.findOneAndUpdate(
+            {
+              userId: req.user.userId,
+              type: moment.mediaType === 'video' ? 'video' : 'video',
+              targetId: moment._id,
+            },
+            {
+              $set: {
+                title: moment.content?.slice(0, 50) || 'Video Reel',
+                cover: moment.thumbnail || moment.media?.[0] || '',
+                hostId: moment.userId,
+                watchedAt: new Date(),
+              },
+            },
+            { upsert: true, new: true }
+          );
+        } catch {}
+      }
+
+      sendSuccess(res, { viewCount: moment.viewCount });
     } catch (error) {
       next(error);
     }

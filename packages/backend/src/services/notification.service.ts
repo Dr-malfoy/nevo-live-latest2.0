@@ -254,4 +254,15 @@ export const notificationService = {
     });
     return true;
   },
+
+  async deleteAllNotifications(userId: string, filter?: { onlyRead?: boolean }) {
+    if (!userId || !mongoose.isValidObjectId(userId)) return false;
+    const query: any = { userId: new mongoose.Types.ObjectId(userId) };
+    if (filter?.onlyRead) {
+      query.read = true;
+    }
+    await Notification.deleteMany(query);
+    return true;
+  },
 };
+

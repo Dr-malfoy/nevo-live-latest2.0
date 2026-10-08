@@ -33,6 +33,23 @@ export const agentController = {
     }
   },
 
+  async getPendingCounts(req: Request, res: Response, next: NextFunction) {
+    try {
+      const agentId = req.user!.userId;
+      const [pendingRecharges, pendingWithdrawals] = await Promise.all([
+        PurchaseOrder.countDocuments({ agentId, status: 'pending' }),
+        WithdrawalRequest.countDocuments({ agentId, status: 'pending' }),
+      ]);
+      sendSuccess(res, {
+        pendingRecharges,
+        pendingWithdrawals,
+        totalPending: pendingRecharges + pendingWithdrawals,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ─── Recharge requests (Host/User → Agent) ────────────────────────
 
   async getRechargeRequests(req: Request, res: Response, next: NextFunction) {
@@ -205,7 +222,13 @@ export const agentController = {
   async getPaymentInfo(req: Request, res: Response, next: NextFunction) {
     try {
       const user = await User.findById(req.user!.userId).select('paymentInfo');
-      sendSuccess(res, user?.paymentInfo || { bybit: { qrCode: '', walletAddress: '' }, binance: { qrCode: '', walletAddress: '' } });
+      sendSuccess(res, user?.paymentInfo || {
+        bybit: { qrCode: '', walletAddress: '' },
+        binance: { qrCode: '', walletAddress: '' },
+        bkash: { qrCode: '', walletAddress: '', number: '', phone: '' },
+        nagad: { qrCode: '', walletAddress: '', number: '', phone: '' },
+        rocket: { qrCode: '', walletAddress: '', number: '', phone: '' },
+      });
     } catch (error) {
       next(error);
     }
@@ -213,15 +236,16 @@ export const agentController = {
 
   async updatePaymentInfo(req: Request, res: Response, next: NextFunction) {
     try {
-      const { bybit, binance } = req.body;
+      const { bybit, binance, bkash, nagad, rocket } = req.body;
       const update: any = {};
-      if (bybit) {
-        if (bybit.qrCode !== undefined) update['paymentInfo.bybit.qrCode'] = bybit.qrCode;
-        if (bybit.walletAddress !== undefined) update['paymentInfo.bybit.walletAddress'] = bybit.walletAddress;
-      }
-      if (binance) {
-        if (binance.qrCode !== undefined) update['paymentInfo.binance.qrCode'] = binance.qrCode;
-        if (binance.walletAddress !== undefined) update['paymentInfo.binance.walletAddress'] = binance.walletAddress;
+      const methods: Record<string, any> = { bybit, binance, bkash, nagad, rocket };
+      for (const [m, data] of Object.entries(methods)) {
+        if (data) {
+          if (data.qrCode !== undefined) update[`paymentInfo.${m}.qrCode`] = data.qrCode;
+          if (data.walletAddress !== undefined) update[`paymentInfo.${m}.walletAddress`] = data.walletAddress;
+          if (data.number !== undefined) update[`paymentInfo.${m}.number`] = data.number;
+          if (data.phone !== undefined) update[`paymentInfo.${m}.phone`] = data.phone;
+        }
       }
       const user = await User.findByIdAndUpdate(req.user!.userId, { $set: update }, { new: true }).select('paymentInfo');
       sendSuccess(res, user?.paymentInfo, 'Payment info updated');

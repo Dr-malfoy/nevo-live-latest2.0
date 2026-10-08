@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { PiCaretLeftBold as ArrowLeft, PiSealCheckFill as BadgeCheck, PiCaretRightBold as ChevronRight, PiClockFill as Clock, PiCrownFill as Crown, PiHeadphonesFill as Headphones, PiHeartFill as Heart, PiLightbulbFill as Lightbulb, PiMedalFill as Medal, PiPlanetFill as Orbit, PiShieldCheckFill as ShieldCheck, PiToteFill as ShoppingBag, PiTelevisionFill as Tv } from 'react-icons/pi';
+import { PiCaretLeftBold as ArrowLeft, PiSealCheckFill as BadgeCheck, PiCaretRightBold as ChevronRight, PiClockFill as Clock, PiCrownFill as Crown, PiHeadphonesFill as Headphones, PiLightbulbFill as Lightbulb, PiMedalFill as Medal, PiToteFill as ShoppingBag, PiTelevisionFill as Tv } from 'react-icons/pi';
 import { useUIStore } from '../stores';
 
 /**
@@ -25,19 +25,15 @@ interface MenuItem {
 const CREATOR_CENTERS: MenuItem[] = [
   { key: 'streamer', label: 'Streamer Center', Icon: Tv, tint: 'text-ink-muted', to: '/streamer-center' },
   { key: 'video_creator', label: 'Video Creator Center', Icon: Lightbulb, tint: 'text-ink-muted', to: '/creator-center' },
-  { key: 'builder', label: 'Builder Center', Icon: Orbit, tint: 'text-accent-500' },
 ];
 
 const GENERAL: MenuItem[] = [
   { key: 'help', label: 'Help Center', Icon: Headphones, tint: 'text-[#F5A623]', value: '24h', to: '/help' },
   { key: 'watch_history', label: 'Watch History', Icon: Clock, tint: 'text-ink-muted', to: '/watch-history' },
-
-  { key: 'guardian', label: 'Guardian', Icon: ShieldCheck, tint: 'text-ink-muted' },
   { key: 'level', label: 'Level', Icon: Crown, tint: 'text-ink-muted', to: '/levels' },
   { key: 'achievement', label: 'Achievement Poster', Icon: Medal, tint: 'text-ink-muted', to: '/achievements' },
-  { key: 'bag', label: 'Bag', Icon: ShoppingBag, tint: 'text-ink-muted', dot: true, to: '/store' },
+  { key: 'bag', label: 'Bag', Icon: ShoppingBag, tint: 'text-indigo-500', dot: true, to: '/bag' },
   { key: 'authentication', label: 'Authentication', Icon: BadgeCheck, tint: 'text-role-official', to: '/verification' },
-  { key: 'follow_us', label: 'Follow Us', Icon: Heart, tint: 'text-ink-muted' },
 ];
 
 export const MeCenter = () => {

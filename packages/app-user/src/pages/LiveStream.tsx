@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { streamsApi, giftsApi } from '../api';
+import { gamesApi } from '../api/economy.api';
 import { useSocketStore, useAuthStore, useUIStore } from '../stores';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
@@ -133,6 +134,18 @@ export const LiveStreamPage = () => {
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
+  }, [joined, isHost, id]);
+
+  // Live Activity & Task Progress Tracking (watches live / streams live)
+  useEffect(() => {
+    if (!joined || !id) return;
+    // Track every 30 seconds (0.5 minute increment or 1 minute every 60s)
+    const metricName = isHost ? 'live_stream_minutes' : 'live_watch_minutes';
+    const interval = setInterval(() => {
+      gamesApi.recordProgress(metricName, 1).catch(() => {});
+    }, 60_000);
+
+    return () => clearInterval(interval);
   }, [joined, isHost, id]);
 
   // Network grace: auto-end after 10s of disconnect unless connection recovers
@@ -338,11 +351,13 @@ export const LiveStreamPage = () => {
 
   const handleLike = useCallback(() => {
     if (socket && id) socket.emit('stream:like', { streamId: id });
+    gamesApi.recordProgress('likes', 1).catch(() => {});
   }, [socket, id]);
 
   const handleChat = useCallback((message: string) => {
     if (!socket || !id) return;
     socket.emit('stream:chat', { streamId: id, message });
+    gamesApi.recordProgress('chat_sent', 1).catch(() => {});
     // Optimistic local echo so the sender sees their own message immediately
     if (user) {
       setChatMessages((prev) => [
@@ -381,6 +396,7 @@ export const LiveStreamPage = () => {
         }
       }
       if (socket && id) socket.emit('stream:gift', { streamId: id, gift, count: quantity });
+      gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
       // Optimistic local gift message for the sender
       if (user) {
         setChatMessages((prev) => [

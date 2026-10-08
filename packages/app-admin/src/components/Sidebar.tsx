@@ -8,6 +8,7 @@ const links = [
   { to: '/streams', icon: Radio, label: 'Streams' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
   { to: '/gifts', icon: Gift, label: 'Gifts' },
+  { to: '/badges', icon: Award, label: 'Badge Store' },
   { to: '/agents', icon: Building2, label: 'Agents' },
   { to: '/purchase-orders', icon: ShoppingCart, label: 'Purchase Orders' },
   { to: '/agent-orders', icon: ShoppingBag, label: 'Agent Orders' },

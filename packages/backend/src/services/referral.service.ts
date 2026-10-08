@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { User, ReferralTemplate, ReferralClaim, Agency } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getBangladeshDayBounds } from '../utils/date';
@@ -216,16 +217,25 @@ export const referralService = {
 
   async inviteHostToAgency(agentId: string, targetUserId: string, hostCode: string) {
     const agent = await User.findById(agentId);
-    if (!agent || !agent.isAgent) {
+    if (!agent || (!agent.isAgent && agent.role !== 'agent' && !agent.isAdmin && agent.role !== 'admin')) {
       throw new AppError('Only registered agents can invite hosts', 403);
     }
 
-    const agency = await Agency.findOne({ agentId });
+    let agency = await Agency.findOne({ agentId });
+    if (!agency && agent.agencyId) {
+      agency = await Agency.findById(agent.agencyId);
+    }
     if (!agency) {
       throw new AppError('Agency not found for this agent', 404);
     }
 
-    const targetUser = await User.findById(targetUserId);
+    const isValidId = mongoose.isValidObjectId(targetUserId);
+    const targetUser = await User.findOne({
+      $or: [
+        { uid: targetUserId },
+        ...(isValidId ? [{ _id: targetUserId }] : [])
+      ]
+    });
     if (!targetUser) {
       throw new AppError('Target host not found', 404);
     }
@@ -251,7 +261,13 @@ export const referralService = {
   },
 
   async getAgencyInvitations(agentId: string) {
-    const agency = await Agency.findOne({ agentId });
+    let agency = await Agency.findOne({ agentId });
+    if (!agency) {
+      const agent = await User.findById(agentId);
+      if (agent?.agencyId) {
+        agency = await Agency.findById(agent.agencyId);
+      }
+    }
     if (!agency) return [];
 
     const members = await User.find({ agencyId: agency._id })

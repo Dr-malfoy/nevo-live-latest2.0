@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  PiBellFill as Bell,
   PiCameraFill as Camera,
   PiCheckBold as Check,
   PiCaretRightBold as ChevronRight,
@@ -28,20 +29,17 @@ import {
   PiWalletFill as WalletIcon,
   PiTelevision,
   PiLightbulb,
-  PiPlanet,
   PiClock,
   PiBackpack,
   PiSealCheck,
   PiBuildingsFill,
-  PiYoutubeLogoFill,
-  PiFacebookLogoFill,
-  PiTiktokLogoFill,
+  PiArrowsLeftRightFill,
 } from 'react-icons/pi';
-import { useAuthStore } from '../stores';
-import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge } from '../components/user';
+import { useAuthStore, useSocketStore } from '../stores';
+import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge } from '../components/user';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
-import { usersApi } from '../api';
+import { usersApi, notificationApi, agentApi } from '../api';
 import { countryLabel } from '../lib/countries';
 import { getMediaUrl } from '../lib/media';
 import { calculateWealthLevel, calculateLiveLevel } from '../lib/userLevels';
@@ -54,17 +52,30 @@ const QUICK_ACTIONS = [
   { to: '/games', label: 'Fun Island', Icon: Gamepad2, tint: 'bg-[#E9F9EE] text-[#22A45D]' },
   { to: '/store', label: 'Store', Icon: Store, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
   { to: '/invite', label: 'Invite', Icon: Send, tint: 'bg-[#FFECF3] text-[#FF6EA6]' },
-  { to: '/levels', label: 'Honor Level', Icon: Crown, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
+  { to: '/levels', label: 'Level', Icon: Crown, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
   { to: '/fan-club', label: 'Fan Club', Icon: Heart, tint: 'bg-[#FDEBF3] text-[#EC4899]' },
-  { to: '/achievements', label: 'Medal Wall', Icon: Medal, tint: 'bg-[#FFECEC] text-[#E5342F]' },
+  { to: '/achievements', label: 'Achievement Poster', Icon: Medal, tint: 'bg-[#FFECEC] text-[#E5342F]' },
 ];
 
 /** Requirement #22H — the Agent & Agency section. */
-const AGENT_ACTIONS = [
+const getAgentActions = (isAgent: boolean, pendingRequestsCount: number = 0) => [
   { to: '/agency', label: 'Agency', Icon: PiBuildingsFill, tint: 'bg-[#E8F4FF] text-[#2563EB]' },
-  { to: '/agent', label: 'My Agency', Icon: UserCog, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
+  { to: isAgent ? '/agent' : '/my-agency', label: 'My Agency', Icon: UserCog, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
   { to: '/transfer', label: 'Coin Transfer', Icon: Coins, tint: 'bg-[#FFF3E0] text-[#F59E0B]' },
-  { to: '/agent/invite-hosts', label: 'Add Host', Icon: UserPlus, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
+  ...(isAgent
+    ? [
+        {
+          to: '/agent/requests',
+          label: 'Recharge / Withdraw',
+          Icon: PiArrowsLeftRightFill,
+          tint: 'bg-[#FFEFE8] text-[#FF5A1F]',
+          badge: pendingRequestsCount,
+        },
+        { to: '/agent/invite-hosts', label: 'Add Host', Icon: UserPlus, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
+      ]
+    : [
+        { to: '/agency', label: 'Join Agency', Icon: PiBuildingsFill, tint: 'bg-[#E6FAF6] text-[#00BFA5]' },
+      ]),
 ];
 
 export const Profile = () => {
@@ -79,6 +90,71 @@ export const Profile = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [showLevelSheet, setShowLevelSheet] = useState(false);
   const [levelSheetTab, setLevelSheetTab] = useState<'wealth' | 'live'>('wealth');
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
+  const isAgent = Boolean(
+    user?.role === 'agent' ||
+    user?.isAgent ||
+    user?.isAdmin ||
+    user?.role === 'admin'
+  );
+
+  const socket = useSocketStore((s) => s.socket);
+
+  // Sync notification unread count
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    notificationApi
+      .getUnreadCount()
+      .then(({ data }) => {
+        if (data.success && data.data) {
+          setUnreadNotifications(data.data.count || 0);
+        }
+      })
+      .catch(() => {});
+
+    if (isAgent) {
+      agentApi
+        .getPendingCounts()
+        .then(({ data }) => {
+          if (data.success && data.data) {
+            setPendingRequestsCount(data.data.totalPending || 0);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAuthenticated, isAgent]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onNewNotif = (notif: any) => {
+      setUnreadNotifications((c) => c + 1);
+      if (isAgent && (notif?.type === 'recharge' || notif?.type === 'withdrawal')) {
+        agentApi
+          .getPendingCounts()
+          .then(({ data }) => {
+            if (data.success && data.data) {
+              setPendingRequestsCount(data.data.totalPending || 0);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+
+    const onAgentRequestNew = () => {
+      if (isAgent) {
+        setPendingRequestsCount((c) => c + 1);
+      }
+    };
+
+    socket.on('notification:new', onNewNotif);
+    socket.on('agent:request:new', onAgentRequestNew);
+    return () => {
+      socket.off('notification:new', onNewNotif);
+      socket.off('agent:request:new', onAgentRequestNew);
+    };
+  }, [socket, isAgent]);
 
   // Requirement #2 — the four counts and fresh balances come from the server,
   // keeping diamonds, coins, and follow counts completely accurate.
@@ -117,8 +193,9 @@ export const Profile = () => {
   }
 
   const wealthPoints = Math.max((user as any).wealthExp || 0, user.diamonds || 0);
+  const liveTimeMinutes = (user as any).liveStreamMinutes || Math.floor(((user as any).liveStreamSeconds || 0) / 60);
   const wealthInfo = calculateWealthLevel(wealthPoints, (user as any).wealthLevel || user.level);
-  const liveInfo = calculateLiveLevel(user.coins, (user as any).liveLevel || user.level);
+  const liveInfo = calculateLiveLevel(liveTimeMinutes, (user as any).liveLevel || user.level);
 
   const copyUid = async () => {
     try {
@@ -176,9 +253,21 @@ export const Profile = () => {
         </div>
 
         {/* Header Action Bar */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-3 h-14">
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-3 h-14 z-10">
           <h1 className="text-[26px] font-bold text-white drop-shadow-md">Me</h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/notifications')}
+              aria-label="Notifications"
+              className="relative w-9 h-9 rounded-full bg-black/35 backdrop-blur-md text-white flex items-center justify-center active:bg-black/50 transition-colors shadow-sm"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-3.5 px-1 bg-red-500 rounded-full ring-2 ring-black/40 flex items-center justify-center text-[9px] font-bold text-white leading-none">
+                  {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                </span>
+              )}
+            </button>
             <button
               onClick={handleShare}
               aria-label="Share profile"
@@ -211,44 +300,29 @@ export const Profile = () => {
 
           {/* User Details */}
           <div className="flex-1 min-w-0 pt-6">
-            {/* Row 1: Nickname + VIP Capsule + Arrow with Red Notification Dot */}
+            {/* Row 1: Nickname + Badges + Arrow with Red Notification Dot */}
             <div className="flex items-center justify-between gap-1.5">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-wrap">
                 <span className="font-extrabold text-ink text-lg truncate tracking-tight uppercase">
                   {user.nickname}
                 </span>
                 {user.hostBadge && user.hostBadge !== 'none' && (
                   <HostBadge badge={user.hostBadge} size="sm" />
                 )}
-                {hasVip ? (
-                  <VipCapsule
-                    label="VIP"
-                    onClick={() => {
-                      setLevelSheetTab('wealth');
-                      setShowLevelSheet(true);
-                    }}
-                    className="cursor-pointer active:scale-95 transition-transform"
+                {user.equippedBadge && (
+                  <EquippedBadge
+                    badge={user.equippedBadge}
+                    size="sm"
+                    onClick={() => navigate('/store?category=badge')}
                   />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/top-up')}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/5 hover:bg-black/10 text-ink-muted text-[10px] font-bold active:scale-95 transition-transform shrink-0"
-                    title="Top up Diamonds to earn VIP Badge"
-                  >
-                    <span>💎 Get VIP</span>
-                  </button>
                 )}
               </div>
 
-              {/* Arrow and Red Dot indicator leading to Level Detail Sheet */}
+              {/* Arrow and Red Dot indicator leading to Edit Profile Sheet */}
               <button
-                onClick={() => {
-                  setLevelSheetTab('wealth');
-                  setShowLevelSheet(true);
-                }}
+                onClick={() => setEditing(true)}
                 className="flex items-center gap-2 pl-2 pr-0.5 py-1 active:opacity-70 group shrink-0"
-                aria-label="Open Level Details"
+                aria-label="Edit Profile"
               >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FF2D55] shrink-0 animate-pulse shadow-sm" />
                 <ChevronRight className="w-5 h-5 text-ink-muted group-hover:text-ink transition-colors" />
@@ -357,7 +431,14 @@ export const Profile = () => {
       {/* ── Agent & Agency section (#22H) ───────────────────────── */}
       <div className="mx-4 mt-3 bg-white rounded-card p-3 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-ink">Agent</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-ink">Agent</h2>
+            {pendingRequestsCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-[#FF2D55] text-white text-[10px] font-black animate-pulse shadow-2xs">
+                {pendingRequestsCount} Pending
+              </span>
+            )}
+          </div>
           <button
             onClick={() => navigate('/agency')}
             className="text-sm text-ink-muted flex items-center gap-0.5 hover:text-ink transition-colors"
@@ -367,15 +448,22 @@ export const Profile = () => {
         </div>
 
         <div className="grid grid-cols-4 gap-y-4">
-          {AGENT_ACTIONS.map(({ to, label, Icon, tint }) => (
+          {getAgentActions(isAgent, pendingRequestsCount).map(({ to, label, Icon, tint, badge }) => (
             <button
-              key={to}
+              key={to + label}
               onClick={() => navigate(to)}
               className="flex flex-col items-center gap-1.5 active:opacity-60 transition-opacity"
             >
-              <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${tint}`}>
-                <Icon className="w-5 h-5" />
-              </span>
+              <div className="relative">
+                <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${tint}`}>
+                  <Icon className="w-5 h-5" />
+                </span>
+                {badge != null && badge > 0 && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[18px] h-[18px] px-1 bg-[#FF2D55] rounded-full ring-2 ring-white flex items-center justify-center text-[10px] font-black text-white leading-none animate-pulse shadow-sm">
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+              </div>
               <span className="text-[11px] text-ink-soft text-center leading-tight">{label}</span>
             </button>
           ))}
@@ -407,12 +495,7 @@ export const Profile = () => {
         <MenuRow
           icon={<PiLightbulb className="w-5 h-5" />}
           label="Video Creator Center"
-          onClick={() => navigate('/me/center')}
-        />
-        <MenuRow
-          icon={<PiPlanet className="w-[22px] h-[22px] text-[#5b8cff]" />}
-          label="Builder Center"
-          onClick={() => navigate('/me/center')}
+          onClick={() => navigate('/creator-center')}
         />
       </div>
 
@@ -439,11 +522,6 @@ export const Profile = () => {
           onClick={() => navigate('/withdraw-methods')}
         />
         <MenuRow
-          icon={<Store className="w-[22px] h-[22px] text-[#22A45D]" />}
-          label="Sell Coin"
-          onClick={() => navigate('/sell')}
-        />
-        <MenuRow
           icon={<Headphones className="w-[22px] h-[22px] text-orange-400" />}
           label="Help Center"
           rightNode={<span className="text-[13px] text-ink-muted mr-1">24h</span>}
@@ -453,12 +531,7 @@ export const Profile = () => {
         <MenuRow
           icon={<PiClock className="w-5 h-5" />}
           label="Watch History"
-          onClick={() => {}}
-        />
-        <MenuRow
-          icon={<ShieldCheck className="w-5 h-5" />}
-          label="Guardian"
-          onClick={() => {}}
+          onClick={() => navigate('/watch-history')}
         />
         <MenuRow
           icon={<Crown className="w-5 h-5" />}
@@ -471,10 +544,10 @@ export const Profile = () => {
           onClick={() => navigate('/achievements')}
         />
         <MenuRow
-          icon={<PiBackpack className="w-5 h-5" />}
+          icon={<PiBackpack className="w-5 h-5 text-indigo-500" />}
           label="Bag"
           rightNode={<div className="w-1.5 h-1.5 rounded-full bg-status-danger mr-1" />}
-          onClick={() => {}}
+          onClick={() => navigate('/bag')}
         />
         <MenuRow
           icon={<PiBuildingsFill className="w-5 h-5 text-indigo-600" />}
@@ -490,18 +563,6 @@ export const Profile = () => {
           icon={<PiSealCheck className="w-5 h-5" />}
           label="Authentication"
           onClick={() => navigate('/verification')}
-        />
-        <MenuRow
-          icon={<Heart className="w-5 h-5" />}
-          label="Follow Us"
-          rightNode={
-            <div className="flex items-center gap-1 text-[18px] mr-1">
-              <PiYoutubeLogoFill className="text-[#FF0000]" />
-              <PiFacebookLogoFill className="text-[#1877F2]" />
-              <PiTiktokLogoFill className="text-black" />
-            </div>
-          }
-          onClick={() => {}}
         />
       </div>
 
@@ -526,7 +587,10 @@ export const Profile = () => {
         defaultTab={levelSheetTab}
         userDiamonds={wealthPoints}
         userCoins={user.coins}
-        userLevel={(user as any).wealthLevel || user.level}
+        userLiveTimeMinutes={liveTimeMinutes}
+        userWealthLevel={(user as any).wealthLevel || user.level}
+        userLiveLevel={(user as any).liveLevel || 1}
+        userLevel={user.level}
       />
     </div>
   );

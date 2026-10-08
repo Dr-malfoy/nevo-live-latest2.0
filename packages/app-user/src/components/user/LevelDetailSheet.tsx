@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PiCaretLeftBold as ChevronLeft, PiQuestionBold as QuestionMark, PiXBold as CloseIcon, PiSparkleFill as Sparkle, PiGiftFill as Gift, PiCrownFill as Crown, PiShieldCheckFill as Shield, PiFireFill as Fire } from 'react-icons/pi';
-import { calculateWealthLevel, calculateLiveLevel } from '../../lib/userLevels';
+import { calculateWealthLevel, calculateLiveLevel, formatLiveTime } from '../../lib/userLevels';
 
 interface LevelDetailSheetProps {
   isOpen: boolean;
@@ -8,6 +8,9 @@ interface LevelDetailSheetProps {
   defaultTab?: 'wealth' | 'live';
   userDiamonds?: number;
   userCoins?: number;
+  userLiveTimeMinutes?: number;
+  userWealthLevel?: number;
+  userLiveLevel?: number;
   userLevel?: number;
 }
 
@@ -206,6 +209,9 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
   defaultTab = 'wealth',
   userDiamonds = 0,
   userCoins = 0,
+  userLiveTimeMinutes = 0,
+  userWealthLevel,
+  userLiveLevel,
   userLevel = 1,
 }) => {
   const [activeTab, setActiveTab] = useState<'wealth' | 'live'>(defaultTab);
@@ -230,8 +236,8 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
 
   if (!isOpen) return null;
 
-  const wealthInfo = calculateWealthLevel(userDiamonds, userLevel);
-  const liveInfo = calculateLiveLevel(userCoins, userLevel);
+  const wealthInfo = calculateWealthLevel(userDiamonds, userWealthLevel ?? userLevel);
+  const liveInfo = calculateLiveLevel(userLiveTimeMinutes, userLiveLevel);
 
   const currentInfo = activeTab === 'wealth' ? wealthInfo : liveInfo;
 
@@ -328,7 +334,7 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 </p>
               ) : (
                 <p className="leading-relaxed">
-                  Live Level is upgraded by sending and receiving gifts during live streams. Higher live levels unlock custom chat bubbles, fan badges, and increased visibility in live rooms.
+                  Live Level is upgraded based on your live broadcast streaming time. The more time you spend streaming live on the platform, the higher your live level grows, unlocking creator medals, broadcast privileges, and live room exposure.
                 </p>
               )}
             </div>
@@ -350,8 +356,8 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                   <div
                     className="absolute -top-7 transition-all duration-300 pointer-events-none"
                     style={{
-                      left: `${Math.min(90, Math.max(8, currentInfo.progress))}%`,
-                      transform: 'translateX(-50%)',
+                      left: `${currentInfo.progress}%`,
+                      transform: `translateX(-${currentInfo.progress}%)`,
                     }}
                   >
                     <div
@@ -361,12 +367,18 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                           : 'bg-[#1b3a1a] border-lime-400/50 text-lime-200 shadow-emerald-950/50'
                       }`}
                     >
-                      {currentInfo.currentPoints.toLocaleString()} {activeTab === 'wealth' ? 'Diamonds' : 'Coins'}
+                      {activeTab === 'wealth'
+                        ? `${currentInfo.currentPoints.toLocaleString()} Diamonds`
+                        : `${formatLiveTime(currentInfo.currentPoints)} Streamed`}
                       {/* Downward triangle pointer */}
                       <div
-                        className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-x-[4px] border-x-transparent border-t-[4px] ${
+                        className={`absolute -bottom-1 w-0 h-0 border-x-[4px] border-x-transparent border-t-[4px] ${
                           activeTab === 'wealth' ? 'border-t-[#3b270a]' : 'border-t-[#1b3a1a]'
                         }`}
+                        style={{
+                          left: `${Math.max(12, Math.min(88, currentInfo.progress))}%`,
+                          transform: 'translateX(-50%)',
+                        }}
                       />
                     </div>
                   </div>
@@ -391,7 +403,9 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 {/* Progress Details Count */}
                 <div className="flex items-center justify-between text-xs text-white/80 font-bold mb-1 tabular-nums">
                   <span>
-                    {currentInfo.currentPoints.toLocaleString()} / {currentInfo.tierNext === Infinity ? 'MAX' : currentInfo.tierNext.toLocaleString()} EXP
+                    {activeTab === 'wealth'
+                      ? `${currentInfo.currentPoints.toLocaleString()} / ${currentInfo.tierNext === Infinity ? 'MAX' : currentInfo.tierNext.toLocaleString()} EXP`
+                      : `${formatLiveTime(currentInfo.currentPoints)} / ${currentInfo.tierNext === Infinity ? 'MAX' : formatLiveTime(currentInfo.tierNext)} Live Time`}
                   </span>
                   <span className={activeTab === 'wealth' ? 'text-amber-300 font-extrabold' : 'text-lime-300 font-extrabold'}>
                     {currentInfo.progress}%
@@ -401,7 +415,9 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 {/* Remaining Progress Text */}
                 <p className="text-[11px] text-white/60 font-medium">
                   {currentInfo.remaining > 0
-                    ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} ${activeTab === 'wealth' ? 'Diamonds' : 'Coins'}`
+                    ? activeTab === 'wealth'
+                      ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} Diamonds`
+                      : `Remaining live time to upgrade: ${formatLiveTime(currentInfo.remaining)}`
                     : 'Top level reached!'}
                 </p>
               </div>

@@ -2,7 +2,6 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications, type Token, type ActionPerformed, type PushNotificationSchema } from '@capacitor/push-notifications';
 import { notificationApi } from '../api';
 
-let isInitialized = false;
 let currentToken: string | null = null;
 
 export interface PushNotificationHandlers {
@@ -22,19 +21,86 @@ export interface PushNotificationHandlers {
 
 export const pushNotificationService = {
   /**
-   * Initialize native & web push notifications, request permissions, and register token with backend.
+   * Initialize native push notifications, bind listeners, request permissions, and register token with backend.
    */
   async init(handlers: PushNotificationHandlers = {}) {
     if (!Capacitor.isNativePlatform()) {
-      // Running on web browser — web push can also be used if configured
       return;
     }
 
-    if (isInitialized) return;
-    isInitialized = true;
-
     try {
-      // 1. Request Push Notification permissions
+      // Remove any existing listeners first to prevent duplicates
+      await PushNotifications.removeAllListeners();
+
+      // 1. Bind registration listener BEFORE calling register()
+      await PushNotifications.addListener('registration', async (token: Token) => {
+        currentToken = token.value;
+        console.log('[Push] FCM device token generated:', token.value);
+        try {
+          const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
+          await notificationApi.registerPushToken({
+            token: token.value,
+            platform,
+            deviceName: navigator.userAgent.slice(0, 100),
+          });
+          localStorage.setItem('nevo_push_token', token.value);
+        } catch (regErr) {
+          console.warn('[Push] Failed to register device token on backend:', regErr);
+        }
+      });
+
+      // 2. Bind registration error listener
+      await PushNotifications.addListener('registrationError', (error: any) => {
+        console.warn('[Push] Error on push registration:', error);
+      });
+
+      // 3. Bind incoming notification listener (foreground & background)
+      await PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
+        const data = notification.data || {};
+
+        if (data.type === 'INCOMING_CALL' && handlers.onIncomingCall) {
+          handlers.onIncomingCall({
+            callId: data.callId,
+            channel: data.channel,
+            type: data.callType === 'video' ? 'video' : 'audio',
+            initiatorId: data.initiatorId,
+            initiatorName: data.initiatorName || 'Someone',
+            initiatorAvatar: data.initiatorAvatar,
+            token: data.token,
+            coinsPerMinute: data.coinsPerMinute ? Number(data.coinsPerMinute) : 0,
+          });
+        } else if (data.type === 'CALL_CANCELLED' && handlers.onCallCancelled) {
+          handlers.onCallCancelled(data.callId);
+        }
+      });
+
+      // 4. Bind notification tap listener
+      await PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
+        const data = action.notification.data || {};
+
+        if (data.type === 'INCOMING_CALL' && handlers.onIncomingCall) {
+          handlers.onIncomingCall({
+            callId: data.callId,
+            channel: data.channel,
+            type: data.callType === 'video' ? 'video' : 'audio',
+            initiatorId: data.initiatorId,
+            initiatorName: data.initiatorName || 'Someone',
+            initiatorAvatar: data.initiatorAvatar,
+            token: data.token,
+            coinsPerMinute: data.coinsPerMinute ? Number(data.coinsPerMinute) : 0,
+          });
+        } else if (data.targetUrl && handlers.onNavigate) {
+          handlers.onNavigate(data.targetUrl);
+        } else if (data.type === 'message' && data.chatId && handlers.onNavigate) {
+          handlers.onNavigate(`/chat/${data.chatId}`);
+        } else if (data.type === 'follower' && data.senderId && handlers.onNavigate) {
+          handlers.onNavigate(`/user/${data.senderId}`);
+        } else if (data.type === 'live_started' && data.streamId && handlers.onNavigate) {
+          handlers.onNavigate(`/stream/${data.streamId}`);
+        }
+      });
+
+      // 5. Request Push Notification permissions (Android 13+ POST_NOTIFICATIONS)
       const permStatus = await PushNotifications.checkPermissions();
       let granted = permStatus.receive === 'granted';
 
@@ -48,7 +114,7 @@ export const pushNotificationService = {
         return;
       }
 
-      // 2. Create notification channels on Android
+      // 6. Create Android notification channels
       try {
         await PushNotifications.createChannel({
           id: 'nevo_calls',
@@ -73,103 +139,10 @@ export const pushNotificationService = {
         console.warn('[Push] Error creating Android notification channels:', channelErr);
       }
 
-      // 3. Register with Apple APNs / Google FCM
+      // 7. Register with Google FCM AFTER listeners are bound
       await PushNotifications.register();
-
-      // 4. Handle successful token registration
-      PushNotifications.addListener('registration', async (token: Token) => {
-        currentToken = token.value;
-        try {
-          const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
-          await notificationApi.registerPushToken({
-            token: token.value,
-            platform,
-            deviceName: navigator.userAgent.slice(0, 100),
-          });
-          localStorage.setItem('nevo_push_token', token.value);
-        } catch (regErr) {
-          console.warn('[Push] Failed to save device token on server:', regErr);
-        }
-      });
-
-      // 5. Handle registration error
-      PushNotifications.addListener('registrationError', (error: any) => {
-        console.warn('[Push] Error on push registration:', error);
-      });
-
-      // 6. Handle notification received in foreground / background
-      PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-        const data = notification.data || {};
-
-        if (data.type === 'INCOMING_CALL' && handlers.onIncomingCall) {
-          handlers.onIncomingCall({
-            callId: data.callId,
-            channel: data.channel,
-            type: data.callType === 'video' ? 'video' : 'audio',
-            initiatorId: data.initiatorId,
-            initiatorName: data.initiatorName || 'Someone',
-            initiatorAvatar: data.initiatorAvatar,
-            token: data.token,
-            coinsPerMinute: data.coinsPerMinute ? Number(data.coinsPerMinute) : 0,
-          });
-        } else if (data.type === 'CALL_CANCELLED' && handlers.onCallCancelled) {
-          handlers.onCallCancelled(data.callId);
-        }
-      });
-
-      // 7. Handle user tapping / opening notification from notification tray
-      PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-        const data = action.notification.data || {};
-
-        if (data.type === 'INCOMING_CALL' && handlers.onIncomingCall) {
-          handlers.onIncomingCall({
-            callId: data.callId,
-            channel: data.channel,
-            type: data.callType === 'video' ? 'video' : 'audio',
-            initiatorId: data.initiatorId,
-            initiatorName: data.initiatorName || 'Someone',
-            initiatorAvatar: data.initiatorAvatar,
-            token: data.token,
-            coinsPerMinute: data.coinsPerMinute ? Number(data.coinsPerMinute) : 0,
-          });
-        } else if (data.targetUrl && handlers.onNavigate) {
-          handlers.onNavigate(data.targetUrl);
-        } else if (data.type === 'message' && data.chatId && handlers.onNavigate) {
-          handlers.onNavigate(`/chat/${data.chatId}`);
-        } else if (data.type === 'follower' && data.senderId && handlers.onNavigate) {
-          handlers.onNavigate(`/user/${data.senderId}`);
-        } else if (data.type === 'live_started' && data.streamId && handlers.onNavigate) {
-          handlers.onNavigate(`/stream/${data.streamId}`);
-        }
-      });
     } catch (err) {
       console.warn('[Push] Error initializing Push Notifications:', err);
-    }
-  },
-
-  /**
-   * Check current push notification permission status
-   */
-  async checkPermissions(): Promise<'granted' | 'denied' | 'prompt'> {
-    if (!Capacitor.isNativePlatform()) return 'granted';
-    try {
-      const status = await PushNotifications.checkPermissions();
-      return status.receive;
-    } catch {
-      return 'denied';
-    }
-  },
-
-  /**
-   * Request push notification permission
-   */
-  async requestPermissions(): Promise<'granted' | 'denied' | 'prompt'> {
-    if (!Capacitor.isNativePlatform()) return 'granted';
-    try {
-      const status = await PushNotifications.requestPermissions();
-      return status.receive;
-    } catch {
-      return 'denied';
     }
   },
 
@@ -184,7 +157,6 @@ export const pushNotificationService = {
         localStorage.removeItem('nevo_push_token');
       } catch {}
     }
-    isInitialized = false;
     currentToken = null;
   },
 };

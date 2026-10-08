@@ -60,6 +60,17 @@ export const notificationController = {
     }
   },
 
+  async deleteAllNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      const onlyRead = req.query.onlyRead === 'true';
+      await notificationService.deleteAllNotifications(req.user!.userId, { onlyRead });
+      sendSuccess(res, null, 'Notifications cleared successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+
   async registerPushToken(req: Request, res: Response, next: NextFunction) {
     try {
       const { token, platform, deviceId, deviceName, appVersion } = req.body;
@@ -90,6 +101,19 @@ export const notificationController = {
 
       await pushNotificationService.unregisterDeviceToken(req.user!.userId, token);
       sendSuccess(res, null, 'Device token unregistered');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async testPush(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { title, body } = req.body;
+      await pushNotificationService.sendToUser(req.user!.userId, {
+        title: title || '🔔 Nevo Live Alert',
+        body: body || 'Test notification! Push notification with sound is working properly.',
+      });
+      sendSuccess(res, null, 'Test push notification sent');
     } catch (error) {
       next(error);
     }

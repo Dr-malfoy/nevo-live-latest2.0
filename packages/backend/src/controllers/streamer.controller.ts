@@ -5,7 +5,38 @@ import { sendSuccess, sendPaginated } from '../utils/response';
 export const streamerController = {
   async getStreamerStats(req: Request, res: Response, next: NextFunction) {
     try {
-      sendSuccess(res, await streamerService.getStreamerStats(req.user!.userId));
+      const range = (req.query.range as string) || 'today';
+      sendSuccess(res, await streamerService.getStreamerStats(req.user!.userId, range));
+    } catch (error) { next(error); }
+  },
+
+  async getLastReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await streamerService.getLastReport(req.user!.userId));
+    } catch (error) { next(error); }
+  },
+
+  async updateCover(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await streamerService.updateCover(req.user!.userId, req.body.cover));
+    } catch (error) { next(error); }
+  },
+
+  async getInspiration(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await streamerService.getInspiration());
+    } catch (error) { next(error); }
+  },
+
+  async updateSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await streamerService.updateSettings(req.user!.userId, req.body));
+    } catch (error) { next(error); }
+  },
+
+  async getMilestones(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await streamerService.getMilestones(req.user!.userId));
     } catch (error) { next(error); }
   },
 

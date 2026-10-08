@@ -5,8 +5,9 @@ import { VipBadge } from './VipBadge';
 import { OnlineDot } from './OnlineDot';
 import { RoleTags } from './RoleTag';
 import { HostBadge } from './HostBadge';
+import { EquippedBadge } from './EquippedBadge';
 
-type NameplateUser = Partial<UserPublic> & Partial<User> & { nickname: string; hostBadge?: string };
+type NameplateUser = Partial<UserPublic> & Partial<User> & { nickname: string; hostBadge?: string; equippedBadge?: any };
 
 interface UserNameplateProps {
   user: NameplateUser;
@@ -16,6 +17,7 @@ interface UserNameplateProps {
   showFlag?: boolean;
   showLevel?: boolean;
   showVip?: boolean;
+  showEquippedBadge?: boolean;
   showHostBadge?: boolean;
   showOnline?: boolean;
   showId?: boolean;
@@ -51,6 +53,7 @@ export const UserNameplate = ({
   showFlag = true,
   showLevel = true,
   showVip = true,
+  showEquippedBadge = true,
   showHostBadge = true,
   showOnline = true,
   showId = true,
@@ -67,6 +70,10 @@ export const UserNameplate = ({
         {showOnline && <OnlineDot online={user.online} size={size === 'lg' ? 'md' : 'sm'} />}
 
         <span className={`font-semibold text-ink truncate ${nameSize[size]}`}>{user.nickname}</span>
+
+        {showEquippedBadge && user.equippedBadge && (
+          <EquippedBadge badge={user.equippedBadge} size={badgeSize === 'md' ? 'sm' : 'xs'} />
+        )}
 
         {showHostBadge && user.hostBadge && user.hostBadge !== 'none' && (
           <HostBadge badge={user.hostBadge} size={badgeSize === 'md' ? 'sm' : 'xs'} />

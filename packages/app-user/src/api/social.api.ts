@@ -101,12 +101,16 @@ export const fanClubApi = {
 
 export interface WatchItem {
   targetId: string;
+  hostId?: string;
   cover?: string;
   title?: string;
   hostName?: string;
   country?: string;
   ended: boolean;
   viewerCount?: number;
+  videoUrl?: string;
+  durationSec?: number;
+  watchedAt?: string;
 }
 
 export interface WatchGroup {

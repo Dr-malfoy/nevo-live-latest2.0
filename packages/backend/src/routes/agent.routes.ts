@@ -10,6 +10,7 @@ router.use(authenticate, requireAgent);
 
 // Dashboard summary
 router.get('/dashboard', agentController.getDashboard);
+router.get('/pending-counts', agentController.getPendingCounts);
 
 // Recharge requests from users (Host/User → Agent)
 router.get('/recharge-requests', agentController.getRechargeRequests);

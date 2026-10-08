@@ -13,11 +13,13 @@ export type StoreCategory =
   | 'party_theme'
   | 'profile_card'
   | 'rare_id'
-  | 'honor';
+  | 'honor'
+  | 'badge';
 
 export interface IStoreItemDocument extends Document {
   category: StoreCategory;
   name: string;
+  description?: string;
   /** Card art. */
   image: string;
   /** Animated preview. */
@@ -26,6 +28,8 @@ export interface IStoreItemDocument extends Document {
   displayId?: string;
   rarity?: 'SSR' | 'SR' | null;
   priceCoins: number;
+  /** Price in diamonds */
+  priceDiamonds: number;
   /** The second currency (12 / 30 / 140). */
   priceTickets: number;
   /** null = permanent. */
@@ -50,19 +54,21 @@ const storeItemSchema = new Schema<IStoreItemDocument>(
   {
     category: {
       type: String,
-      enum: ['avatar_frame', 'ride', 'chat_bubble', 'party_theme', 'profile_card', 'rare_id', 'honor'],
+      enum: ['avatar_frame', 'ride', 'chat_bubble', 'party_theme', 'profile_card', 'rare_id', 'honor', 'badge'],
       required: true,
       index: true,
     },
     name: { type: String, required: true, trim: true },
+    description: { type: String, default: '' },
     image: { type: String, default: '' },
     preview: { type: String, default: '' },
     displayId: { type: String },
-    rarity: { type: String, enum: ['SSR', 'SR', null], default: null },
+    rarity: { type: String, default: null },
     priceCoins: { type: Number, default: 0, min: 0 },
+    priceDiamonds: { type: Number, default: 0, min: 0 },
     priceTickets: { type: Number, default: 0, min: 0 },
     durationDays: { type: Number, default: null },
-    badge: { type: String, enum: ['NEW', 'HOT', null], default: null },
+    badge: { type: String, default: null },
     giftable: { type: Boolean, default: false },
     requiredHonorLevel: { type: Number, default: 0, min: 0 },
     dailyLimit: { type: Number, default: null },

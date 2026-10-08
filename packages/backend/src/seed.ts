@@ -5,6 +5,8 @@ import {
   User, Gift, LevelConfig, NobleTier, PaymentConfig, 
   DailyRewardConfig, DEFAULT_REWARD_TIERS, Moment, Chat, ChatMessage 
 } from './models';
+import { seedBadges } from './scripts/seedBadges';
+import { achievementService } from './services/achievement.service';
 
 const MOCK_AVATARS = [
   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
@@ -222,6 +224,13 @@ const seed = async () => {
     });
     console.log(`✓ Daily reward config created`);
   }
+
+  // Seed store badges
+  await seedBadges();
+
+  // Seed achievements
+  await achievementService.ensureSeeded();
+  console.log('✓ Achievement posters seeded');
 
   console.log('\n✅ Advanced Seed complete!');
   await mongoose.disconnect();

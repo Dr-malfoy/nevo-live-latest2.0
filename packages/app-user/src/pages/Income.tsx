@@ -269,13 +269,6 @@ export const Income = () => {
 
           {/* ── Action Buttons for Coin Trading & Transfer ─────────────────────────────────────── */}
           <div className="px-3 mt-4 space-y-2.5">
-            <button
-              onClick={() => navigate('/sell')}
-              className="w-full h-12 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-amber-950 font-extrabold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-md shadow-amber-500/20"
-            >
-              <CoinBag className="w-5 h-5" />
-              Sell / Trade Coins to Agency
-            </button>
 
             <button
               onClick={() => navigate('/transfer')}

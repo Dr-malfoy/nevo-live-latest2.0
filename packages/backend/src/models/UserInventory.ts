@@ -16,6 +16,7 @@ export interface IUserInventoryDocument extends Document {
   equipped: boolean;
   /** Drives the bag's red dot until the user opens the bag (API field: `isNew`). */
   isNewItem: boolean;
+  source: 'purchased' | 'earned' | 'gift' | 'reward' | string;
   acquiredAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +31,7 @@ const userInventorySchema = new Schema<IUserInventoryDocument>(
     equipped: { type: Boolean, default: false },
     // Not `isNew` — that name is reserved by Mongoose's Document.
     isNewItem: { type: Boolean, default: true },
+    source: { type: String, default: 'purchased' },
     acquiredAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

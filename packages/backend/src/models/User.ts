@@ -67,6 +67,7 @@ export interface IUserDocument extends Document {
   /** ISO 3166-1 alpha-2, uppercase (BD, IN, PK…). Drives the country filter. */
   country: string;
   gender: 'male' | 'female' | 'other' | 'unspecified';
+  genderUpdatedAt?: Date;
   birthday?: Date;
   bio: string;
   /** Free-form interest tags shown on the details page (#Friendly, #Singer). */
@@ -78,6 +79,8 @@ export interface IUserDocument extends Document {
   liveLevel?: number;
   exp: number;
   wealthExp?: number;
+  liveStreamSeconds?: number;
+  liveStreamMinutes?: number;
   diamonds: number;
   coins: number;
   /**
@@ -105,6 +108,13 @@ export interface IUserDocument extends Document {
   guardedBy: Schema.Types.ObjectId[];
   /** Equipped store items by category (§4.0), mirrored from UserInventory for cheap reads. */
   equipped: Record<string, Schema.Types.ObjectId | string>;
+  equippedBadge?: {
+    _id?: Schema.Types.ObjectId | string;
+    name?: string;
+    image?: string;
+    preview?: string;
+    rarity?: string;
+  };
   noble?: INoble;
   isVip?: boolean;
   hasPurchasedDiamonds?: boolean;
@@ -120,8 +130,12 @@ export interface IUserDocument extends Document {
   verification: IVerificationState;
   isBanned: boolean;
   paymentInfo?: {
-    bybit: { qrCode: string; walletAddress: string };
-    binance: { qrCode: string; walletAddress: string };
+    bybit?: { qrCode?: string; walletAddress?: string };
+    binance?: { qrCode?: string; walletAddress?: string };
+    bkash?: { qrCode?: string; walletAddress?: string; number?: string; phone?: string };
+    nagad?: { qrCode?: string; walletAddress?: string; number?: string; phone?: string };
+    rocket?: { qrCode?: string; walletAddress?: string; number?: string; phone?: string };
+    [key: string]: any;
   };
   following: Schema.Types.ObjectId[];
   followers: Schema.Types.ObjectId[];
@@ -155,6 +169,7 @@ const userSchema = new Schema<IUserDocument>(
       enum: ['male', 'female', 'other', 'unspecified'],
       default: 'unspecified',
     },
+    genderUpdatedAt: { type: Date },
     birthday: { type: Date },
     bio: { type: String, default: '', trim: true, maxlength: 200 },
     tags: { type: [String], default: [] },
@@ -164,6 +179,8 @@ const userSchema = new Schema<IUserDocument>(
     liveLevel: { type: Number, default: 1, min: 1, max: 100 },
     exp: { type: Number, default: 0 },
     wealthExp: { type: Number, default: 0, min: 0 },
+    liveStreamSeconds: { type: Number, default: 0, min: 0 },
+    liveStreamMinutes: { type: Number, default: 0, min: 0 },
     diamonds: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
     tickets: { type: Number, default: 0, min: 0 },
@@ -203,6 +220,13 @@ const userSchema = new Schema<IUserDocument>(
     guardians: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     guardedBy: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     equipped: { type: Schema.Types.Mixed, default: {} },
+    equippedBadge: {
+      _id: { type: Schema.Types.ObjectId, ref: 'StoreItem' },
+      name: { type: String },
+      image: { type: String },
+      preview: { type: String },
+      rarity: { type: String },
+    },
     noble: {
       type: { type: String, enum: ['silver', 'gold', 'platinum', 'diamond'] },
       expiry: Date,
@@ -271,6 +295,24 @@ const userSchema = new Schema<IUserDocument>(
       binance: {
         qrCode: { type: String, default: '' },
         walletAddress: { type: String, default: '' },
+      },
+      bkash: {
+        qrCode: { type: String, default: '' },
+        walletAddress: { type: String, default: '' },
+        number: { type: String, default: '' },
+        phone: { type: String, default: '' },
+      },
+      nagad: {
+        qrCode: { type: String, default: '' },
+        walletAddress: { type: String, default: '' },
+        number: { type: String, default: '' },
+        phone: { type: String, default: '' },
+      },
+      rocket: {
+        qrCode: { type: String, default: '' },
+        walletAddress: { type: String, default: '' },
+        number: { type: String, default: '' },
+        phone: { type: String, default: '' },
       },
     },
     following: [{ type: Schema.Types.ObjectId, ref: 'User' }],

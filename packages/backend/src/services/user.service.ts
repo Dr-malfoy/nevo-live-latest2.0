@@ -15,7 +15,7 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  * the flag, and lastActiveAt for the online dot (requirement #3).
  */
 const CARD_FIELDS =
-  'uid nickname avatar cover level wealthLevel liveLevel wealthExp isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds';
+  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds';
 
 /** A user counts as online if they were active in the last 5 minutes. */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -41,11 +41,16 @@ const decorate = (plain: any) => {
   const wealthExp = Math.max(plain?.wealthExp || 0, plain?.diamonds || 0);
   const calculatedWealth = calculateWealthLevel(wealthExp, plain?.wealthLevel || plain?.level);
   const wealthLevel = Math.max(plain?.wealthLevel || 1, calculatedWealth.level);
-  const liveLevel = plain?.liveLevel && plain.liveLevel > 1 ? plain.liveLevel : calculateLiveLevel(plain?.coins, plain?.level).level;
+  const liveStreamSeconds = plain?.liveStreamSeconds || 0;
+  const liveStreamMinutes = plain?.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);
+  const calculatedLive = calculateLiveLevel(liveStreamMinutes, plain?.liveLevel || plain?.level);
+  const liveLevel = Math.max(plain?.liveLevel || 1, calculatedLive.level);
   const level = plain?.level && plain.level > 1 ? plain.level : Math.max(wealthLevel, liveLevel, 1);
   return {
     ...plain,
     wealthExp,
+    liveStreamSeconds,
+    liveStreamMinutes,
     hostBadge: plain?.hostBadge || 'none',
     hostBadgeType: plain?.hostBadgeType || 'none',
     online: isOnline(plain?.lastActiveAt),
@@ -65,6 +70,41 @@ export const userService = {
     const obj = user.toObject();
     obj.diamonds = Math.max(0, obj.diamonds ?? 0);
     obj.coins = Math.max(0, obj.coins ?? 0);
+
+    // Backfill historical live streaming time if missing
+    if (!obj.liveStreamSeconds) {
+      try {
+        const streamStats = await LiveStream.aggregate([
+          { $match: { hostId: user._id, status: 'ended' } },
+          {
+            $project: {
+              duration: {
+                $divide: [
+                  { $subtract: [{ $ifNull: ['$endedAt', '$heartbeatAt'] }, '$startedAt'] },
+                  1000,
+                ],
+              },
+            },
+          },
+          { $group: { _id: null, totalSeconds: { $sum: '$duration' } } },
+        ]);
+        if (streamStats[0]?.totalSeconds && streamStats[0].totalSeconds > 0) {
+          obj.liveStreamSeconds = Math.round(streamStats[0].totalSeconds);
+          obj.liveStreamMinutes = Math.floor(obj.liveStreamSeconds / 60);
+          User.updateOne(
+            { _id: user._id },
+            {
+              $set: {
+                liveStreamSeconds: obj.liveStreamSeconds,
+                liveStreamMinutes: obj.liveStreamMinutes,
+                liveLevel: calculateLiveLevel(obj.liveStreamMinutes, user.liveLevel).level,
+              },
+            }
+          ).catch(() => {});
+        }
+      } catch {}
+    }
+
     return decorate(obj);
   },
 
@@ -275,12 +315,33 @@ export const userService = {
       tags?: string[];
     }
   ) {
+    const currentUser = await User.findById(userId);
+    if (!currentUser) throw new AppError('User not found', 404);
+
     // Only copy keys that were actually sent, so an absent field is never
     // written as undefined and blanked out.
     const update: Record<string, unknown> = {};
-    for (const key of ['nickname', 'avatar', 'cover', 'gender', 'bio'] as const) {
+    for (const key of ['nickname', 'avatar', 'cover', 'bio'] as const) {
       if (data[key] !== undefined) update[key] = data[key];
     }
+
+    // Gender 60-day change limitation
+    if (data.gender !== undefined && data.gender !== currentUser.gender) {
+      if (currentUser.gender && currentUser.gender !== 'unspecified' && currentUser.genderUpdatedAt) {
+        const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
+        const timeSince = Date.now() - new Date(currentUser.genderUpdatedAt).getTime();
+        if (timeSince < sixtyDaysMs) {
+          const daysLeft = Math.ceil((sixtyDaysMs - timeSince) / (24 * 60 * 60 * 1000));
+          throw new AppError(
+            `Gender cannot be changed within 60 days of setting it. Please wait ${daysLeft} day${daysLeft > 1 ? 's' : ''}.`,
+            400
+          );
+        }
+      }
+      update.gender = data.gender;
+      update.genderUpdatedAt = new Date();
+    }
+
     if (data.country !== undefined) update.country = data.country.toUpperCase();
     if (data.birthday !== undefined) update.birthday = data.birthday ? new Date(data.birthday) : null;
     if (data.tags !== undefined) update.tags = data.tags.slice(0, 10);

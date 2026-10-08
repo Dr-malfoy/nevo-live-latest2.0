@@ -73,6 +73,8 @@ import {
   TransferHistory,
   TransactionDetails,
   HelpCenter,
+  Bag,
+  AgentRequests,
 } from './pages';
 
 import { PrivacyPolicy, Guidelines, Terms, AboutUs } from './pages/legal/LegalPage';
@@ -327,6 +329,25 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const AgentRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const isAgent = Boolean(
+    user?.isAgent ||
+    user?.role === 'agent' ||
+    user?.isAdmin ||
+    user?.role === 'admin'
+  );
+  if (!isAgent) return <Navigate to="/agency" replace />;
+  return <>{children}</>;
+};
+
+const AuthRoute = ({ children }: { children: React.ReactNode }) => {
+  const isAuth = useAuthStore((s) => s.isAuthenticated);
+  if (isAuth) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
 const NavigationManager = ({ children }: { children: React.ReactNode }) => {
   useAndroidBackHandler();
   return <>{children}</>;
@@ -340,9 +361,9 @@ export default function App() {
           <AuthListener>
             <Routes>
             {/* Auth pages — no nav */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/signup" element={<Register />} />
+            <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+            <Route path="/register" element={<AuthRoute><Register /></AuthRoute>} />
+            <Route path="/signup" element={<AuthRoute><Register /></AuthRoute>} />
             <Route path="/invite/:inviteCode" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route
@@ -419,7 +440,7 @@ export default function App() {
             />
             <Route
               path="/sell"
-              element={<ProtectedRoute><Sell /></ProtectedRoute>}
+              element={<Navigate to="/profile" replace />}
             />
             <Route
               path="/withdraw"
@@ -494,6 +515,10 @@ export default function App() {
               element={<ProtectedRoute><MeCenter /></ProtectedRoute>}
             />
 
+            {/* Bag / Backpack — #22, #29 */}
+            <Route path="/bag" element={<ProtectedRoute><Bag /></ProtectedRoute>} />
+            <Route path="/backpack" element={<ProtectedRoute><Bag /></ProtectedRoute>} />
+
             {/* Store — #45-#49, #51 */}
             <Route path="/store" element={<ProtectedRoute><Store /></ProtectedRoute>} />
 
@@ -509,7 +534,9 @@ export default function App() {
 
             {/* Agent — #5, #34, #52, #54 */}
             <Route path="/agent" element={<ProtectedRoute><AgentDashboard /></ProtectedRoute>} />
-            <Route path="/agent/invite-hosts" element={<ProtectedRoute><InviteHosts /></ProtectedRoute>} />
+            <Route path="/agent/invite-hosts" element={<AgentRoute><InviteHosts /></AgentRoute>} />
+            <Route path="/agent/requests" element={<AgentRoute><AgentRequests /></AgentRoute>} />
+            <Route path="/agent/recharge-withdraw" element={<AgentRoute><AgentRequests /></AgentRoute>} />
 
             {/* Creator centers — #40, #42, #62 */}
             <Route path="/streamer-center" element={<ProtectedRoute><StreamerCenter /></ProtectedRoute>} />

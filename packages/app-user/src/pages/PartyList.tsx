@@ -7,7 +7,7 @@ import { optional } from '../api/pending';
 import { useCountryStore, useAuthStore, useUIStore, useSocketStore } from '../stores';
 import { TabBar, EmptyState, PendingApiNotice } from '../components/common';
 import { CountryFilterBar } from '../components/filter';
-import { Avatar } from '../components/user';
+import { Avatar, GenderSelectionModal } from '../components/user';
 import { Loading, VerificationGateModal } from '../components/ui';
 import { canUseLiveFeatures } from '../services/verification';
 import { compactNumber } from '../lib/time';
@@ -26,6 +26,8 @@ export const PartyList = () => {
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState(false);
   const [showGate, setShowGate] = useState(false);
+  const [showGenderModal, setShowGenderModal] = useState(false);
+  const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
 
   // Quick party creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -103,10 +105,24 @@ export const PartyList = () => {
     };
   }, [tab, selectedCountries.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleJoinRoom = (roomId: string) => {
+    if (!user?.gender || user.gender === 'unspecified') {
+      setPendingRoomId(roomId);
+      setShowGenderModal(true);
+      return;
+    }
+    navigate(`/party/${roomId}`);
+  };
+
   const handleCreateParty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partyName.trim()) {
       showToast('Please enter a party name', 'error');
+      return;
+    }
+
+    if (!user?.gender || user.gender === 'unspecified') {
+      setShowGenderModal(true);
       return;
     }
 
@@ -179,7 +195,7 @@ export const PartyList = () => {
           {rooms.map((room, index) => (
             <div key={room._id}>
               <button
-                onClick={() => navigate(`/party/${room._id}`)}
+                onClick={() => handleJoinRoom(room._id)}
                 className="w-full flex items-center p-3 bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-left active:scale-[0.98] transition-transform"
               >
                 <div className="w-[84px] h-[84px] rounded-[14px] overflow-hidden bg-surface-sunken shrink-0">
@@ -252,6 +268,10 @@ export const PartyList = () => {
       >
         <button
           onClick={() => {
+            if (!user?.gender || user.gender === 'unspecified') {
+              setShowGenderModal(true);
+              return;
+            }
             if (!canUseLiveFeatures(user?.verification, user?.role)) {
               setShowGate(true);
               return;
@@ -362,6 +382,25 @@ export const PartyList = () => {
         type="face"
         title="Live Face Verification Required"
         message="Live Face Verification is required to create and host Voice Party rooms. Complete live face verification to start your party room."
+      />
+
+      <GenderSelectionModal
+        isOpen={showGenderModal}
+        onClose={() => {
+          setShowGenderModal(false);
+          setPendingRoomId(null);
+        }}
+        onSuccess={() => {
+          if (pendingRoomId) {
+            navigate(`/party/${pendingRoomId}`);
+            setPendingRoomId(null);
+          } else {
+            setPartyName(user?.nickname ? `${user.nickname}'s Party` : 'My Voice Party');
+            setShowCreateModal(true);
+          }
+        }}
+        title="Gender Required for Party Rooms"
+        reason="Please select your gender before joining or creating Voice Party rooms. Gender selection is mandatory and cannot be changed for 60 days."
       />
     </div>
   );

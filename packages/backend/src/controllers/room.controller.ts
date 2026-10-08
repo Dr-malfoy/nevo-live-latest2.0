@@ -110,6 +110,12 @@ export const roomController = {
 
   async createRoom(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = await User.findById(req.user!.userId).select('gender');
+      if (!user?.gender || user.gender === 'unspecified') {
+        sendError(res, 'Gender selection is mandatory before creating a party room. Please select your gender in profile.', 400);
+        return;
+      }
+
       const { name, description, seatCount = 8, isPrivate, password } = req.body;
 
       // Clean up any previous rooms created by this user
@@ -227,6 +233,12 @@ export const roomController = {
 
   async joinRoom(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = await User.findById(req.user!.userId).select('gender');
+      if (!user?.gender || user.gender === 'unspecified') {
+        sendError(res, 'Gender selection is mandatory before joining a party room. Please select your gender in profile.', 400);
+        return;
+      }
+
       const room = await Room.findById(req.params.id);
       if (!room) {
         sendError(res, 'Room not found', 404);
@@ -364,6 +376,12 @@ export const roomController = {
 
   async sit(req: Request, res: Response, next: NextFunction) {
     try {
+      const user = await User.findById(req.user!.userId).select('gender');
+      if (!user?.gender || user.gender === 'unspecified') {
+        sendError(res, 'Gender selection is mandatory before taking a party seat. Please select your gender in profile.', 400);
+        return;
+      }
+
       const room = await Room.findById(req.params.id);
       if (!room) {
         sendError(res, 'Room not found', 404);

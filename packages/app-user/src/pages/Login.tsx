@@ -15,6 +15,7 @@ import {
   PiPencilSimpleFill as EditIcon,
 } from 'react-icons/pi';
 import { Button, Input, PhoneInputWithCountry, formatFullPhoneNumber } from '../components/ui';
+import { TermsModal } from '../components/TermsModal';
 import { useAuthStore, useUIStore } from '../stores';
 import { authApi } from '../api';
 import {
@@ -48,40 +49,21 @@ export const Login = () => {
   const [passwordLoginMethod, setPasswordLoginMethod] = useState<'phone' | 'email'>('phone');
   const [password, setPassword] = useState('');
   
+  // Terms & Conditions state
+  const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [pendingSocialAuth, setPendingSocialAuth] = useState<{
+    provider: 'Google' | 'Facebook';
+    idToken?: string;
+    accessToken?: string;
+  } | null>(null);
+
   // OTP Verification state
   const [step, setStep] = useState<'input' | 'otp'>('input');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [cooldown, setCooldown] = useState(0);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-
-  // Check if returning from social redirect (Google/Facebook)
-  useEffect(() => {
-    let active = true;
-    handleFirebaseRedirectResult()
-      .then(async (result) => {
-        if (!active || !result) return;
-        setIsActionLoading(true);
-        if (result.providerId === 'facebook.com' || result.accessToken) {
-          await loginWithFacebook(result.idToken, result.accessToken);
-          showToast('Signed in with Facebook!', 'success');
-        } else {
-          await loginWithGoogle(result.idToken);
-          showToast('Signed in with Google!', 'success');
-        }
-        navigate('/', { replace: true });
-      })
-      .catch((err) => {
-        console.error('Redirect auth error:', err);
-        setLocalError(mapFirebaseAuthError(err));
-      })
-      .finally(() => {
-        if (active) setIsActionLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   // Cooldown countdown timer
   useEffect(() => {
@@ -263,6 +245,11 @@ export const Login = () => {
     setIsActionLoading(true);
     try {
       const idToken = await signInWithGoogle();
+      if (!agreedToTerms) {
+        setPendingSocialAuth({ provider: 'Google', idToken });
+        setShowTermsModal(true);
+        return;
+      }
       await loginWithGoogle(idToken);
       showToast('Signed in with Google!', 'success');
       navigate('/', { replace: true });
@@ -282,6 +269,11 @@ export const Login = () => {
     setIsActionLoading(true);
     try {
       const { idToken, accessToken } = await signInWithFacebook();
+      if (!agreedToTerms) {
+        setPendingSocialAuth({ provider: 'Facebook', idToken, accessToken });
+        setShowTermsModal(true);
+        return;
+      }
       await loginWithFacebook(idToken, accessToken);
       showToast('Signed in with Facebook!', 'success');
       navigate('/', { replace: true });
@@ -292,6 +284,40 @@ export const Login = () => {
       }
     } finally {
       setIsActionLoading(false);
+    }
+  };
+
+  const handleAcceptTermsAndCompleteLogin = async () => {
+    setAgreedToTerms(true);
+    setShowTermsModal(false);
+
+    if (pendingSocialAuth) {
+      setIsActionLoading(true);
+      try {
+        if (pendingSocialAuth.provider === 'Google' && pendingSocialAuth.idToken) {
+          await loginWithGoogle(pendingSocialAuth.idToken);
+          showToast('Signed in with Google!', 'success');
+          navigate('/', { replace: true });
+        } else if (pendingSocialAuth.provider === 'Facebook') {
+          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken);
+          showToast('Signed in with Facebook!', 'success');
+          navigate('/', { replace: true });
+        }
+      } catch (err: any) {
+        console.error('Social login completion error:', err);
+        setLocalError(mapFirebaseAuthError(err) || 'Failed to sign in.');
+      } finally {
+        setIsActionLoading(false);
+        setPendingSocialAuth(null);
+      }
+    }
+  };
+
+  const handleCloseTermsModal = () => {
+    setShowTermsModal(false);
+    if (pendingSocialAuth) {
+      setPendingSocialAuth(null);
+      setLocalError('You must accept the Terms & Conditions to access or create an account.');
     }
   };
 
@@ -342,12 +368,6 @@ export const Login = () => {
             </div>
           )}
 
-          <div className="w-full flex justify-end pr-4 mb-2">
-            <div className="bg-[#4C3BFF] text-white text-[11px] font-bold px-2.5 py-1 rounded-full relative shadow-md">
-              Latest Login
-              <div className="absolute -bottom-1 right-4 w-2 h-2 bg-[#4C3BFF] rotate-45"></div>
-            </div>
-          </div>
 
           {/* Google Login Button */}
           <button
@@ -437,13 +457,39 @@ export const Login = () => {
 
           {/* Terms Agreement */}
           <div className="flex items-start gap-2.5 px-2">
-            <div className="mt-0.5 relative flex items-center justify-center shrink-0">
-              <div className="w-4 h-4 rounded-full bg-white" />
-              <CheckCircle className="w-[18px] h-[18px] text-[#4C3BFF] absolute" />
-            </div>
-            <p className="text-white/95 text-[11px] font-medium leading-[1.4] flex-1">
-              I have read and agree to the <Link to="/terms" className="underline underline-offset-2">Terms of Service</Link> and <Link to="/privacy" className="underline underline-offset-2">Privacy Policy</Link>
-            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => {
+                  setAgreedToTerms(e.target.checked);
+                  if (localError) setLocalError(null);
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-white/60 text-[#4C3BFF] focus:ring-[#4C3BFF] cursor-pointer accent-[#4C3BFF]"
+              />
+              <span className="text-white/95 text-[11px] font-medium leading-[1.4] flex-1">
+                I have read and agree to the{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowTermsModal(true);
+                  }}
+                  className="underline underline-offset-2 font-bold hover:text-white"
+                >
+                  Terms &amp; Conditions
+                </button>{' '}
+                and{' '}
+                <Link
+                  to="/privacy"
+                  onClick={(e) => e.stopPropagation()}
+                  className="underline underline-offset-2 font-bold hover:text-white"
+                >
+                  Privacy Policy
+                </Link>
+              </span>
+            </label>
           </div>
         </div>
       ) : (
@@ -774,6 +820,14 @@ export const Login = () => {
           </div>
         </div>
       )}
+
+      {/* Terms & Conditions Acceptance Modal */}
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={handleCloseTermsModal}
+        onAccept={handleAcceptTermsAndCompleteLogin}
+        actionText={pendingSocialAuth ? `Accept & Sign In with ${pendingSocialAuth.provider}` : 'Accept Terms'}
+      />
     </div>
   );
 };

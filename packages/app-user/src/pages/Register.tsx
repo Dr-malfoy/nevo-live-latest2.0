@@ -17,6 +17,7 @@ import {
   PiPencilSimpleFill as EditIcon,
 } from 'react-icons/pi';
 import { Button, Input, PhoneInputWithCountry, formatFullPhoneNumber } from '../components/ui';
+import { TermsModal } from '../components/TermsModal';
 import { useAuthStore, useUIStore } from '../stores';
 import { authApi } from '../api';
 import {
@@ -47,6 +48,15 @@ export const Register = () => {
 
   // Step state: 'details' or 'otp'
   const [step, setStep] = useState<Step>('details');
+
+  // Terms & Conditions state
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [pendingSocialAuth, setPendingSocialAuth] = useState<{
+    provider: 'Google' | 'Facebook';
+    idToken?: string;
+    accessToken?: string;
+  } | null>(null);
 
   // Contact Method: 'phone' or 'email'
   const [contactMethod, setContactMethod] = useState<'phone' | 'email'>('phone');
@@ -79,22 +89,17 @@ export const Register = () => {
     handleFirebaseRedirectResult()
       .then(async (result) => {
         if (!active || !result) return;
-        setIsSendingOtp(true);
         if (result.providerId === 'facebook.com' || result.accessToken) {
-          await loginWithFacebook(result.idToken, result.accessToken);
-          showToast('Signed in with Facebook!', 'success');
+          setPendingSocialAuth({ provider: 'Facebook', idToken: result.idToken, accessToken: result.accessToken });
+          setShowTermsModal(true);
         } else {
-          await loginWithGoogle(result.idToken);
-          showToast('Signed in with Google!', 'success');
+          setPendingSocialAuth({ provider: 'Google', idToken: result.idToken });
+          setShowTermsModal(true);
         }
-        navigate('/', { replace: true });
       })
       .catch((err) => {
         console.error('Redirect auth error:', err);
         setLocalError(mapFirebaseAuthError(err));
-      })
-      .finally(() => {
-        if (active) setIsSendingOtp(false);
       });
     return () => {
       active = false;
@@ -184,6 +189,11 @@ export const Register = () => {
 
     if (!gender) {
       setLocalError('Please select your gender');
+      return false;
+    }
+
+    if (!agreedToTerms) {
+      setLocalError('Please agree to the Terms & Conditions and Privacy Policy to create an account.');
       return false;
     }
 
@@ -395,16 +405,16 @@ export const Register = () => {
     }
   };
 
-  // Social Sign Up Handlers
+  // Social Sign Up Handlers (Terms & Conditions Acceptance Enforced)
   const handleGoogleSignUp = async () => {
     setLocalError(null);
     clearError();
     setIsSendingOtp(true);
     try {
       const idToken = await signInWithGoogle();
-      await loginWithGoogle(idToken);
-      showToast('Signed up with Google!', 'success');
-      navigate('/', { replace: true });
+      // Require Terms & Conditions acceptance before completing account creation
+      setPendingSocialAuth({ provider: 'Google', idToken });
+      setShowTermsModal(true);
     } catch (err: any) {
       console.error('Google sign up error:', err);
       if (err?.code !== 'auth/popup-closed-by-user') {
@@ -421,9 +431,9 @@ export const Register = () => {
     setIsSendingOtp(true);
     try {
       const { idToken, accessToken } = await signInWithFacebook();
-      await loginWithFacebook(idToken, accessToken);
-      showToast('Signed up with Facebook!', 'success');
-      navigate('/', { replace: true });
+      // Require Terms & Conditions acceptance before completing account creation
+      setPendingSocialAuth({ provider: 'Facebook', idToken, accessToken });
+      setShowTermsModal(true);
     } catch (err: any) {
       console.error('Facebook sign up error:', err);
       if (err?.code !== 'auth/popup-closed-by-user') {
@@ -431,6 +441,40 @@ export const Register = () => {
       }
     } finally {
       setIsSendingOtp(false);
+    }
+  };
+
+  const handleAcceptTermsAndCompleteSignup = async () => {
+    setAgreedToTerms(true);
+    setShowTermsModal(false);
+
+    if (pendingSocialAuth) {
+      setIsSendingOtp(true);
+      try {
+        if (pendingSocialAuth.provider === 'Google' && pendingSocialAuth.idToken) {
+          await loginWithGoogle(pendingSocialAuth.idToken);
+          showToast('Account created & signed in with Google!', 'success');
+          navigate('/', { replace: true });
+        } else if (pendingSocialAuth.provider === 'Facebook') {
+          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken);
+          showToast('Account created & signed in with Facebook!', 'success');
+          navigate('/', { replace: true });
+        }
+      } catch (err: any) {
+        console.error('Social sign up completion error:', err);
+        setLocalError(mapFirebaseAuthError(err) || 'Failed to complete sign up.');
+      } finally {
+        setIsSendingOtp(false);
+        setPendingSocialAuth(null);
+      }
+    }
+  };
+
+  const handleCloseTermsModal = () => {
+    setShowTermsModal(false);
+    if (pendingSocialAuth) {
+      setPendingSocialAuth(null);
+      setLocalError('You must accept the Terms & Conditions to create an account.');
     }
   };
 
@@ -659,6 +703,44 @@ export const Register = () => {
                   />
                 </div>
 
+                {/* 6. Terms & Conditions Acceptance Checkbox */}
+                <div className="pt-1 pb-1">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none group">
+                    <input
+                      type="checkbox"
+                      checked={agreedToTerms}
+                      onChange={(e) => {
+                        setAgreedToTerms(e.target.checked);
+                        if (localError) setLocalError(null);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded border-line-strong text-[#4C3BFF] focus:ring-[#4C3BFF] cursor-pointer accent-[#4C3BFF]"
+                    />
+                    <span className="text-[12px] text-ink-muted leading-tight">
+                      I have read and agree to the{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowTermsModal(true);
+                        }}
+                        className="text-[#4C3BFF] font-bold underline underline-offset-2 hover:text-[#3D2DE0]"
+                      >
+                        Terms &amp; Conditions
+                      </button>{' '}
+                      and{' '}
+                      <Link
+                        to="/privacy"
+                        target="_blank"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[#4C3BFF] font-bold underline underline-offset-2 hover:text-[#3D2DE0]"
+                      >
+                        Privacy Policy
+                      </Link>
+                    </span>
+                  </label>
+                </div>
+
                 {/* Continue to OTP Verification Button */}
                 <div className="pt-2">
                   <Button
@@ -816,6 +898,14 @@ export const Register = () => {
           )}
         </div>
       </div>
+
+      {/* Terms & Conditions Acceptance Modal */}
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={handleCloseTermsModal}
+        onAccept={handleAcceptTermsAndCompleteSignup}
+        actionText={pendingSocialAuth ? `Accept & Sign Up with ${pendingSocialAuth.provider}` : 'Accept Terms'}
+      />
     </div>
   );
 };

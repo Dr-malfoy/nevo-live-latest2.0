@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { momentController } from '../controllers/moment.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuth } from '../middleware/auth';
 import { requireFaceVerified } from '../middleware/roleGuard';
 
 const router = Router();
@@ -12,6 +12,7 @@ router.put('/:id', authenticate, momentController.updateMoment);
 router.delete('/:id', authenticate, momentController.deleteMoment);
 router.post('/:id/like', authenticate, momentController.toggleLike);
 router.post('/:id/comment', authenticate, momentController.addComment);
-router.post('/:id/share', authenticate, momentController.shareMoment);
+router.post('/:id/share', optionalAuth, momentController.shareMoment);
+router.post('/:id/view', optionalAuth, momentController.recordView);
 
 export default router;

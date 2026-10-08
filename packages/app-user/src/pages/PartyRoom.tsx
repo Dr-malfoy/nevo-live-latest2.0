@@ -10,6 +10,7 @@ import { HostToolsSheet, PARTY_BOTTOM_ICONS } from '../components/party/HostTool
 import { PkTypesSheet } from '../components/party/PkTypesSheet';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { Loading } from '../components/ui';
+import { GenderSelectionModal } from '../components/user';
 import { MessageInput, GiftOverlay } from '../components/live';
 import { GiftPanel } from '../components/stream';
 import type { GiftBurst } from '../components/live/GiftOverlay';
@@ -59,6 +60,8 @@ export const PartyRoom = () => {
   const [pkOpen, setPkOpen] = useState(false);
   const [giftPanelOpen, setGiftPanelOpen] = useState(false);
   const [giftBurst, setGiftBurst] = useState<GiftBurst | null>(null);
+  const [showGenderModal, setShowGenderModal] = useState(false);
+  const [pendingSeatIndex, setPendingSeatIndex] = useState<number | null>(null);
   const burstTimerRef = useRef<any>(null);
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
 
@@ -262,6 +265,13 @@ export const PartyRoom = () => {
       navigate(`/user/${occupant._id}`);
       return;
     }
+
+    if (!user?.gender || user.gender === 'unspecified') {
+      setPendingSeatIndex(seat.index);
+      setShowGenderModal(true);
+      return;
+    }
+
     const res = await optional(partyApi.sit(id, seat.index)).catch(() => null);
     if (!res?.success) {
       showToast(res?.error || 'Failed to take seat', 'error');
@@ -600,6 +610,22 @@ export const PartyRoom = () => {
 
       {/* Full screen gift animation overlay */}
       <GiftOverlay burst={giftBurst} />
+
+      <GenderSelectionModal
+        isOpen={showGenderModal}
+        onClose={() => {
+          setShowGenderModal(false);
+          setPendingSeatIndex(null);
+        }}
+        onSuccess={async () => {
+          if (pendingSeatIndex && id) {
+            await optional(partyApi.sit(id, pendingSeatIndex)).catch(() => null);
+            setPendingSeatIndex(null);
+          }
+        }}
+        title="Gender Required for Audio Seats"
+        reason="Please select your gender before taking an audio seat in the party room. Gender selection is mandatory and cannot be changed for 60 days."
+      />
     </div>
   );
 };

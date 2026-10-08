@@ -11,8 +11,10 @@ import { registerTeenPattiHandlers, registerTeenPattiSocket } from './teenpattiH
 import { registerRouletteHandlers, registerRouletteSocket } from './rouletteHandlers';
 import { registerAviatorHandlers, registerAviatorSocket } from './aviatorHandlers';
 import { streamService } from '../services/stream.service';
+import { matchService } from '../services/match.service';
 
 let io: Server;
+
 
 const clintURLs: (string | RegExp)[] = [
   "capacitor://localhost",
@@ -116,8 +118,12 @@ export const initSocket = (httpServer: HTTPServer): Server => {
   registerRouletteHandlers(io);
   registerAviatorHandlers(io);
 
+  // Start background 1:1 matchmaking queue processor
+  matchService.start();
+
   return io;
 };
+
 
 export const getIO = (): Server => {
   if (!io) throw new Error('Socket.io not initialized');

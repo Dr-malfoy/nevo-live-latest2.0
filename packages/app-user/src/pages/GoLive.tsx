@@ -8,6 +8,7 @@ import { roomsApi } from '../api/rooms.api';
 import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
 import { getMediaUrl } from '../lib/media';
+import { GenderSelectionModal } from '../components/user';
 
 const streamTypes = [
   { value: 'video', label: 'Video', icon: Video },
@@ -30,6 +31,7 @@ export const GoLive = () => {
   );
   const [loading, setLoading] = useState(false);
   const [showGate, setShowGate] = useState(false);
+  const [showGenderModal, setShowGenderModal] = useState(false);
 
   useEffect(() => {
     const t = searchParams.get('type');
@@ -42,6 +44,12 @@ export const GoLive = () => {
 
   const handleGoLive = async () => {
     if (!title.trim()) return;
+
+    // Mandatory Gender check
+    if (!user?.gender || user.gender === 'unspecified') {
+      setShowGenderModal(true);
+      return;
+    }
 
     // Live Face Verification gate for going live
     if (!canUseLiveFeatures(user?.verification, user?.role)) {
@@ -204,6 +212,13 @@ export const GoLive = () => {
       </div>
 
       <VerificationGateModal isOpen={showGate} onClose={() => setShowGate(false)} type="face" />
+      <GenderSelectionModal
+        isOpen={showGenderModal}
+        onClose={() => setShowGenderModal(false)}
+        onSuccess={() => handleGoLive()}
+        title="Gender Required to Go Live"
+        reason="Please select your gender before starting a live stream. Gender selection is mandatory and cannot be changed for 60 days."
+      />
     </div>
   );
 };

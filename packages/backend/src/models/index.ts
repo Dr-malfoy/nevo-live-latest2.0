@@ -71,7 +71,8 @@ export { LevelPrivilege, ILevelPrivilegeDocument } from './LevelPrivilege';
 export { AchievementConfig, IAchievementConfigDocument, IAchievementPoster, AchievementCategory } from './AchievementConfig';
 
 // ── Games hub (§4.13) ───────────────────────────────────────────────
-export { Activity, IActivityDocument, IActivityPrize } from './Activity';
+export { Activity, IActivityDocument, IActivityPrize, IActivityTask } from './Activity';
+export { ActivityClaim, IActivityClaimDocument } from './ActivityClaim';
 export { SpinResult, ISpinResultDocument } from './SpinResult';
 export { SignInRecord, ISignInRecordDocument } from './SignInRecord';
 

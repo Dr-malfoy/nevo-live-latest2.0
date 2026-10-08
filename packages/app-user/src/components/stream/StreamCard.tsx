@@ -52,7 +52,7 @@ export const StreamCard = ({ stream }: StreamCardProps) => {
     : calculateWealthLevel(hostAny?.wealthExp || hostAny?.diamonds, hostAny?.wealthLevel || hostAny?.level).level;
   const live = hostAny?.liveLevel && hostAny.liveLevel > 1
     ? hostAny.liveLevel
-    : calculateLiveLevel(hostAny?.coins, hostAny?.level).level;
+    : calculateLiveLevel(hostAny?.liveStreamMinutes || Math.floor((hostAny?.liveStreamSeconds || 0) / 60), hostAny?.level).level;
   const hostLevel = Math.max(wealth, live, hostAny?.level || 1);
 
   const tint = PLACEHOLDER_TINTS[stream._id.charCodeAt(stream._id.length - 1) % PLACEHOLDER_TINTS.length];

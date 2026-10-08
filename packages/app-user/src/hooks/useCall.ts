@@ -298,7 +298,9 @@ export const useCall = () => {
           });
 
           client.on('connection-state-change', (cur, prev) => {
-            if (cur === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
+            if (!joinedRef.current) return;
+
+            if (cur === 'RECONNECTING') {
               if (!networkLostRef.current) {
                 networkLostRef.current = true;
                 setError('Connection lost — reconnecting…');
@@ -306,9 +308,14 @@ export const useCall = () => {
             } else if (cur === 'CONNECTED') {
               networkLostRef.current = false;
               setError('');
+            } else if (cur === 'DISCONNECTED') {
+              if ((prev === 'CONNECTED' || prev === 'RECONNECTING') && joinedRef.current) {
+                setError('Connection lost — reconnecting…');
+              }
             }
           });
         }
+
 
         const client = clientRef.current;
         await client.join(AGORA_APP_ID, channel, token, undefined);
@@ -467,6 +474,11 @@ export const useCall = () => {
   }, []);
 
   const endCall = useCallback(async () => {
+    joinedRef.current = false;
+    joiningRef.current = false;
+    networkLostRef.current = false;
+    setError('');
+
     try {
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
@@ -479,8 +491,10 @@ export const useCall = () => {
         localAudioRef.current.close();
         localAudioRef.current = null;
       }
-      if (clientRef.current && joinedRef.current) {
-        await clientRef.current.leave();
+      if (clientRef.current) {
+        clientRef.current.removeAllListeners();
+        await clientRef.current.leave().catch(() => {});
+        clientRef.current = null;
       }
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -493,7 +507,6 @@ export const useCall = () => {
     } catch (e) {
       console.warn('call leave error:', e);
     }
-    joinedRef.current = false;
     setJoined(false);
     setRemoteUsers([]);
     setMicOn(true);
@@ -507,6 +520,10 @@ export const useCall = () => {
   // Hard cleanup on unmount
   useEffect(() => {
     return () => {
+      joinedRef.current = false;
+      joiningRef.current = false;
+      networkLostRef.current = false;
+
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       localVideoRef.current?.close();
@@ -514,12 +531,15 @@ export const useCall = () => {
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
       }
-      clientRef.current?.leave();
-      clientRef.current = null;
-      joinedRef.current = false;
+      if (clientRef.current) {
+        clientRef.current.removeAllListeners();
+        clientRef.current.leave().catch(() => {});
+        clientRef.current = null;
+      }
       clearRemoteContainers();
     };
   }, [clearRemoteContainers]);
+
 
   return {
     joined,

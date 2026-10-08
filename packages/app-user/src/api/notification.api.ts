@@ -43,6 +43,9 @@ export const notificationApi = {
   deleteNotification: (id: string) =>
     client.delete<ApiResponse>(`/notifications/${id}`),
 
+  clearAll: (onlyRead?: boolean) =>
+    client.delete<ApiResponse>('/notifications/clear-all', { params: { onlyRead } }),
+
   registerPushToken: (data: {
     token: string;
     platform?: 'android' | 'ios' | 'web';

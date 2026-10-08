@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from './stores/adminAuth';
 import { Sidebar } from './components/Sidebar';
 import { adminApi } from './api';
-import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification } from './pages';
+import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification } from './pages';
 
 const AdminLayout = () => {
   const { logout } = useAdminAuth();
@@ -52,6 +52,7 @@ export default function App() {
           <Route path="streams" element={<Streams />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="gifts" element={<Gifts />} />
+          <Route path="badges" element={<Badges />} />
           <Route path="agents" element={<Agents />} />
           <Route path="purchase-orders" element={<PurchaseOrders />} />
           <Route path="payment-config" element={<PaymentConfig />} />

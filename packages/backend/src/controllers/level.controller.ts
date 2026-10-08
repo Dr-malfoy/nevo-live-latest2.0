@@ -6,14 +6,16 @@ export const levelController = {
   async getLevels(req: Request, res: Response, next: NextFunction) {
     try {
       const { kind } = req.params;
-      sendSuccess(res, await levelService.getLevels(kind));
+      const userId = req.user?.userId;
+      sendSuccess(res, await levelService.getLevels(kind, userId));
     } catch (error) { next(error); }
   },
 
   async getAchievements(req: Request, res: Response, next: NextFunction) {
     try {
       const { category } = req.query as { category?: string };
-      sendSuccess(res, await levelService.getAchievements(category));
+      const userId = req.user?.userId;
+      sendSuccess(res, await levelService.getAchievements(category, userId));
     } catch (error) { next(error); }
   },
 };

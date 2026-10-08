@@ -43,8 +43,12 @@ import {
   fangroupRoutes,
   streamerRoutes,
   gamesHubRoutes,
+  activityRoutes,
   storyRoutes,
   noteRoutes,
+  videoRoutes,
+  historyRoutes,
+  achievementRoutes,
 } from './routes';
 
 const app = express();
@@ -161,8 +165,15 @@ app.use('/api/fanclub', fanclubRoutes);
 app.use('/api/fangroups', fangroupRoutes);
 app.use('/api/streamer', streamerRoutes);
 app.use('/api/games', gamesHubRoutes);
+app.use('/api/activities', activityRoutes);
 app.use('/api/stories', storyRoutes);
 app.use('/api/notes', noteRoutes);
+app.use('/api/videos', videoRoutes);
+app.use('/api/history', historyRoutes);
+app.use('/api/achievements', achievementRoutes);
+
+
+
 
 // Error handler (must be last)
 app.use(errorHandler);

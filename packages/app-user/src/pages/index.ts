@@ -61,4 +61,5 @@ export { AgentProfileMock } from './AgentProfileMock';
 export { TransferHistory } from './TransferHistory';
 export { TransactionDetails } from './TransactionDetails';
 export { HelpCenter } from './HelpCenter';
-
+export { Bag } from './Bag';
+export { AgentRequests } from './AgentRequests';

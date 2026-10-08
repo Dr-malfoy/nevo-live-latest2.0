@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig } from '../models';
+import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem } from '../models';
 
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
@@ -265,6 +265,73 @@ export const adminController = {
         return;
       }
       sendSuccess(res, null, 'Gift deleted');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ─── Badge Store Management (Admin) ──────────────────────────────
+  async getBadges(req: Request, res: Response, next: NextFunction) {
+    try {
+      const badges = await StoreItem.find({ category: 'badge' }).sort({ order: 1, createdAt: -1 });
+      sendSuccess(res, badges);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createBadge(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name, image, preview, priceCoins = 0, priceDiamonds = 0, durationDays = null, rarity = null, badge = null, isActive = true, order = 0, description = '' } = req.body;
+      if (!name || (!image && !preview)) {
+        res.status(400).json({ success: false, error: 'Badge name and image are required' });
+        return;
+      }
+      const newBadge = await StoreItem.create({
+        category: 'badge',
+        name,
+        description,
+        image: image || preview,
+        preview: preview || image,
+        priceCoins: Number(priceCoins) || 0,
+        priceDiamonds: Number(priceDiamonds) || 0,
+        durationDays: durationDays ? Number(durationDays) : null,
+        rarity: rarity || null,
+        badge: badge || null,
+        isActive: isActive !== false,
+        order: Number(order) || 0,
+      });
+      sendSuccess(res, newBadge, 'Badge created successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateBadge(req: Request, res: Response, next: NextFunction) {
+    try {
+      const badge = await StoreItem.findOneAndUpdate(
+        { _id: req.params.id, category: 'badge' },
+        { $set: req.body },
+        { new: true }
+      );
+      if (!badge) {
+        res.status(404).json({ success: false, error: 'Badge not found' });
+        return;
+      }
+      sendSuccess(res, badge, 'Badge updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteBadge(req: Request, res: Response, next: NextFunction) {
+    try {
+      const badge = await StoreItem.findOneAndDelete({ _id: req.params.id, category: 'badge' });
+      if (!badge) {
+        res.status(404).json({ success: false, error: 'Badge not found' });
+        return;
+      }
+      sendSuccess(res, null, 'Badge deleted successfully');
     } catch (error) {
       next(error);
     }

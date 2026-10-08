@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
 import { calculateWealthLevel } from '../utils/userLevels';
+import { getIO } from '../socket';
 
 const PAYMENT_METHODS = ['bybit', 'binance', 'bkash', 'nagad', 'rocket'] as const;
 const MOBILE_BANKING = ['bkash', 'nagad', 'rocket'] as const;
@@ -58,18 +59,60 @@ export const paymentService = {
   // ─── User Recharge Orders (User → Agent) ─────────────────────────
 
   async getAgentsForRecharge() {
-    // Agents with payment info, for users to pay
+    // Agents with payment info and bound withdraw accounts, for users to pay
     const agents = await User.find({
       role: 'agent',
-      $or: [
-        { 'paymentInfo.bybit.qrCode': { $ne: '' } },
-        { 'paymentInfo.bybit.walletAddress': { $ne: '' } },
-        { 'paymentInfo.binance.qrCode': { $ne: '' } },
-        { 'paymentInfo.binance.walletAddress': { $ne: '' } },
-      ],
     })
-      .select('uid nickname avatar phone paymentInfo');
-    return agents;
+      .select('uid nickname avatar phone paymentInfo')
+      .lean();
+
+    const agentIds = agents.map((a: any) => a._id);
+    const withdrawAccounts = await WithdrawAccount.find({ userId: { $in: agentIds } }).lean();
+
+    const withdrawMap: Record<string, any[]> = {};
+    for (const wa of withdrawAccounts) {
+      const uidStr = wa.userId.toString();
+      if (!withdrawMap[uidStr]) withdrawMap[uidStr] = [];
+      withdrawMap[uidStr].push(wa);
+    }
+
+    return agents.map((agent: any) => {
+      const pi = agent.paymentInfo || {};
+      const userWas = withdrawMap[agent._id.toString()] || [];
+
+      for (const wa of userWas) {
+        const mKey = wa.methodKey; // 'bkash', 'nagad', 'rocket', 'usdt_trc20', 'binance_bep20', etc.
+        const num = wa.fields?.phone || wa.fields?.accountNumber || wa.fields?.walletAddress || wa.fields?.accountId || '';
+        const normKey = mKey === 'binance_bep20' ? 'binance' : (mKey === 'usdt_trc20' ? 'bybit' : mKey);
+        if (!pi[normKey] || (!pi[normKey].number && !pi[normKey].walletAddress && !pi[normKey].phone)) {
+          pi[normKey] = {
+            ...(pi[normKey] || {}),
+            number: num,
+            phone: num,
+            walletAddress: num,
+          };
+        }
+      }
+
+      // Also fallback to agent's registered phone number for mobile banking if empty
+      if (agent.phone) {
+        for (const mb of ['bkash', 'nagad', 'rocket']) {
+          if (!pi[mb] || (!pi[mb].number && !pi[mb].walletAddress && !pi[mb].phone)) {
+            pi[mb] = {
+              ...(pi[mb] || {}),
+              number: agent.phone,
+              phone: agent.phone,
+              walletAddress: agent.phone,
+            };
+          }
+        }
+      }
+
+      return {
+        ...agent,
+        paymentInfo: pi,
+      };
+    });
   },
 
   // Shared: credit a confirmed recharge to the user + commission to the agent
@@ -243,8 +286,23 @@ export const paymentService = {
       'recharge',
       'New recharge request',
       `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
-      { orderId: order._id }
+      { orderId: order._id, type: 'recharge', amountBdt, currency }
     );
+
+    try {
+      getIO()?.to(`user:${agentId}`).emit('agent:request:new', {
+        type: 'recharge',
+        orderId: order._id,
+        user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid },
+        amountBdt,
+        currency,
+        paymentMethod,
+        diamonds: order.diamonds,
+        coins: order.coins,
+      });
+    } catch {
+      // socket offline
+    }
 
     return order;
   },
@@ -252,7 +310,7 @@ export const paymentService = {
   async getUserOrders(userId: string, page: number, limit: number) {
     const total = await PurchaseOrder.countDocuments({ userId });
     const orders = await PurchaseOrder.find({ userId })
-      .populate('agentId', 'uid nickname')
+      .populate('agentId', 'uid nickname avatar phone')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -349,18 +407,25 @@ export const paymentService = {
   async getUserPaymentInfo(userId: string) {
     const user = await User.findById(userId).select('paymentInfo');
     if (!user) throw new AppError('User not found', 404);
-    return user.paymentInfo || { bybit: { qrCode: '', walletAddress: '' }, binance: { qrCode: '', walletAddress: '' } };
+    return user.paymentInfo || {
+      bybit: { qrCode: '', walletAddress: '' },
+      binance: { qrCode: '', walletAddress: '' },
+      bkash: { qrCode: '', walletAddress: '', number: '', phone: '' },
+      nagad: { qrCode: '', walletAddress: '', number: '', phone: '' },
+      rocket: { qrCode: '', walletAddress: '', number: '', phone: '' },
+    };
   },
 
-  async updateUserPaymentInfo(userId: string, body: { bybit?: { qrCode?: string; walletAddress?: string }; binance?: { qrCode?: string; walletAddress?: string } }) {
+  async updateUserPaymentInfo(userId: string, body: any) {
     const update: any = {};
-    if (body.bybit) {
-      if (body.bybit.qrCode !== undefined) update['paymentInfo.bybit.qrCode'] = body.bybit.qrCode;
-      if (body.bybit.walletAddress !== undefined) update['paymentInfo.bybit.walletAddress'] = body.bybit.walletAddress;
-    }
-    if (body.binance) {
-      if (body.binance.qrCode !== undefined) update['paymentInfo.binance.qrCode'] = body.binance.qrCode;
-      if (body.binance.walletAddress !== undefined) update['paymentInfo.binance.walletAddress'] = body.binance.walletAddress;
+    const methods = ['bybit', 'binance', 'bkash', 'nagad', 'rocket'];
+    for (const m of methods) {
+      if (body[m]) {
+        if (body[m].qrCode !== undefined) update[`paymentInfo.${m}.qrCode`] = body[m].qrCode;
+        if (body[m].walletAddress !== undefined) update[`paymentInfo.${m}.walletAddress`] = body[m].walletAddress;
+        if (body[m].number !== undefined) update[`paymentInfo.${m}.number`] = body[m].number;
+        if (body[m].phone !== undefined) update[`paymentInfo.${m}.phone`] = body[m].phone;
+      }
     }
     const user = await User.findByIdAndUpdate(
       userId,
@@ -422,8 +487,22 @@ export const paymentService = {
       'withdrawal',
       'New withdrawal request',
       `${user.nickname} requested to withdraw ${amount} ${currency} (৳${finalBdt}) via ${method}`,
-      { withdrawalId: request._id }
+      { withdrawalId: request._id, type: 'withdrawal', amount, currency }
     );
+
+    try {
+      getIO()?.to(`user:${agentId}`).emit('agent:request:new', {
+        type: 'withdrawal',
+        withdrawalId: request._id,
+        user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid },
+        amount,
+        amountBdt: finalBdt,
+        currency,
+        method,
+      });
+    } catch {
+      // socket offline
+    }
 
     return request;
   },
@@ -431,7 +510,7 @@ export const paymentService = {
   async getWithdrawalsForUser(userId: string, page: number, limit: number) {
     const total = await WithdrawalRequest.countDocuments({ userId });
     const data = await WithdrawalRequest.find({ userId })
-      .populate('agentId', 'uid nickname')
+      .populate('agentId', 'uid nickname avatar phone')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -918,6 +997,19 @@ export const paymentService = {
       },
       { upsert: true, new: true }
     );
+
+    // Sync bound details directly into user.paymentInfo for agent recharge resolution
+    const num = payload.phone || payload.accountNumber || payload.walletAddress || payload.accountId || payload.email;
+    if (num) {
+      const normKey = methodKey === 'binance_bep20' ? 'binance' : (methodKey === 'usdt_trc20' ? 'bybit' : methodKey);
+      await User.findByIdAndUpdate(userId, {
+        $set: {
+          [`paymentInfo.${normKey}.number`]: num,
+          [`paymentInfo.${normKey}.phone`]: num,
+          [`paymentInfo.${normKey}.walletAddress`]: num,
+        },
+      });
+    }
 
     const methods = await this.getWithdrawMethods(userId);
     const updatedMethod = methods.find((m) => m.key === methodKey);

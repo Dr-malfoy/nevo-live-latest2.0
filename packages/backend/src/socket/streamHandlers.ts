@@ -18,11 +18,13 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  */
 const getUserProfile = async (userId?: string) => {
   if (!userId) return { userId: undefined as string | undefined, nickname: 'Guest', avatar: '', level: 1, wealthLevel: 1, liveLevel: 1, isVip: false, diamonds: 0, coins: 0 };
-  const u = await User.findById(userId).select('nickname avatar level wealthLevel liveLevel wealthExp isVip hasPurchasedDiamonds noble diamonds coins').lean();
+  const u = await User.findById(userId).select('nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes isVip hasPurchasedDiamonds noble diamonds coins').lean();
   const isVip = Boolean(u?.isVip || u?.hasPurchasedDiamonds || u?.noble || (u?.diamonds && u.diamonds > 0));
   const wealthExp = Math.max(u?.wealthExp || 0, u?.diamonds || 0);
   const wealthLevel = u?.wealthLevel && u.wealthLevel > 1 ? u.wealthLevel : calculateWealthLevel(wealthExp, u?.level).level;
-  const liveLevel = u?.liveLevel && u.liveLevel > 1 ? u.liveLevel : calculateLiveLevel(u?.coins, u?.level).level;
+  const liveStreamSeconds = u?.liveStreamSeconds || 0;
+  const liveStreamMinutes = u?.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);
+  const liveLevel = u?.liveLevel && u.liveLevel > 1 ? u.liveLevel : calculateLiveLevel(liveStreamMinutes, u?.level).level;
   const level = u?.level && u.level > 1 ? u.level : Math.max(wealthLevel, liveLevel, 1);
   return {
     userId,

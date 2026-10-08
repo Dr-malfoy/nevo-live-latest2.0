@@ -30,6 +30,12 @@ router.post('/gifts', authenticate, requireAdmin, adminController.createGift);
 router.put('/gifts/:id', authenticate, requireAdmin, adminController.updateGift);
 router.delete('/gifts/:id', authenticate, requireAdmin, adminController.deleteGift);
 
+// Badge Management (Store Badges)
+router.get('/badges', authenticate, requireAdmin, adminController.getBadges);
+router.post('/badges', authenticate, requireAdmin, adminController.createBadge);
+router.put('/badges/:id', authenticate, requireAdmin, adminController.updateBadge);
+router.delete('/badges/:id', authenticate, requireAdmin, adminController.deleteBadge);
+
 // Agent management
 router.get('/agents', authenticate, requireAdmin, adminController.getAgents);
 router.post('/agents', authenticate, requireAdmin, adminController.createAgent);

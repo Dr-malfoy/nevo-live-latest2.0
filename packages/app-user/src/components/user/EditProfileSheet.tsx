@@ -43,6 +43,18 @@ export const EditProfileSheet = ({ isOpen, onClose }: EditProfileSheetProps) => 
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
 
+  const isGenderAlreadySet = Boolean(user?.gender && user.gender !== 'unspecified');
+  let isGenderLocked = false;
+  let daysRemaining = 0;
+  if (isGenderAlreadySet && (user as any)?.genderUpdatedAt) {
+    const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
+    const timePassed = Date.now() - new Date((user as any).genderUpdatedAt).getTime();
+    if (timePassed < sixtyDaysMs) {
+      isGenderLocked = true;
+      daysRemaining = Math.ceil((sixtyDaysMs - timePassed) / (24 * 60 * 60 * 1000));
+    }
+  }
+
   // Re-seed from the live user each time the sheet opens.
   useEffect(() => {
     if (!isOpen || !user) return;
@@ -219,19 +231,36 @@ export const EditProfileSheet = ({ isOpen, onClose }: EditProfileSheetProps) => 
             />
           </Field>
 
-          <Field label="Gender">
+          <Field
+            label="Gender"
+            hint={
+              isGenderLocked
+                ? `🔒 Locked. Can only be changed once every 60 days (${daysRemaining} days remaining).`
+                : '⚠️ Mandatory for Live Streams & Party Rooms. Once set, cannot be changed for 60 days.'
+            }
+          >
             <div className="flex flex-wrap gap-2">
-              {GENDERS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => setGender(value)}
-                  className={`h-9 px-3.5 rounded-full text-sm font-medium transition-colors ${
-                    gender === value ? 'bg-black text-white' : 'bg-surface-sunken text-ink-soft'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              {GENDERS.map(({ value, label }) => {
+                const isSelected = gender === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={isGenderLocked}
+                    onClick={() => {
+                      if (!isGenderLocked) setGender(value);
+                    }}
+                    className={`h-9 px-3.5 rounded-full text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-black text-white shadow-sm'
+                        : 'bg-surface-sunken text-ink-soft hover:bg-surface-soft'
+                    } ${isGenderLocked ? 'opacity-60 cursor-not-allowed' : 'active:scale-95'}`}
+                  >
+                    {isSelected && isGenderLocked && <span className="text-xs">🔒</span>}
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
           </Field>
 
