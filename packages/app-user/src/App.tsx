@@ -152,14 +152,42 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       .catch((err) => {
         console.warn('Redirect login error:', err);
       });
-  }, [navigate, showToast]);
+  }, [navigate]);
+
+  // Initialize push notification listener and request permissions on initial mount
+  useEffect(() => {
+    pushNotificationService.init({
+      onIncomingCall: (callData) => {
+        if (!callData?.callId || callData.initiatorId === user?._id) return;
+        setGlobalIncomingCall({
+          callId: callData.callId,
+          channel: callData.channel,
+          type: callData.type,
+          initiatorId: callData.initiatorId,
+          token: callData.token,
+          coinsPerMinute: callData.coinsPerMinute,
+          initiator: {
+            nickname: callData.initiatorName || 'Someone',
+            avatar: callData.initiatorAvatar || '',
+          },
+        });
+        setGlobalCallAccepted(false);
+      },
+      onCallCancelled: (callId) => {
+        setGlobalIncomingCall((cur) => (cur?.callId === callId ? null : cur));
+      },
+      onNavigate: (url) => {
+        if (url) navigate(url);
+      },
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated && token) {
       connect(token);
       fetchProfile();
 
-      // Initialize Push Notifications
+      // Refresh push token association with authenticated user
       pushNotificationService.init({
         onIncomingCall: (callData) => {
           if (!callData?.callId || callData.initiatorId === user?._id) return;
