@@ -65,6 +65,7 @@ import { Avatar, RoleTags, UserNameplate } from '../components/user';
 import { Loading } from '../components/ui';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { compactNumber } from '../lib/time';
+import { getMediaUrl } from '../lib/media';
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
 
@@ -526,7 +527,7 @@ export const AgentDashboard = () => {
       <div className="relative text-white pt-2 pb-5 px-4 shadow-md overflow-hidden bg-slate-950">
         {myAgency?.cover ? (
           <img
-            src={myAgency.cover}
+            src={getMediaUrl(myAgency.cover)}
             alt="Agency Cover"
             className="absolute inset-0 w-full h-full object-cover opacity-35 scale-105 filter blur-[0.5px]"
           />
@@ -581,7 +582,7 @@ export const AgentDashboard = () => {
           {myAgency ? (
             <div className="max-w-md mx-auto mt-2 flex items-center gap-3.5 bg-black/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shadow-sm">
               <div className="relative shrink-0">
-                <Avatar src={myAgency?.avatar || user?.avatar} nickname={myAgency?.name || user?.nickname || 'Agent'} size="lg" className="ring-2 ring-white/40" />
+                <Avatar src={getMediaUrl(myAgency?.avatar) || getMediaUrl(user?.avatar)} nickname={myAgency?.name || user?.nickname || 'Agent'} size="lg" className="ring-2 ring-white/40" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -1383,7 +1384,7 @@ export const AgentDashboard = () => {
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
                     {agencyAvatar ? (
-                      <img src={agencyAvatar} alt="" className="w-full h-full object-cover" />
+                      <img src={getMediaUrl(agencyAvatar)} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">Logo</div>
                     )}
@@ -1429,7 +1430,7 @@ export const AgentDashboard = () => {
                 <div className="space-y-1.5">
                   {agencyCover && (
                     <div className="h-16 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                      <img src={agencyCover} alt="" className="w-full h-full object-cover" />
+                      <img src={getMediaUrl(agencyCover)} alt="" className="w-full h-full object-cover" />
                     </div>
                   )}
                   <input

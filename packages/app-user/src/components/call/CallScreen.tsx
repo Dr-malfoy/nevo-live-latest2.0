@@ -80,6 +80,7 @@ export const CallScreen = ({
     toggleCamera,
     switchCamera,
     playLocalPreview,
+    playRemoteVideo,
     endCall,
   } = useCall();
 
@@ -472,7 +473,15 @@ export const CallScreen = ({
         <div className={`absolute inset-0 grid ${gridClass} gap-1 bg-black`}>
           {remoteUsers.map((uid, idx) => (
             <div key={String(uid)} className="relative w-full h-full bg-neutral-900 overflow-hidden flex items-center justify-center">
-              <div id={`remote-container-${uid}`} className="absolute inset-0 w-full h-full object-cover" />
+              <div
+                id={`remote-container-${uid}`}
+                ref={(el) => {
+                  if (el) {
+                    playRemoteVideo(uid, el);
+                  }
+                }}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
               {/* Remote user nameplate badge */}
               <div className="absolute bottom-24 sm:bottom-28 left-4 z-10 pointer-events-none">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-xl border border-white/15 shadow-lg">
@@ -488,7 +497,7 @@ export const CallScreen = ({
       )}
 
       {/* 3. Audio Call Background (Deep cinematic mesh & live glowing waves) */}
-      {(!isVideo || ringing || !callConnected) && (
+      {(!isVideo || ringing || !callConnected || (isVideo && callConnected && remoteUsers.length === 0)) && (
         <div className="absolute inset-0 z-[1] bg-gradient-to-b from-neutral-900 via-neutral-950 to-black flex flex-col items-center justify-between py-12 px-6 overflow-hidden">
           {/* Ambient decorative glowing orbs */}
           <div className="absolute top-1/4 -left-20 w-80 h-80 bg-brand-primary/20 rounded-full blur-[100px] pointer-events-none" />

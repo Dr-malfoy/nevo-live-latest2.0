@@ -21,8 +21,210 @@ import { agencyApi, type AgencyItem } from '../api/agency.api';
 import { useAuthStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { Loading } from '../components/ui';
+import { getMediaUrl } from '../lib/media';
 
 type FilterType = 'all' | 'public' | 'private' | 'popular' | 'level';
+
+const AgencyCard = ({
+  agency,
+  user,
+  joining,
+  onCopyCode,
+  onJoinClick,
+}: {
+  agency: AgencyItem;
+  user: any;
+  joining: boolean;
+  onCopyCode: (code: string, e: React.MouseEvent) => void;
+  onJoinClick: (agency: AgencyItem, e: React.MouseEvent) => void;
+}) => {
+  const navigate = useNavigate();
+  const [avatarError, setAvatarError] = useState(false);
+  const [coverError, setCoverError] = useState(false);
+
+  const isOwner = user?._id === (typeof agency.agent === 'object' ? agency.agent?._id : agency.agent);
+  const isMember = user?.agencyId === agency._id;
+  const isPrivate = agency.type === 'private';
+
+  const avatarUrl = agency.avatar ? getMediaUrl(agency.avatar) : '';
+  const coverUrl = agency.cover ? getMediaUrl(agency.cover) : '';
+
+  return (
+    <div
+      onClick={() => navigate(`/agency/${agency._id}`)}
+      className="bg-white rounded-3xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all active:scale-[0.99] cursor-pointer relative overflow-hidden group"
+    >
+      {/* Cover Banner */}
+      <div className="h-24 sm:h-28 w-full relative overflow-hidden bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-700">
+        {coverUrl && !coverError ? (
+          <img
+            src={coverUrl}
+            alt="Agency Cover"
+            onError={() => setCoverError(true)}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            crossOrigin="anonymous"
+          />
+        ) : (
+          <div className="w-full h-full relative overflow-hidden opacity-80">
+            <div className="absolute -top-6 -right-6 w-32 h-32 rounded-full bg-white/10 blur-lg" />
+            <div className="absolute -bottom-6 -left-6 w-32 h-32 rounded-full bg-indigo-400/20 blur-lg" />
+            <div className="absolute inset-0 flex items-center justify-center text-white/20 font-black text-4xl tracking-widest uppercase pointer-events-none select-none">
+              {agency.name.slice(0, 3)}
+            </div>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+
+        {/* Top Badges: Type & Level */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold backdrop-blur-md shadow-xs border flex items-center gap-1 ${
+              isPrivate
+                ? 'bg-purple-900/80 text-purple-200 border-purple-400/30'
+                : 'bg-emerald-900/80 text-emerald-200 border-emerald-400/30'
+            }`}
+          >
+            {isPrivate ? (
+              <>
+                <PiLockKeyFill className="w-2.5 h-2.5" />
+                <span>Private</span>
+              </>
+            ) : (
+              <>
+                <PiGlobeFill className="w-2.5 h-2.5" />
+                <span>Public</span>
+              </>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Profile & Info Section */}
+      <div className="p-3.5 pt-0">
+        <div className="flex items-end justify-between -mt-7 mb-2.5">
+          <div className="relative">
+            {avatarUrl && !avatarError ? (
+              <img
+                src={avatarUrl}
+                alt={agency.name}
+                onError={() => setAvatarError(true)}
+                className="w-14 h-14 rounded-2xl object-cover ring-4 ring-white shadow-md bg-white"
+                crossOrigin="anonymous"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-md ring-4 ring-white">
+                {agency.name.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <div className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-full bg-slate-900 text-amber-300 text-[9px] font-black border border-white flex items-center gap-0.5 shadow-xs">
+              <PiCrownFill className="w-2.5 h-2.5 text-amber-400" />
+              <span>Lv.{agency.level}</span>
+            </div>
+          </div>
+
+          {/* Agency Code Pill */}
+          <button
+            type="button"
+            onClick={(e) => onCopyCode(agency.code, e)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/80 text-[11px] font-mono font-bold text-indigo-700 transition-all shadow-xs"
+          >
+            <span>{agency.code}</span>
+            <PiCopyFill className="w-3 h-3 text-indigo-500" />
+          </button>
+        </div>
+
+        {/* Agency Name & Stats */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-extrabold text-sm text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
+              {agency.name}
+            </h3>
+            <PiShieldCheckFill className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          </div>
+
+          {agency.description && (
+            <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed font-medium">
+              {agency.description}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-0.5 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1">
+              <PiUsersFill className="w-3.5 h-3.5 text-slate-400" />
+              <strong className="text-slate-800 font-bold">{agency.memberCount}</strong> hosts
+            </span>
+            <span>•</span>
+            <span className="text-amber-600 font-bold">
+              {(agency.totalContribution || 0).toLocaleString()} pts
+            </span>
+            <span>•</span>
+            <span className="text-slate-500">
+              {agency.totalLiveHours || 0}h live
+            </span>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-slate-100 my-2.5" />
+
+        {/* Bottom Row: Agent Info & Action Button */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Agent Leader */}
+          <div className="flex items-center gap-2 min-w-0">
+            <Avatar
+              src={agency.agent.avatar}
+              nickname={agency.agent.nickname}
+              size="xs"
+              className="ring-1 ring-slate-200 shadow-xs"
+            />
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-800 truncate leading-none">
+                {agency.agent.nickname}
+              </p>
+              <p className="text-[9px] text-slate-400 mt-0.5 font-mono">
+                Leader ID: {agency.agent.uid}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <div className="shrink-0">
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/agent');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs shadow-xs transition-all"
+              >
+                Manage
+              </button>
+            ) : isMember ? (
+              <span className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs inline-flex items-center gap-1">
+                <PiCheckCircleFill className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Member</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => onJoinClick(agency, e)}
+                disabled={joining}
+                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs active:scale-95 transition-all flex items-center gap-1 ${
+                  isPrivate
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-500/20'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                }`}
+              >
+                {isPrivate ? 'Request' : 'Join'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const AgencyPage = () => {
   const navigate = useNavigate();
@@ -315,155 +517,16 @@ export const AgencyPage = () => {
               {search && <span className="text-indigo-600">Results for "{search}"</span>}
             </div>
 
-            {agencies.map((agency) => {
-              const isOwner = user?._id === agency.agent._id;
-              const isMember = user?.agencyId === agency._id;
-              const isPrivate = agency.type === 'private';
-
-              return (
-                <div
-                  key={agency._id}
-                  onClick={() => navigate(`/agency/${agency._id}`)}
-                  className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md transition-all active:scale-[0.99] cursor-pointer relative overflow-hidden group"
-                >
-                  {/* Top Row: Agency Logo, Name, Badges */}
-                  <div className="flex items-start gap-3">
-                    <div className="relative shrink-0">
-                      {agency.avatar ? (
-                        <img
-                          src={agency.avatar}
-                          alt={agency.name}
-                          className="w-14 h-14 rounded-2xl object-cover ring-2 ring-slate-100 shadow-xs"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-xs">
-                          {agency.name.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-full bg-slate-900 text-amber-300 text-[10px] font-black border border-white flex items-center gap-0.5">
-                        <PiCrownFill className="w-2.5 h-2.5" />
-                        <span>Lv.{agency.level}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <h3 className="font-extrabold text-sm text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
-                          {agency.name}
-                        </h3>
-
-                        {/* Public / Private Badge */}
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold shrink-0 border flex items-center gap-1 ${
-                            isPrivate
-                              ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          }`}
-                        >
-                          {isPrivate ? (
-                            <>
-                              <PiLockKeyFill className="w-2.5 h-2.5" />
-                              <span>Private</span>
-                            </>
-                          ) : (
-                            <>
-                              <PiGlobeFill className="w-2.5 h-2.5" />
-                              <span>Public</span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Agency Code Pill */}
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[11px] font-mono font-bold text-indigo-700">
-                          <span>{agency.code}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => handleCopyCode(agency.code, e)}
-                            className="text-slate-400 hover:text-slate-700"
-                            title="Copy Agency Code"
-                          >
-                            <PiCopyFill className="w-3 h-3" />
-                          </button>
-                        </div>
-
-                        <span className="text-[11px] text-slate-400">•</span>
-                        <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                          <PiUsersFill className="w-3 h-3 text-slate-400" />
-                          <strong className="text-slate-700">{agency.memberCount}</strong> members
-                        </span>
-                      </div>
-
-                      {/* Description preview */}
-                      {agency.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-1 font-medium">
-                          {agency.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="h-px bg-slate-100 my-3" />
-
-                  {/* Bottom Row: Agent Info & Action Button */}
-                  <div className="flex items-center justify-between gap-2">
-                    {/* Agent / Owner info */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Avatar
-                        src={agency.agent.avatar}
-                        nickname={agency.agent.nickname}
-                        size="sm"
-                        className="ring-1 ring-slate-200"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-slate-800 truncate leading-none">
-                          {agency.agent.nickname}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                          Agent ID: {agency.agent.uid}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Action Button */}
-                    <div className="shrink-0">
-                      {isOwner ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate('/agent');
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs"
-                        >
-                          Manage
-                        </button>
-                      ) : isMember ? (
-                        <span className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs inline-flex items-center gap-1">
-                          <PiCheckCircleFill className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Member</span>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => handleJoinClick(agency, e)}
-                          disabled={joining}
-                          className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs active:scale-95 transition-all flex items-center gap-1 ${
-                            isPrivate
-                              ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                          }`}
-                        >
-                          {isPrivate ? 'Request Join' : 'Join Direct'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {agencies.map((agency) => (
+              <AgencyCard
+                key={agency._id}
+                agency={agency}
+                user={user}
+                joining={joining}
+                onCopyCode={handleCopyCode}
+                onJoinClick={handleJoinClick}
+              />
+            ))}
           </>
         )}
       </div>

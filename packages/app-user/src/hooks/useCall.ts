@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, ILocalAudioTrack, UID } from 'agora-rtc-sdk-ng';
 
-const AGORA_APP_ID = '89383e4dfc4a43a4954a30fa9984b4f6';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -45,6 +45,8 @@ export const useCall = () => {
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const fallbackVideoElRef = useRef<HTMLVideoElement | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const remoteVideoTracksRef = useRef<Map<UID, any>>(new Map());
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
 
   const joinedRef = useRef(false);
   const micOnRef = useRef(true);
@@ -69,6 +71,60 @@ export const useCall = () => {
     area.querySelectorAll('[id^="remote-container-"]').forEach((el) => el.remove());
   }, []);
 
+  /**
+   * Dedicated remote video player that plays into either the provided target element or the DOM container.
+   * Auto-retries smoothly if React is still rendering the container.
+   */
+  const playRemoteVideo = useCallback((uid: UID, targetEl?: HTMLElement | null) => {
+    const play = (attempt = 0) => {
+      const container = targetEl || document.getElementById(`remote-container-${uid}`);
+      if (!container) {
+        if (attempt < 15) {
+          setTimeout(() => play(attempt + 1), 120);
+        }
+        return;
+      }
+
+      // 1. Check Agora remote video track
+      const track = remoteVideoTracksRef.current.get(uid);
+      if (track) {
+        try {
+          track.play(container, { fit: 'cover' });
+          return;
+        } catch (e) {
+          console.warn('[useCall] Agora video play error:', e);
+        }
+      }
+
+      // 2. Check WebRTC fallback remote stream
+      const stream = remoteStreamsRef.current.get(String(uid));
+      if (stream) {
+        let videoEl = container.querySelector('video') as HTMLVideoElement | null;
+        if (!videoEl) {
+          videoEl = document.createElement('video');
+          videoEl.autoplay = true;
+          videoEl.playsInline = true;
+          videoEl.muted = false;
+          videoEl.style.width = '100%';
+          videoEl.style.height = '100%';
+          videoEl.style.objectFit = 'cover';
+          container.appendChild(videoEl);
+        }
+        if (videoEl.srcObject !== stream) {
+          videoEl.srcObject = stream;
+        }
+        videoEl.play().catch(() => {});
+        return;
+      }
+
+      if (attempt < 15) {
+        setTimeout(() => play(attempt + 1), 150);
+      }
+    };
+
+    play(0);
+  }, []);
+
   // WebRTC P2P fallback signaling setup
   const setupWebRTCFallback = useCallback(
     (socket: any, callId: string) => {
@@ -90,28 +146,9 @@ export const useCall = () => {
 
           pc.ontrack = (event) => {
             const remoteStream = event.streams[0] || new MediaStream([event.track]);
-            let container = document.getElementById(`remote-container-${fromSocketId}`);
-            if (!container) {
-              container = document.createElement('div');
-              container.id = `remote-container-${fromSocketId}`;
-              container.className = 'absolute inset-0 w-full h-full';
-              const area = document.getElementById('call-video-area');
-              if (area) area.appendChild(container);
-            }
-
-            let videoEl = container.querySelector('video');
-            if (!videoEl) {
-              videoEl = document.createElement('video');
-              videoEl.autoplay = true;
-              videoEl.playsInline = true;
-              videoEl.style.width = '100%';
-              videoEl.style.height = '100%';
-              videoEl.style.objectFit = 'cover';
-              container.appendChild(videoEl);
-            }
-            videoEl.srcObject = remoteStream;
-            videoEl.play().catch(() => {});
+            remoteStreamsRef.current.set(fromSocketId, remoteStream);
             setRemoteUsers((prev) => (prev.includes(fromSocketId as any) ? prev : [...prev, fromSocketId as any]));
+            playRemoteVideo(fromSocketId as any);
           };
 
           pc.onicecandidate = (event) => {
@@ -163,7 +200,7 @@ export const useCall = () => {
       socket.on('call:signal:answer', onSignalAnswer);
       socket.on('call:signal:candidate', onSignalCandidate);
     },
-    []
+    [playRemoteVideo]
   );
 
   const initLocalMediaFallback = useCallback(
@@ -201,8 +238,8 @@ export const useCall = () => {
                   container.appendChild(fallbackVideoElRef.current);
                 }
               }
-            } else if (attempt < 10) {
-              setTimeout(() => playFallbackPreview(attempt + 1), 150);
+            } else if (attempt < 15) {
+              setTimeout(() => playFallbackPreview(attempt + 1), 120);
             }
           };
           playFallbackPreview();
@@ -226,7 +263,7 @@ export const useCall = () => {
       if (el) {
         if (localVideoRef.current) {
           try {
-            localVideoRef.current.play(el);
+            localVideoRef.current.play(el, { fit: 'cover' });
           } catch {
             // retry
           }
@@ -246,8 +283,8 @@ export const useCall = () => {
             el.appendChild(fallbackVideoElRef.current);
           }
         }
-      } else if (attempt < 10) {
-        setTimeout(() => tryPlay(attempt + 1), 150);
+      } else if (attempt < 15) {
+        setTimeout(() => tryPlay(attempt + 1), 120);
       }
     };
     tryPlay(0);
@@ -267,34 +304,30 @@ export const useCall = () => {
           client.on('user-published', async (user, mediaType) => {
             try {
               await client.subscribe(user, mediaType);
-              if (mediaType === 'video') {
-                let container = document.getElementById(`remote-container-${user.uid}`);
-                if (!container) {
-                  container = document.createElement('div');
-                  container.id = `remote-container-${user.uid}`;
-                  container.className = 'absolute inset-0 w-full h-full';
-                  const area = document.getElementById('call-video-area');
-                  if (area) area.appendChild(container);
-                }
-                user.videoTrack?.play(container);
+              if (mediaType === 'video' && user.videoTrack) {
+                remoteVideoTracksRef.current.set(user.uid, user.videoTrack);
+                setRemoteUsers((prev) => (prev.includes(user.uid) ? prev : [...prev, user.uid]));
+                playRemoteVideo(user.uid);
               }
-              if (mediaType === 'audio') {
-                user.audioTrack?.play();
+              if (mediaType === 'audio' && user.audioTrack) {
+                user.audioTrack.play();
               }
-              setRemoteUsers((prev) => (prev.includes(user.uid) ? prev : [...prev, user.uid]));
             } catch (e) {
               console.warn('call subscribe/play error:', e);
             }
           });
 
-          client.on('user-unpublished', (user) => {
-            setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
-            document.getElementById(`remote-container-${user.uid}`)?.remove();
+          client.on('user-unpublished', (user, mediaType) => {
+            if (mediaType === 'video') {
+              remoteVideoTracksRef.current.delete(user.uid);
+              setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
+            }
           });
 
           client.on('user-left', (user) => {
+            remoteVideoTracksRef.current.delete(user.uid);
+            remoteStreamsRef.current.delete(String(user.uid));
             setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
-            document.getElementById(`remote-container-${user.uid}`)?.remove();
           });
 
           client.on('connection-state-change', (cur, prev) => {
@@ -321,6 +354,30 @@ export const useCall = () => {
         await client.join(AGORA_APP_ID, channel, token, undefined);
         joinedRef.current = true;
         setJoined(true);
+
+        // Check for any already published remote users on join (important when answering an existing call)
+        for (const remoteUser of client.remoteUsers) {
+          if (remoteUser.hasVideo) {
+            try {
+              await client.subscribe(remoteUser, 'video');
+              if (remoteUser.videoTrack) {
+                remoteVideoTracksRef.current.set(remoteUser.uid, remoteUser.videoTrack);
+                setRemoteUsers((prev) => (prev.includes(remoteUser.uid) ? prev : [...prev, remoteUser.uid]));
+                playRemoteVideo(remoteUser.uid);
+              }
+            } catch (e) {
+              console.warn('Initial remote video subscribe error:', e);
+            }
+          }
+          if (remoteUser.hasAudio) {
+            try {
+              await client.subscribe(remoteUser, 'audio');
+              remoteUser.audioTrack?.play();
+            } catch (e) {
+              console.warn('Initial remote audio subscribe error:', e);
+            }
+          }
+        }
 
         const tracksToPublish: any[] = [];
 
@@ -371,7 +428,7 @@ export const useCall = () => {
         joiningRef.current = false;
       }
     },
-    [initLocalMediaFallback, playLocalPreview]
+    [initLocalMediaFallback, playLocalPreview, playRemoteVideo]
   );
 
   const toggleMic = useCallback(async () => {
@@ -553,6 +610,7 @@ export const useCall = () => {
     toggleCamera,
     switchCamera,
     playLocalPreview,
+    playRemoteVideo,
     endCall,
   };
 };

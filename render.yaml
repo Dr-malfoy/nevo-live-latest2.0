@@ -52,3 +52,7 @@ services:
         value: console
       - key: OTP_WHATSAPP_PROVIDER
         value: console
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+
+

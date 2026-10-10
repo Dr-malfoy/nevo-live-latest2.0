@@ -35,24 +35,21 @@ export const pushNotificationService = {
       // 1. Bind registration listener BEFORE calling register()
       await PushNotifications.addListener('registration', async (token: Token) => {
         currentToken = token.value;
+        localStorage.setItem('nevo_push_token', token.value);
         console.log('[Push] FCM device token generated:', token.value);
-        try {
-          const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
-          await notificationApi.registerPushToken({
-            token: token.value,
-            platform,
-            deviceName: navigator.userAgent.slice(0, 100),
-          });
-          localStorage.setItem('nevo_push_token', token.value);
-        } catch (regErr) {
-          console.warn('[Push] Failed to register device token on backend:', regErr);
-        }
+        await pushNotificationService.syncTokenWithBackend();
       });
 
       // 2. Bind registration error listener
       await PushNotifications.addListener('registrationError', (error: any) => {
         console.warn('[Push] Error on push registration:', error);
       });
+
+      // 3. Immediately attempt syncing cached token if already present
+      const cachedToken = currentToken || localStorage.getItem('nevo_push_token');
+      if (cachedToken) {
+        pushNotificationService.syncTokenWithBackend().catch(() => {});
+      }
 
       // 3. Bind incoming notification listener (foreground & background)
       await PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
@@ -93,10 +90,16 @@ export const pushNotificationService = {
           handlers.onNavigate(data.targetUrl);
         } else if (data.type === 'message' && data.chatId && handlers.onNavigate) {
           handlers.onNavigate(`/chat/${data.chatId}`);
-        } else if (data.type === 'follower' && data.senderId && handlers.onNavigate) {
+        } else if ((data.type === 'follower' || data.type === 'friend_request' || data.type === 'friend_request_accepted') && data.senderId && handlers.onNavigate) {
           handlers.onNavigate(`/user/${data.senderId}`);
         } else if (data.type === 'live_started' && data.streamId && handlers.onNavigate) {
           handlers.onNavigate(`/stream/${data.streamId}`);
+        } else if ((data.type === 'gift' || data.type === 'recharge' || data.type === 'coin_transfer' || data.type === 'withdrawal') && handlers.onNavigate) {
+          handlers.onNavigate('/wallet');
+        } else if (data.type && data.type.startsWith('agency') && handlers.onNavigate) {
+          handlers.onNavigate('/my-agency');
+        } else if (data.type === 'system' && handlers.onNavigate) {
+          handlers.onNavigate('/notifications/official');
         }
       });
 
@@ -143,6 +146,27 @@ export const pushNotificationService = {
       await PushNotifications.register();
     } catch (err) {
       console.warn('[Push] Error initializing Push Notifications:', err);
+    }
+  },
+
+  /**
+   * Sync active device token with the backend for the current authenticated user.
+   */
+  async syncTokenWithBackend() {
+    if (!Capacitor.isNativePlatform()) return;
+    const token = currentToken || localStorage.getItem('nevo_push_token');
+    if (!token) return;
+
+    try {
+      const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
+      await notificationApi.registerPushToken({
+        token,
+        platform,
+        deviceName: navigator.userAgent.slice(0, 100),
+      });
+      console.log('[Push] Device token successfully registered on backend for user');
+    } catch (err) {
+      console.warn('[Push] Error syncing device token with backend:', err);
     }
   },
 

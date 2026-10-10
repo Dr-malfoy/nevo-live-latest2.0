@@ -186,8 +186,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     if (isAuthenticated && token) {
       connect(token);
       fetchProfile();
-
       // Refresh push token association with authenticated user
+      pushNotificationService.syncTokenWithBackend().catch(() => {});
       pushNotificationService.init({
         onIncomingCall: (callData) => {
           if (!callData?.callId || callData.initiatorId === user?._id) return;
@@ -309,28 +309,55 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     const onNativeIncomingCall = (e: any) => {
       const detail = e.detail;
       if (!detail || !detail.callId) return;
-      setGlobalIncomingCall({
-        callId: detail.callId,
-        channel: detail.channel,
-        type: detail.type === 'video' ? 'video' : 'audio',
-        initiatorId: detail.initiatorId || '',
-        token: detail.token || '',
-        coinsPerMinute: detail.coinsPerMinute ? Number(detail.coinsPerMinute) : 0,
-        initiator: {
-          nickname: detail.initiatorName || 'Someone',
-          avatar: detail.initiatorAvatar || '',
-        },
+
+      setGlobalIncomingCall((existing) => {
+        if (existing?.callId === detail.callId) {
+          if (detail.autoAccept) setGlobalCallAccepted(true);
+          return existing;
+        }
+        return {
+          callId: detail.callId,
+          channel: detail.channel,
+          type: detail.type === 'video' ? 'video' : 'audio',
+          initiatorId: detail.initiatorId || '',
+          token: detail.token || '',
+          coinsPerMinute: detail.coinsPerMinute ? Number(detail.coinsPerMinute) : 0,
+          initiator: {
+            nickname: detail.initiatorName || 'Someone',
+            avatar: detail.initiatorAvatar || '',
+          },
+        };
       });
+
       if (detail.autoAccept) {
         setGlobalCallAccepted(true);
       }
     };
 
+    const onNativeNotificationTap = (e: any) => {
+      const detail = e.detail;
+      if (detail && detail.targetUrl) {
+        navigate(detail.targetUrl);
+      }
+    };
+
+    const onNativeFcmToken = async (e: any) => {
+      const detail = e.detail;
+      if (detail && detail.token) {
+        localStorage.setItem('nevo_push_token', detail.token);
+        await pushNotificationService.syncTokenWithBackend();
+      }
+    };
+
     window.addEventListener('nativeIncomingCall', onNativeIncomingCall);
+    window.addEventListener('nativeNotificationTap', onNativeNotificationTap);
+    window.addEventListener('nativeFcmToken', onNativeFcmToken);
     return () => {
       window.removeEventListener('nativeIncomingCall', onNativeIncomingCall);
+      window.removeEventListener('nativeNotificationTap', onNativeNotificationTap);
+      window.removeEventListener('nativeFcmToken', onNativeFcmToken);
     };
-  }, []);
+  }, [navigate]);
 
   return (
     <>

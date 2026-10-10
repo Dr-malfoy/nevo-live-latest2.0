@@ -10,15 +10,35 @@ import android.util.Log;
 import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
+    private static Bundle pendingCallBundle = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         handleWindowFlags();
-        handleCallIntent(getIntent());
+        handleIntent(getIntent());
+
+        try {
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+                if (task.isSuccessful() && task.getResult() != null) {
+                    String token = task.getResult();
+                    Log.d(TAG, "Native FCM Token fetched: " + token);
+                    getSharedPreferences("nevo_push", MODE_PRIVATE).edit().putString("fcm_token", token).apply();
+                    String js = String.format("window.dispatchEvent(new CustomEvent('nativeFcmToken', { detail: { token: '%s' } }));", token);
+                    dispatchJs(js);
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().postDelayed(() -> dispatchJs(js), 800);
+                        getBridge().getWebView().postDelayed(() -> dispatchJs(js), 2000);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Error fetching native FCM token: " + e.getMessage());
+        }
     }
 
     @Override
@@ -26,7 +46,7 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleWindowFlags();
-        handleCallIntent(intent);
+        handleIntent(intent);
     }
 
     private void handleWindowFlags() {
@@ -47,44 +67,112 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        handleCallIntent(intent);
+        handleNotificationTapIntent(intent);
+    }
+
     private void handleCallIntent(Intent intent) {
         if (intent == null) return;
 
         boolean isIncomingCall = intent.getBooleanExtra("isIncomingCall", false);
         String action = intent.getAction();
         if (isIncomingCall || "com.nevolive.app.ACCEPT_CALL".equals(action)) {
-            String callId = intent.getStringExtra("callId");
-            String channel = intent.getStringExtra("channel");
-            String callType = intent.getStringExtra("callType");
-            String initiatorName = intent.getStringExtra("initiatorName");
-            String initiatorAvatar = intent.getStringExtra("initiatorAvatar");
-            String token = intent.getStringExtra("token");
-            String coinsPerMinute = intent.getStringExtra("coinsPerMinute");
-            boolean autoAccept = "accept".equals(intent.getStringExtra("callAction")) || "com.nevolive.app.ACCEPT_CALL".equals(action);
+            Bundle bundle = intent.getExtras();
+            if (bundle != null) {
+                pendingCallBundle = bundle;
+            }
 
-            Log.d(TAG, "Incoming call intent received: callId=" + callId + ", autoAccept=" + autoAccept);
-
-            // Dismiss system notification since user is now in the app
+            // Dismiss system notification since user is entering the app
             NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {
                 notificationManager.cancel(NevoFirebaseMessagingService.CALL_NOTIFICATION_ID);
             }
 
-            // Post event to WebView once bridge is ready
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                String js = String.format(
-                        "window.dispatchEvent(new CustomEvent('nativeIncomingCall', { detail: { callId: '%s', channel: '%s', type: '%s', initiatorName: '%s', initiatorAvatar: '%s', token: '%s', coinsPerMinute: %s, autoAccept: %b } }));",
-                        callId != null ? callId : "",
-                        channel != null ? channel : "",
-                        callType != null ? callType : "audio",
-                        initiatorName != null ? initiatorName.replace("'", "\\'") : "Someone",
-                        initiatorAvatar != null ? initiatorAvatar.replace("'", "\\'") : "",
-                        token != null ? token : "",
-                        coinsPerMinute != null && !coinsPerMinute.isEmpty() ? coinsPerMinute : "0",
-                        autoAccept
-                );
-                getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js, null));
+            dispatchPendingCallToWebView();
+        }
+    }
+
+    private void handleNotificationTapIntent(Intent intent) {
+        if (intent == null) return;
+        String targetUrl = intent.getStringExtra("targetUrl");
+        String chatId = intent.getStringExtra("chatId");
+        String streamId = intent.getStringExtra("streamId");
+        String senderId = intent.getStringExtra("senderId");
+        String type = intent.getStringExtra("type");
+
+        if (targetUrl == null || targetUrl.isEmpty()) {
+            if (chatId != null && !chatId.isEmpty()) {
+                targetUrl = "/chat/" + chatId;
+            } else if (streamId != null && !streamId.isEmpty()) {
+                targetUrl = "/stream/" + streamId;
+            } else if (senderId != null && !senderId.isEmpty()) {
+                targetUrl = "/user/" + senderId;
             }
+        }
+
+        if (targetUrl != null && !targetUrl.isEmpty()) {
+            final String url = targetUrl;
+            final String notifType = type != null ? type : "";
+            String js = String.format(
+                    "window.dispatchEvent(new CustomEvent('nativeNotificationTap', { detail: { targetUrl: '%s', type: '%s' } }));",
+                    url.replace("'", "\\'"),
+                    notifType.replace("'", "\\'")
+            );
+            dispatchJs(js);
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 600);
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 1500);
+            }
+        }
+    }
+
+    private void dispatchPendingCallToWebView() {
+        if (pendingCallBundle == null) return;
+
+        String callId = pendingCallBundle.getString("callId", "");
+        String channel = pendingCallBundle.getString("channel", "");
+        String callType = pendingCallBundle.getString("callType", "audio");
+        String initiatorName = pendingCallBundle.getString("initiatorName", "Someone");
+        String initiatorAvatar = pendingCallBundle.getString("initiatorAvatar", "");
+        String token = pendingCallBundle.getString("token", "");
+        String coinsPerMinute = pendingCallBundle.getString("coinsPerMinute", "0");
+        String action = pendingCallBundle.getString("callAction", "");
+        boolean autoAccept = "accept".equals(action) || "com.nevolive.app.ACCEPT_CALL".equals(action);
+
+        String js = String.format(
+                "window.dispatchEvent(new CustomEvent('nativeIncomingCall', { detail: { callId: '%s', channel: '%s', type: '%s', initiatorName: '%s', initiatorAvatar: '%s', token: '%s', coinsPerMinute: %s, autoAccept: %b } }));",
+                callId, channel, callType,
+                initiatorName.replace("'", "\\'"),
+                initiatorAvatar.replace("'", "\\'"),
+                token,
+                coinsPerMinute != null && !coinsPerMinute.isEmpty() ? coinsPerMinute : "0",
+                autoAccept
+        );
+
+        // Attempt dispatch immediately, and retry for cold start timing
+        dispatchJs(js);
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 500);
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 1200);
+        }
+
+        // Clean up pending bundle to prevent duplicate/stale call triggers
+        pendingCallBundle = null;
+        if (getIntent() != null) {
+            getIntent().removeExtra("isIncomingCall");
+            getIntent().removeExtra("callAction");
+        }
+    }
+
+    private void dispatchJs(String js) {
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript(js, null);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error evaluating JS: " + e.getMessage());
         }
     }
 }

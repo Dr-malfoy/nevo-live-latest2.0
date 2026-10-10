@@ -125,6 +125,9 @@ export const pushNotificationService = {
           }
         }
       }
+      if (!sanitizedData.title && payload.title) sanitizedData.title = payload.title;
+      if (!sanitizedData.body && payload.body) sanitizedData.body = payload.body;
+      if (!sanitizedData.imageUrl && payload.imageUrl) sanitizedData.imageUrl = payload.imageUrl;
 
       const message: admin.messaging.MulticastMessage = {
         tokens,
@@ -211,6 +214,8 @@ export const pushNotificationService = {
       const dataPayload: Record<string, string> = {
         type: 'INCOMING_CALL',
         notificationType: 'call',
+        title: `${callIcon} ${callTypeLabel}`,
+        body: `${callData.initiatorName || 'Someone'} is calling you...`,
         callId: String(callData.callId),
         channel: String(callData.channel),
         callType: String(callData.type),
@@ -222,26 +227,14 @@ export const pushNotificationService = {
         timestamp: String(Date.now()),
       };
 
+      // For Android: Send high-priority DATA-ONLY payload so onMessageReceived is ALWAYS
+      // invoked in background, locked, and killed app states to wake screen & ring.
       const message: admin.messaging.MulticastMessage = {
         tokens,
-        notification: {
-          title: `${callIcon} ${callTypeLabel}`,
-          body: `${callData.initiatorName || 'Someone'} is calling you...`,
-          imageUrl: callData.initiatorAvatar || undefined,
-        },
         data: dataPayload,
         android: {
           priority: 'high',
           ttl: 45 * 1000, // 45 seconds TTL
-          notification: {
-            channelId: 'nevo_calls',
-            sound: 'default',
-            priority: 'max',
-            visibility: 'public',
-            defaultVibrateTimings: true,
-            defaultSound: true,
-            tag: `call_${callData.callId}`,
-          },
         },
         apns: {
           headers: {
@@ -250,6 +243,10 @@ export const pushNotificationService = {
           },
           payload: {
             aps: {
+              alert: {
+                title: `${callIcon} ${callTypeLabel}`,
+                body: `${callData.initiatorName || 'Someone'} is calling you...`,
+              },
               sound: 'default',
               badge: 1,
               contentAvailable: true,
