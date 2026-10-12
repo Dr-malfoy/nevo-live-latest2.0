@@ -1,4 +1,5 @@
-import { Chat, ChatMessage, User, LiveStream, Story, Note } from '../models';
+import mongoose from 'mongoose';
+import { Chat, ChatMessage, User, LiveStream, Story, Note, Gift } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { pushNotificationService } from './pushNotification.service';
@@ -208,15 +209,67 @@ export const chatService = {
     }
 
     const total = await ChatMessage.countDocuments({ chatId });
-    const messages = await ChatMessage.find({ chatId })
+    const rawMessages = await ChatMessage.find({ chatId })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
-    return { data: messages.reverse(), total };
+    // Enrich older gift messages with missing giftIcon / giftAnimation
+    const missingGiftIds = rawMessages
+      .filter((m: any) => m.kind === 'gift' && !m.giftIcon && m.giftId)
+      .map((m: any) => m.giftId);
+
+    if (missingGiftIds.length > 0) {
+      try {
+        const giftDocs = await Gift.find({
+          $or: [
+            { _id: { $in: missingGiftIds.filter((id) => mongoose.isValidObjectId(id)) } },
+            { giftId: { $in: missingGiftIds } },
+          ],
+        }).lean();
+        const giftMap = new Map();
+        for (const g of giftDocs) {
+          giftMap.set(g._id.toString(), g);
+          giftMap.set(g.giftId, g);
+        }
+        for (const m of rawMessages) {
+          if (m.kind === 'gift' && !m.giftIcon && m.giftId) {
+            const g = giftMap.get(m.giftId.toString()) || giftMap.get(m.giftId);
+            if (g) {
+              m.giftIcon = g.icon;
+              if (!m.giftName) m.giftName = g.name;
+              if (!m.giftAnimation) m.giftAnimation = g.animationUrl || g.animation;
+            }
+          }
+        }
+      } catch {
+        // ignore fallback errors
+      }
+    }
+
+    return { data: rawMessages.reverse(), total };
   },
 
-  async sendMessage(chatId: string, senderId: string, message: string, extras: { kind?: 'text' | 'gift' | 'voice' | 'image'; giftId?: string; giftName?: string; giftCount?: number; voiceUrl?: string; voiceDuration?: number; imageUrl?: string } = {}) {
+  async sendMessage(
+    chatId: string,
+    senderId: string,
+    message: string,
+    extras: {
+      kind?: 'text' | 'gift' | 'voice' | 'image' | 'call';
+      callType?: 'audio' | 'video';
+      callDuration?: number;
+      callStatus?: 'completed' | 'missed' | 'rejected' | 'cancelled';
+      giftId?: string;
+      giftName?: string;
+      giftIcon?: string;
+      giftAnimation?: string;
+      giftCount?: number;
+      voiceUrl?: string;
+      voiceDuration?: number;
+      imageUrl?: string;
+    } = {}
+  ) {
     if (!message || !message.trim()) throw new AppError('Message is required', 400);
     const text = message.trim().slice(0, 2000);
 
@@ -239,6 +292,28 @@ export const chatService = {
       // socket check fallback
     }
 
+    let giftIcon = extras.giftIcon;
+    let giftName = extras.giftName;
+    let giftAnimation = extras.giftAnimation;
+
+    if (extras.kind === 'gift' && extras.giftId && (!giftIcon || !giftName || !giftAnimation)) {
+      try {
+        const giftDoc = await Gift.findOne({
+          $or: [
+            ...(mongoose.isValidObjectId(extras.giftId) ? [{ _id: extras.giftId }] : []),
+            { giftId: extras.giftId },
+          ],
+        }).lean();
+        if (giftDoc) {
+          if (!giftIcon) giftIcon = giftDoc.icon;
+          if (!giftName) giftName = giftDoc.name;
+          if (!giftAnimation) giftAnimation = giftDoc.animationUrl || giftDoc.animation;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const now = new Date();
     const delivered = isRecipientConnected;
     const deliveredAt = isRecipientConnected ? now : undefined;
@@ -249,8 +324,13 @@ export const chatService = {
       senderId,
       message: text,
       kind: extras.kind || 'text',
+      callType: extras.callType,
+      callDuration: extras.callDuration,
+      callStatus: extras.callStatus,
       giftId: extras.giftId,
-      giftName: extras.giftName,
+      giftName: giftName || extras.giftName,
+      giftIcon: giftIcon || extras.giftIcon,
+      giftAnimation: giftAnimation || extras.giftAnimation,
       giftCount: extras.giftCount,
       voiceUrl: extras.voiceUrl,
       voiceDuration: extras.voiceDuration,

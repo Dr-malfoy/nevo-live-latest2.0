@@ -509,14 +509,32 @@ export const AgentDashboard = () => {
     }
   };
 
+  const getHostUser = (h: any) => {
+    if (!h) return { _id: '', uid: '', nickname: 'Member', avatar: '', level: 1, earnings: 0 };
+    const u = (typeof h === 'object' && h !== null && 'user' in h && h.user && typeof h.user === 'object')
+      ? h.user
+      : h;
+    return {
+      _id: u?._id || h?._id || '',
+      uid: u?.uid || h?.uid || '',
+      nickname: u?.nickname || h?.nickname || 'Streamer',
+      avatar: u?.avatar || h?.avatar || '',
+      level: u?.level || h?.level || 1,
+      earnings: Number(h?.earnings ?? h?.contribution ?? u?.coins ?? h?.coins ?? 0),
+    };
+  };
+
   const filteredHosts = useMemo(() => {
+    if (!Array.isArray(hosts)) return [];
     if (!search.trim()) return hosts;
     const q = search.trim().toLowerCase();
-    return hosts.filter(
-      (h) =>
-        h.user.nickname.toLowerCase().includes(q) ||
-        h.user.uid.toLowerCase().includes(q)
-    );
+    return hosts.filter((h: any) => {
+      const u = getHostUser(h);
+      return (
+        u.nickname.toLowerCase().includes(q) ||
+        u.uid.toLowerCase().includes(q)
+      );
+    });
   }, [hosts, search]);
 
   const rangeLabel = AGENT_RANGES.find((r) => r.key === range)?.label ?? 'Range';
@@ -1129,43 +1147,51 @@ export const AgentDashboard = () => {
                       <p className="text-xs text-slate-400 text-center py-4">No members found.</p>
                     ) : (
                       <div className="space-y-2">
-                        {filteredHosts.map((h) => (
-                          <div
-                            key={h._id}
-                            className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <Avatar src={h.user.avatar} nickname={h.user.nickname} size="md" />
-                              <div className="min-w-0">
-                                <p className="font-bold text-xs text-slate-900 truncate">{h.user.nickname}</p>
-                                <p className="text-[10px] text-slate-500 font-mono">ID: {h.user.uid} • Lv.{h.user.level || 1}</p>
-                                <p className="text-[10px] text-emerald-700 font-bold mt-0.5">
-                                  Earned: {(h.earnings || 0).toLocaleString()} coins
-                                </p>
+                        {filteredHosts.map((h: any, idx: number) => {
+                          const member = getHostUser(h);
+                          return (
+                            <div
+                              key={member._id || `host-${idx}`}
+                              className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <Avatar src={getMediaUrl(member.avatar)} nickname={member.nickname} size="md" />
+                                <div className="min-w-0">
+                                  <p className="font-bold text-xs text-slate-900 truncate">{member.nickname}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono">ID: {member.uid} • Lv.{member.level}</p>
+                                  <p className="text-[10px] text-emerald-700 font-bold mt-0.5">
+                                    Earned: {member.earnings.toLocaleString()} coins
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!member._id) return;
+                                    try {
+                                      const { data } = await chatApi.getOrCreateChat(member._id);
+                                      if (data.success && data.data?._id) navigate(`/chat/${data.data._id}`);
+                                    } catch {
+                                      navigate(`/user/${member._id}`);
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+                                  title="Chat"
+                                >
+                                  <ChatIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveMember(member._id, member.nickname)}
+                                  className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+                                  title="Remove Member"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                onClick={async () => {
-                                  const { data } = await chatApi.getOrCreateChat(h.user._id);
-                                  if (data.success && data.data?._id) navigate(`/chat/${data.data._id}`);
-                                }}
-                                className="p-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600"
-                                title="Chat"
-                              >
-                                <ChatIcon className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleRemoveMember(h.user._id, h.user.nickname)}
-                                className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600"
-                                title="Remove Member"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

@@ -78,17 +78,30 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
 };
 
 export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: SeatBoardProps) => {
-  // Fill gaps so the board always renders a full 16-seat grid.
+  const is8Seats = seatCount <= 8;
+
+  // Fill gaps so the board renders the exact seatCount requested.
+  // Seat 1 is the host's centre circle, so there are (seatCount - 1) guest seats.
   const filled: RoomSeat[] = Array.from({ length: Math.max(0, seatCount - 1) }, (_, i) => {
     const index = i + 2; // seat 1 is the host's centre circle
     return seats.find((s) => s.index === index) ?? { index, isLocked: false };
   });
 
-  // Split filled into row 1 (2 seats for flanking host), row 2 (3 seats), row 3 (5 seats), row 4 (5 seats)
+  // For 8 seats:
+  // Row 1: Seat 2, Host (centre), Seat 3 (2 guest seats + 1 host = 3 seats)
+  // Row 2: Seats 4, 5, 6, 7, 8 (5 guest seats)
+  // Total = 1 Host + 7 guest seats = 8 seats!
+  //
+  // For 16 seats:
+  // Row 1: Seat 2, Host (centre), Seat 3 (2 guest seats + 1 host = 3 seats)
+  // Row 2: Seats 4, 5, 6 (3 guest seats)
+  // Row 3: Seats 7, 8, 9, 10, 11 (5 guest seats)
+  // Row 4: Seats 12, 13, 14, 15, 16 (5 guest seats)
+  // Total = 1 Host + 15 guest seats = 16 seats!
   const row1Seats = filled.slice(0, 2);
-  const row2Seats = filled.slice(2, 5);
-  const row3Seats = filled.slice(5, 10);
-  const row4Seats = filled.slice(10, 15);
+  const row2Seats = is8Seats ? filled.slice(2, 7) : filled.slice(2, 5);
+  const row3Seats = is8Seats ? [] : filled.slice(5, 10);
+  const row4Seats = is8Seats ? [] : filled.slice(10, 15);
 
   return (
     <div
@@ -126,26 +139,32 @@ export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: 
         {row1Seats[1] && <SeatSlot seat={row1Seats[1]} onPress={() => onSeatPress(row1Seats[1])} />}
       </div>
 
-      {/* Row 2 (3 seats) */}
-      <div className="flex justify-center gap-3 mb-4">
-        {row2Seats.map((seat) => (
-          <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
-        ))}
-      </div>
+      {/* Row 2 */}
+      {row2Seats.length > 0 && (
+        <div className={`flex justify-center ${is8Seats ? 'gap-1.5' : 'gap-3'} ${row3Seats.length > 0 ? 'mb-4' : ''}`}>
+          {row2Seats.map((seat) => (
+            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+          ))}
+        </div>
+      )}
 
       {/* Row 3 (5 seats) */}
-      <div className="flex justify-center gap-1.5 mb-4">
-        {row3Seats.map((seat) => (
-          <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
-        ))}
-      </div>
+      {row3Seats.length > 0 && (
+        <div className="flex justify-center gap-1.5 mb-4">
+          {row3Seats.map((seat) => (
+            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+          ))}
+        </div>
+      )}
 
       {/* Row 4 (5 seats) */}
-      <div className="flex justify-center gap-1.5">
-        {row4Seats.map((seat) => (
-          <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
-        ))}
-      </div>
+      {row4Seats.length > 0 && (
+        <div className="flex justify-center gap-1.5">
+          {row4Seats.map((seat) => (
+            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

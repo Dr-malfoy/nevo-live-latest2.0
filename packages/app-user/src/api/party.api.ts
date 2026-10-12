@@ -46,6 +46,7 @@ export interface PartyListItem {
   viewerCount: number;
   /** True when someone the viewer follows is inside — drives the blue tag. */
   followingInside?: boolean;
+  isPrivate?: boolean;
 }
 
 /* ── PK (#19) ─────────────────────────────────────────────────────── */
@@ -79,8 +80,17 @@ export interface PkBattle {
 
 export const partyApi = {
   /* ── Exists ─────────────────────────────────────────────────────── */
-  getRoom: (id: string) => client.get<ApiResponse<PartyRoomDetail>>(`/rooms/${id}`),
-  joinRoom: (id: string) => client.post<ApiResponse>(`/rooms/${id}/join`),
+  getRoom: (id: string, password?: string) =>
+    client.get<ApiResponse<PartyRoomDetail>>(`/rooms/${id}`, {
+      params: password ? { password } : undefined,
+      headers: password ? { 'x-room-password': password } : undefined,
+    }),
+  verifyPassword: (id: string, password: string) =>
+    client.post<ApiResponse<{ valid: boolean }>>(`/rooms/${id}/verify-password`, { password }),
+  joinRoom: (id: string, password?: string) =>
+    client.post<ApiResponse>(`/rooms/${id}/join`, { password }, {
+      headers: password ? { 'x-room-password': password } : undefined,
+    }),
   leaveRoom: (id: string) => client.post<ApiResponse>(`/rooms/${id}/leave`),
   closeRoom: (id: string) => client.delete<ApiResponse>(`/rooms/${id}`),
   listRooms: (params?: any) => client.get<ApiResponse<any[]>>('/rooms', { params }),
@@ -91,7 +101,10 @@ export const partyApi = {
   getFeed: (params: { tab: 'following' | 'party'; country?: string; page?: number }) =>
     client.get<ApiResponse<PartyListItem[]>>('/rooms/feed', { params }),
 
-  sit: (roomId: string, index: number) => client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/sit`),
+  sit: (roomId: string, index: number, password?: string) =>
+    client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/sit`, { password }, {
+      headers: password ? { 'x-room-password': password } : undefined,
+    }),
   stand: (roomId: string, index: number) =>
     client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/stand`),
   lockSeat: (roomId: string, index: number, locked: boolean) =>

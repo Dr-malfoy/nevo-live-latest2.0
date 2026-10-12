@@ -166,7 +166,7 @@ const seed = async () => {
   const giftCount = await Gift.countDocuments();
   if (giftCount === 0) {
     const gifts = [
-      { giftId: 'gift_001', name: 'Rose', icon: '🎈', priceDiamonds: 1, order: 1 },
+      { giftId: 'gift_001', name: 'Rose', icon: '🌹', priceDiamonds: 1, order: 1 },
       { giftId: 'gift_002', name: 'Lollipop', icon: '🍭', priceDiamonds: 5, order: 2 },
       { giftId: 'gift_003', name: 'Crown', icon: '👑', priceDiamonds: 10, order: 3 },
       { giftId: 'gift_004', name: 'Rocket', icon: '🚀', priceDiamonds: 50, order: 4 },

@@ -171,12 +171,21 @@ export const MomentsPage: React.FC = () => {
       setMoments((prev) => prev.filter((m) => m._id !== data.momentId));
     };
 
+    const handleMomentView = (data: { momentId: string; viewCount: number }) => {
+      setMoments((prev) =>
+        prev.map((m) =>
+          m._id === data.momentId ? { ...m, viewCount: data.viewCount } : m
+        )
+      );
+    };
+
     socket.on('moment:created', handleMomentCreated);
     socket.on('moment:updated', handleMomentUpdated);
     socket.on('moment:like', handleMomentLike);
     socket.on('moment:comment', handleMomentComment);
     socket.on('moment:share', handleMomentShare);
     socket.on('moment:deleted', handleMomentDeleted);
+    socket.on('moment:view', handleMomentView);
 
     return () => {
       socket.off('moment:created', handleMomentCreated);
@@ -185,6 +194,7 @@ export const MomentsPage: React.FC = () => {
       socket.off('moment:comment', handleMomentComment);
       socket.off('moment:share', handleMomentShare);
       socket.off('moment:deleted', handleMomentDeleted);
+      socket.off('moment:view', handleMomentView);
     };
   }, [socket]);
 

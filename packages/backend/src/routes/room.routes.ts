@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { roomController } from '../controllers/room.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuth } from '../middleware/auth';
 import { requireFaceVerified } from '../middleware/roleGuard';
 
 const router = Router();
@@ -10,7 +10,8 @@ router.get('/feed', roomController.getFeed);
 router.post('/', authenticate, requireFaceVerified, roomController.createRoom);
 router.delete('/:id', authenticate, roomController.closeRoom);
 router.post('/:id/close', authenticate, roomController.closeRoom);
-router.get('/:id', roomController.getRoom);
+router.get('/:id', optionalAuth, roomController.getRoom);
+router.post('/:id/verify-password', optionalAuth, roomController.verifyPassword);
 router.post('/:id/join', authenticate, roomController.joinRoom);
 router.post('/:id/leave', authenticate, roomController.leaveRoom);
 router.post('/:id/seats/:index/sit', authenticate, roomController.sit);

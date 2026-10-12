@@ -8,6 +8,7 @@ import { Modal } from '../components/ui';
 import { ReportModal } from '../components/report/ReportModal';
 import { LiveRoom } from '../components/live';
 import type { RoomMessage, RoomNotification } from '../components/live';
+import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { useAgora } from '../hooks/useAgora';
 import { useFollow } from '../hooks/useFollow';
 import { useVideoFilters } from '../hooks/useVideoFilters';
@@ -24,6 +25,11 @@ export const LiveStreamPage = () => {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const { socket, joinRoom, leaveRoom } = useSocketStore();
   const { showToast } = useUIStore();
   const [stream, setStream] = useState<LiveStream | null>(null);
@@ -39,6 +45,7 @@ export const LiveStreamPage = () => {
   const [likeCount, setLikeCount] = useState(0);
   const [giftBurst, setGiftBurst] = useState<{ id: string; gift: GiftType; count: number; nickname: string } | null>(null);
   const burstTimer = useRef<ReturnType<typeof setTimeout>>();
+  const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
   const sendingGiftRef = useRef(false);
   const isHostRef = useRef(false);
   const endedRef = useRef(false);
@@ -238,7 +245,7 @@ export const LiveStreamPage = () => {
 
     const onChat = (msg: any) => {
       // Self messages are already appended optimistically — skip the socket echo
-      if (user && msg?.userId === user._id) return;
+      if (userRef.current && msg?.userId === userRef.current._id) return;
       // Sanitize at the boundary so a malformed payload can never crash render
       setChatMessages((prev) => [
         ...prev,
@@ -254,25 +261,36 @@ export const LiveStreamPage = () => {
       ]);
     };
     const onGift = (msg: any) => {
-      // Self gifts are already appended optimistically — skip the echo, but still
-      // trigger the burst for everyone (sender sees their own gift burst too).
+      const isSelf = Boolean(userRef.current && msg?.userId === userRef.current._id);
+      const giftCount = msg?.count || 1;
+      const giftObj = msg?.gift;
       const entry: RoomMessage = {
         ...msg,
         isGift: true,
-        nickname: msg?.nickname || 'Guest',
+        nickname: msg?.nickname || (isSelf ? (userRef.current?.nickname || 'You') : 'Guest'),
         level: msg?.level || 1,
         wealthLevel: msg?.wealthLevel || msg?.level || 1,
         liveLevel: msg?.liveLevel || msg?.level || 1,
-        message: `Sent ${msg?.gift?.name || 'a gift'}!`,
+        message: `Sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`,
       };
-      if (!(user && msg?.userId === user._id)) {
+      // Append to chat if not self (self added optimistically)
+      if (!isSelf) {
         setChatMessages((prev) => [...prev, entry]);
       }
-      // Trigger the full-screen gift burst
-      if (msg?.gift) {
-        setGiftBurst({ id: `${Date.now()}`, gift: msg.gift, count: msg.count || 1, nickname: msg.nickname || 'Someone' });
-        if (burstTimer.current) clearTimeout(burstTimer.current);
-        burstTimer.current = setTimeout(() => setGiftBurst(null), 2600);
+      // Trigger the pop-up animation and floating gifts for everyone
+      if (giftObj) {
+        if (!isSelf) {
+          setGiftBurst({
+            id: `${Date.now()}-${Math.random()}`,
+            gift: giftObj,
+            count: giftCount,
+            nickname: msg.nickname || 'Someone',
+          });
+          if (burstTimer.current) clearTimeout(burstTimer.current);
+          burstTimer.current = setTimeout(() => setGiftBurst(null), 3600);
+
+          triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
+        }
       }
     };
     const onEnded = () => {
@@ -347,7 +365,7 @@ export const LiveStreamPage = () => {
       socket.off('stream:viewer-left', onViewerLeft);
       socket.off('stream:viewer-count', onViewerCount);
     };
-  }, [socket, id, user]);
+  }, [socket, id]);
 
   const handleLike = useCallback(() => {
     if (socket && id) socket.emit('stream:like', { streamId: id });
@@ -359,13 +377,14 @@ export const LiveStreamPage = () => {
     socket.emit('stream:chat', { streamId: id, message });
     gamesApi.recordProgress('chat_sent', 1).catch(() => {});
     // Optimistic local echo so the sender sees their own message immediately
-    if (user) {
+    const currentUser = userRef.current;
+    if (currentUser) {
       setChatMessages((prev) => [
         ...prev,
-        { userId: user._id, nickname: user.nickname, avatar: user.avatar, message },
+        { userId: currentUser._id, nickname: currentUser.nickname, avatar: currentUser.avatar, message },
       ]);
     }
-  }, [socket, id, user]);
+  }, [socket, id]);
 
   const handleSendGift = async (gift: GiftType, quantity: number) => {
     // Block double-send while a request is in flight
@@ -398,12 +417,34 @@ export const LiveStreamPage = () => {
       if (socket && id) socket.emit('stream:gift', { streamId: id, gift, count: quantity });
       gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
       // Optimistic local gift message for the sender
-      if (user) {
+      const currentUser = userRef.current;
+      if (currentUser) {
         setChatMessages((prev) => [
           ...prev,
-          { userId: user._id, nickname: user.nickname, avatar: user.avatar, message: `Sent ${quantity}x ${gift.name}!`, isGift: true, gift, count: quantity },
+          {
+            userId: currentUser._id,
+            nickname: currentUser.nickname,
+            avatar: currentUser.avatar,
+            message: `Sent ${quantity > 1 ? `${quantity}x ` : ''}${gift.name}!`,
+            isGift: true,
+            gift,
+            count: quantity,
+          },
         ]);
       }
+
+      // Immediately trigger pop-up animation and floating gifts for the sender
+      setGiftBurst({
+        id: `${Date.now()}-${Math.random()}`,
+        gift,
+        count: quantity,
+        nickname: currentUser?.nickname || 'You',
+      });
+      if (burstTimer.current) clearTimeout(burstTimer.current);
+      burstTimer.current = setTimeout(() => setGiftBurst(null), 3600);
+
+      triggerGifts(gift.icon || (gift as any).animation || '🎁', gift.name, Math.min(quantity, 6));
+
       const costCoins = (gift.priceDiamonds || 0) * quantity;
       showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
       setShowGift(false);
@@ -522,6 +563,9 @@ export const LiveStreamPage = () => {
       {showReport && id && (
         <ReportModal targetType="stream" targetId={id} onClose={() => setShowReport(false)} />
       )}
+
+      {/* Floating gift animations across the screen */}
+      <FloatingGifts items={floatingGiftItems} />
     </div>
   );
 };

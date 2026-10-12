@@ -22,6 +22,7 @@ export interface IMomentDocument extends Document {
   viewCount: number;
   giftCount: number;
   shareCount: number;
+  claimedViewRewards?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +49,7 @@ const momentSchema = new Schema<IMomentDocument>(
     viewCount: { type: Number, default: 0 },
     giftCount: { type: Number, default: 0 },
     shareCount: { type: Number, default: 0 },
+    claimedViewRewards: [{ type: String }],
   },
   { timestamps: true }
 );

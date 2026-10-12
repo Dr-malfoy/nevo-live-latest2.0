@@ -38,7 +38,7 @@ const ageFrom = (birthday?: Date | null): number | null => {
 /** Attach the derived presentation fields every client needs. */
 const decorate = (plain: any) => {
   const isVip = Boolean(plain?.isVip || plain?.hasPurchasedDiamonds || (plain?.wealthExp && plain.wealthExp > 0) || (plain?.diamonds && plain?.diamonds > 0) || plain?.noble);
-  const wealthExp = Math.max(plain?.wealthExp || 0, plain?.diamonds || 0);
+  const wealthExp = Math.max(plain?.wealthExp || 0, (plain?.coins || 0) + (plain?.diamonds || 0));
   const calculatedWealth = calculateWealthLevel(wealthExp, plain?.wealthLevel || plain?.level);
   const wealthLevel = Math.max(plain?.wealthLevel || 1, calculatedWealth.level);
   const liveStreamSeconds = plain?.liveStreamSeconds || 0;
@@ -70,6 +70,18 @@ export const userService = {
     const obj = user.toObject();
     obj.diamonds = Math.max(0, obj.diamonds ?? 0);
     obj.coins = Math.max(0, obj.coins ?? 0);
+
+    // Auto-heal / backfill wealthExp so wealth level never decreases below current balance or past exp
+    const baselineExp = Math.max(obj.wealthExp || 0, (obj.coins || 0) + (obj.diamonds || 0));
+    if (baselineExp > (obj.wealthExp || 0)) {
+      obj.wealthExp = baselineExp;
+      const calculatedWealth = calculateWealthLevel(baselineExp, obj.wealthLevel);
+      obj.wealthLevel = Math.max(obj.wealthLevel || 1, calculatedWealth.level);
+      User.updateOne(
+        { _id: user._id },
+        { $set: { wealthExp: obj.wealthExp, wealthLevel: obj.wealthLevel } }
+      ).catch(() => {});
+    }
 
     // Backfill historical live streaming time if missing
     if (!obj.liveStreamSeconds) {

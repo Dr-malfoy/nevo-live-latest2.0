@@ -2,6 +2,7 @@ import { Gift, User, Transaction, PlatformWallet } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { notificationService } from './notification.service';
+import { calculateWealthLevel } from '../utils/userLevels';
 
 export const giftService = {
   async listActiveGifts() {
@@ -26,20 +27,26 @@ export const giftService = {
     if (!receiver) throw new AppError('Receiver not found', 404);
 
     const totalCost = gift.priceDiamonds * quantity;
-    if (sender.coins < totalCost) {
-      throw new AppError('Insufficient coins', 400);
+    const canPayWithCoins = (sender.coins || 0) >= totalCost;
+    const canPayWithDiamonds = (sender.diamonds || 0) >= totalCost;
+    if (!canPayWithCoins && !canPayWithDiamonds) {
+      throw new AppError('Insufficient balance to send gift', 400);
     }
 
-    // Atomic deduction of Coins from sender — prevents double-spend
+    const payCurrency: 'coin' | 'diamond' = canPayWithCoins ? 'coin' : 'diamond';
+    const deductField = payCurrency === 'coin' ? 'coins' : 'diamonds';
+
+    // Atomic deduction from sender — prevents double-spend
     const updatedSender = await User.findOneAndUpdate(
-      { _id: senderId, coins: { $gte: totalCost } },
-      { $inc: { coins: -totalCost } },
+      { _id: senderId, [deductField]: { $gte: totalCost } },
+      { $inc: { [deductField]: -totalCost } },
       { new: true }
     );
     if (!updatedSender) {
-      throw new AppError('Insufficient coins', 400);
+      throw new AppError('Insufficient balance to send gift', 400);
     }
     sender.coins = updatedSender.coins;
+    sender.diamonds = updatedSender.diamonds;
 
     // Add Diamonds to receiver (standard host takes 70%, Alpha/Aurora premium host takes 75% with +5% bonus, remainder to admin)
     const isPremiumBadge = receiver.hostBadge === 'alpha' || receiver.hostBadge === 'aurora';
@@ -47,12 +54,23 @@ export const giftService = {
     const adminShareRate = isPremiumBadge ? 0.25 : 0.30;
     const hostDiamonds = Math.floor(totalCost * hostShareRate);
     const adminDiamonds = Math.floor(totalCost * adminShareRate);
+
+    // Receiver earned income -> increments diamonds AND cumulative wealthExp
+    const receiverNewWealthExp = (receiver.wealthExp || 0) + hostDiamonds;
+    const receiverWealthInfo = calculateWealthLevel(receiverNewWealthExp, receiver.wealthLevel);
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiverId },
-      { $inc: { diamonds: hostDiamonds } },
+      {
+        $inc: { diamonds: hostDiamonds, wealthExp: hostDiamonds },
+        $set: { wealthLevel: Math.max(receiver.wealthLevel || 1, receiverWealthInfo.level) },
+      },
       { new: true }
     );
-    if (updatedReceiver) receiver.diamonds = updatedReceiver.diamonds;
+    if (updatedReceiver) {
+      receiver.diamonds = updatedReceiver.diamonds;
+      receiver.wealthExp = updatedReceiver.wealthExp;
+      receiver.wealthLevel = updatedReceiver.wealthLevel;
+    }
 
     // Credit the platform's diamond inventory with the admin share
     const platform = await PlatformWallet.getWallet();
@@ -69,18 +87,18 @@ export const giftService = {
       : '70% share';
     const adminShareLabel = isPremiumBadge ? '25% share' : '30% share';
 
-    // Create transactions (send in coins + receive diamonds + admin cut in diamonds)
+    // Create transactions (send in coin/diamond + receive diamonds + admin cut in diamonds)
     await Transaction.create([
       {
         userId: senderId,
         type: 'gift_send',
         amount: totalCost,
-        currency: 'coin',
+        currency: payCurrency,
         targetId: receiverId,
         targetModel: 'User',
         giftId: gift._id,
         status: 'completed',
-        description: `Sent ${quantity}x ${gift.name} to ${receiver.nickname} (${totalCost} coins)`,
+        description: `Sent ${quantity}x ${gift.name} to ${receiver.nickname} (${totalCost} ${payCurrency}s)`,
       },
       {
         userId: receiverId,
@@ -112,12 +130,15 @@ export const giftService = {
       getIO().to(`user:${receiverId}`).emit('balance:update', {
         coins: receiver.coins,
         diamonds: receiver.diamonds,
+        wealthExp: receiver.wealthExp,
+        wealthLevel: receiver.wealthLevel,
         deltaDiamonds: hostDiamonds,
       });
       getIO().to(`user:${senderId}`).emit('balance:update', {
         coins: sender.coins,
         diamonds: sender.diamonds,
-        deltaCoins: -totalCost,
+        wealthExp: sender.wealthExp,
+        wealthLevel: sender.wealthLevel,
       });
     } catch {
       // Socket not initialized — balances already persisted
@@ -140,6 +161,7 @@ export const giftService = {
       gift,
       quantity,
       totalCost,
+      payCurrency,
       senderCoins: sender.coins,
       senderDiamonds: sender.diamonds,
       senderBalance: sender.coins, // backwards compatible

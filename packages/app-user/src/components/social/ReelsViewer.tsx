@@ -25,6 +25,7 @@ import {
   PiXBold as X,
   PiTrashBold as TrashIcon,
   PiPencilSimpleBold as EditIcon,
+  PiEyeFill as EyeIcon,
 } from 'react-icons/pi';
 import type { Moment } from '../../types';
 
@@ -81,6 +82,7 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
 
   // Likes tracking state
   const [likesState, setLikesState] = useState<Record<string, { liked: boolean; count: number }>>({});
+  const [videoErrors, setVideoErrors] = useState<Record<string, boolean>>({});
 
   // Scroll to initial index on mount
   useEffect(() => {
@@ -153,6 +155,16 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
       }
     });
   }, [activeIndex, reelMoments.length]);
+
+  // Record view on active reel
+  const recordedViewsSet = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const activeReel = reelMoments[activeIndex];
+    if (activeReel?._id && !recordedViewsSet.current.has(activeReel._id)) {
+      recordedViewsSet.current.add(activeReel._id);
+      momentsApi.recordView(activeReel._id).catch(() => {});
+    }
+  }, [activeIndex, reelMoments]);
 
   const togglePlayActive = () => {
     const v = videoRefs.current[activeIndex];
@@ -388,7 +400,7 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
               onClick={(e) => handleDoubleTap(e, moment)}
             >
               {/* Reel Video Player */}
-              {videoSrc ? (
+              {videoSrc && !videoErrors[moment._id] ? (
                 <video
                   ref={(el) => (videoRefs.current[idx] = el)}
                   src={videoSrc}
@@ -396,11 +408,18 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
                   muted={isMuted}
                   playsInline
                   preload="auto"
+                  onError={() =>
+                    setVideoErrors((prev) => ({ ...prev, [moment._id]: true }))
+                  }
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-neutral-900 text-white/50 text-xs">
-                  Video unavailable
+                <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 text-white/70 p-6 text-center select-none">
+                  <VideoIcon className="w-8 h-8 text-rose-400 mb-2 opacity-80" />
+                  <span className="text-xs font-bold text-white/90">Video unavailable</span>
+                  <span className="text-[11px] text-white/40 max-w-xs mt-1">
+                    Server restarted or media file was wiped by host storage.
+                  </span>
                 </div>
               )}
 
@@ -507,6 +526,19 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
                   </span>
                 </button>
 
+                {/* 4. Views Count Option */}
+                <div
+                  className="flex flex-col items-center gap-1 group"
+                  aria-label="Reel views"
+                >
+                  <div className="w-11 h-11 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-emerald-400 flex items-center justify-center">
+                    <EyeIcon className="w-5 h-5" />
+                  </div>
+                  <span className="text-white text-[11px] font-bold drop-shadow-md tabular-nums">
+                    {compactNumber(moment.viewCount || 0)}
+                  </span>
+                </div>
+
                 {/* Author Options: Edit & Delete if current user */}
                 {isCurrentUser && (
                   <>
@@ -566,11 +598,18 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
                   </div>
                 )}
 
-                {/* Sound Bar / Track Info */}
-                <div className="flex items-center gap-2 text-white/80 text-[11px] pt-1">
-                  <Music className="w-3.5 h-3.5 animate-spin" />
-                  <span className="truncate max-w-[170px] drop-shadow-sm">
-                    {authorName}'s Original Audio • {timeAgo(moment.createdAt)}
+                {/* Sound Bar / Track Info & Views */}
+                <div className="flex items-center gap-2.5 text-white/80 text-[11px] pt-1">
+                  <div className="flex items-center gap-1.5 truncate max-w-[150px]">
+                    <Music className="w-3.5 h-3.5 animate-spin text-white/70" />
+                    <span className="truncate drop-shadow-sm">
+                      {authorName}'s Audio • {timeAgo(moment.createdAt)}
+                    </span>
+                  </div>
+                  <span className="w-1 h-1 rounded-full bg-white/40" />
+                  <span className="flex items-center gap-1 text-emerald-400 font-bold whitespace-nowrap">
+                    <EyeIcon className="w-3.5 h-3.5" />
+                    <span>{compactNumber(moment.viewCount || 0)} views</span>
                   </span>
                 </div>
               </div>

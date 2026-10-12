@@ -286,10 +286,10 @@ export const MyAgency = () => {
   }
 
   const agent = agencyData?.agentId || {};
-  const agentUid = agent.uid || '59237509';
-  const agentNickname = agent.nickname || "🔥 Agency Agent 🔥";
+  const agentUid = agent.uid || '';
+  const agentNickname = agent.nickname || "Agency Agent";
   const agentAvatar = agent.avatar || '';
-  const agentInitials = agentNickname.slice(0, 2).toUpperCase();
+  const agentInitials = (agentNickname || 'A').slice(0, 2).toUpperCase();
 
   // First time popup screen
   if (isFirstTime) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   PiCaretLeftBold as ArrowLeft,
@@ -11,6 +11,16 @@ import {
   PiUserFill as UserIcon,
   PiPhoneFill as Phone,
   PiVideoCameraFill as VideoCamera,
+  PiShareNetworkFill as Share2,
+  PiXBold as CloseIcon,
+  PiArrowsOutSimpleBold as ExpandIcon,
+  PiCameraFill as CameraIcon,
+  PiSparkleFill as Sparkles,
+  PiGenderMaleBold as MaleIcon,
+  PiGenderFemaleBold as FemaleIcon,
+  PiBroadcastFill as BroadcastIcon,
+  PiDiamondFill as DiamondIcon,
+  PiShieldCheckFill as ShieldCheck,
 } from 'react-icons/pi';
 import { chatApi, usersApi, callApi } from '../api';
 import {
@@ -19,6 +29,13 @@ import {
   ProfileStatsRow,
   RoleTags,
   UserNameplate,
+  LiveLevelPill,
+  WealthLevelPill,
+  HostBadge,
+  EquippedBadge,
+  LevelDetailSheet,
+  VerifiedBadge,
+  NobleBadge,
 } from '../components/user';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { ReportModal } from '../components/report/ReportModal';
@@ -28,23 +45,9 @@ import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
 import { countryLabel, flagEmoji } from '../lib/countries';
 import { getMediaUrl } from '../lib/media';
-import { levelTier, tierProgress, nextTierAt, vipInfo } from '../lib/levels';
+import { calculateWealthLevel, calculateLiveLevel, formatLiveTime } from '../lib/userLevels';
 import type { PublicProfile as PublicProfileData } from '../types';
 
-const GENDER_LABEL: Record<string, string> = {
-  male: 'Male',
-  female: 'Female',
-  other: 'Other',
-};
-
-/**
- * Requirement #4 — the full details page reached from the `›` on a user card.
- *
- *   Big profile pic · name + Lv + VIP + role tag + online state
- *   Age · Country + flag · Bio · Tags
- *   Friends / Following / Followers / Visitors
- *   Level progress + badges
- */
 export const PublicProfile = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -56,6 +59,17 @@ export const PublicProfile = () => {
   const [loading, setLoading] = useState(true);
   const [showReport, setShowReport] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  // Lightbox Preview Modal for Picture & Cover
+  const [previewImage, setPreviewImage] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
+
+  // Level Detail Sheet
+  const [showLevelSheet, setShowLevelSheet] = useState(false);
+  const [levelSheetTab, setLevelSheetTab] = useState<'wealth' | 'live'>('wealth');
 
   // Call state
   const [insufficientCoins, setInsufficientCoins] = useState<{
@@ -65,6 +79,7 @@ export const PublicProfile = () => {
     balance?: number;
     minBalance?: number;
   }>({ visible: false });
+
   const [activeCall, setActiveCall] = useState<{
     callId: string;
     channel: string;
@@ -94,7 +109,20 @@ export const PublicProfile = () => {
     };
   }, [id]);
 
-  const isSelf = !!profile && profile._id === user?._id;
+  const isSelf = Boolean(profile && user && (profile._id === user._id || profile.uid === user.uid));
+
+  // Calculated Levels
+  const wealthInfo = useMemo(() => {
+    const rawExp = Math.max(profile?.wealthExp || 0, ((profile?.coins || 0) + (profile?.diamonds || 0)));
+    return calculateWealthLevel(rawExp, profile?.wealthLevel || profile?.level);
+  }, [profile]);
+
+  const liveInfo = useMemo(() => {
+    const minutes =
+      profile?.liveStreamMinutes ||
+      (profile?.liveStreamSeconds ? Math.floor(profile.liveStreamSeconds / 60) : 0);
+    return calculateLiveLevel(minutes, profile?.liveLevel || profile?.level);
+  }, [profile]);
 
   // Socket listener for call accept & end
   useEffect(() => {
@@ -120,8 +148,6 @@ export const PublicProfile = () => {
       socket.off('call:end', onCallEnd);
     };
   }, [socket, activeCall?.callId]);
-
-
 
   const startProfileCall = async (type: 'audio' | 'video') => {
     if (!profile?._id) return;
@@ -158,7 +184,7 @@ export const PublicProfile = () => {
           channel: data.data.channel,
           type: data.data.type,
           token: data.data.token,
-          coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || 10000,
+          coinsPerMinute: data.data.coinsPerMinute || quoteRes?.data?.coinsPerMinute || 10000,
         });
       }
     } catch (err: any) {
@@ -178,12 +204,12 @@ export const PublicProfile = () => {
   };
 
   const handleMessage = async () => {
-    if (!id) return;
+    if (!profile?._id) return;
     try {
-      const { data } = await chatApi.getOrCreateChat(id);
+      const { data } = await chatApi.getOrCreateChat(profile._id);
       if (data.success) navigate(`/chat/${data.data._id}`);
     } catch {
-      /* non-fatal */
+      showToast('Could not open chat thread', 'error');
     }
   };
 
@@ -192,230 +218,506 @@ export const PublicProfile = () => {
     try {
       await navigator.clipboard.writeText(profile.uid);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
+      showToast('User ID copied to clipboard!', 'success');
+      setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* clipboard unavailable */
+      /* ignore */
+    }
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${profile?.nickname || 'User'} on Navo Live`,
+          text: `Check out ${profile?.nickname || 'this user'}'s profile on Navo Live!`,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        showToast('Profile link copied to clipboard!', 'success');
+        setTimeout(() => setShared(false), 2000);
+      }
+    } catch {
+      /* ignore */
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <Loading className="pt-32" size="lg" />
+      <div className="min-h-screen bg-[#F4F6F9] flex flex-col items-center justify-center">
+        <Loading size="lg" />
+        <span className="text-xs text-ink-muted mt-2 font-medium">Loading profile...</span>
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-8 text-center">
-        <p className="text-base font-semibold text-ink mb-1">User not found</p>
-        <p className="text-sm text-ink-muted">This account may have been deleted.</p>
-        <button onClick={() => navigate(-1)} className="mt-4 h-9 px-4 btn-secondary text-sm">
-          Go back
+      <div className="min-h-screen bg-[#F4F6F9] flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-white shadow-md flex items-center justify-center text-3xl mb-3">
+          🔍
+        </div>
+        <p className="text-base font-extrabold text-ink mb-1">User Not Found</p>
+        <p className="text-xs text-ink-muted max-w-xs mb-4">
+          This account may have been deleted, moved, or the ID is incorrect.
+        </p>
+        <button
+          onClick={() => navigate(-1)}
+          className="h-10 px-5 rounded-full bg-black text-white text-xs font-bold active:scale-95 transition-transform"
+        >
+          Go Back
         </button>
       </div>
     );
   }
 
-  const tier = levelTier(profile.level);
-  const progress = tierProgress(profile.level);
-  const nextAt = nextTierAt(profile.level);
-  const vip = vipInfo(profile.noble as any);
-  const roleTags = <RoleTags user={profile as any} size="md" />;
+  const coverMediaUrl = profile.cover ? getMediaUrl(profile.cover) : null;
+  const avatarMediaUrl = profile.avatar ? getMediaUrl(profile.avatar) : null;
 
   return (
-    <div className="min-h-screen bg-surface-soft pb-8">
-      {/* ── Cover + back bar ───────────────────────────────────── */}
+    <div className="min-h-screen bg-[#F4F6F9] pb-24 select-none">
+      {/* ── Cover Photo Banner (Interactive & Clickable) ─────────── */}
       <div className="relative">
-        <div className="h-40 w-full overflow-hidden bg-wash">
-          {profile.cover && (
-            <img src={getMediaUrl(profile.cover)} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+        <div
+          onClick={() => {
+            if (coverMediaUrl) {
+              setPreviewImage({
+                url: coverMediaUrl,
+                title: `${profile.nickname}'s Cover Photo`,
+              });
+            } else if (avatarMediaUrl) {
+              setPreviewImage({
+                url: avatarMediaUrl,
+                title: `${profile.nickname}'s Photo`,
+              });
+            }
+          }}
+          className="h-52 w-full overflow-hidden bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 relative group cursor-pointer"
+          title="Click to view full cover"
+        >
+          {coverMediaUrl ? (
+            <img
+              src={coverMediaUrl}
+              alt="Cover photo"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              referrerPolicy="no-referrer"
+              loading="eager"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-500/30 via-purple-500/20 to-pink-500/30 flex items-center justify-center">
+              <span className="text-xs text-white/50 font-medium flex items-center gap-1.5">
+                <CameraIcon className="w-4 h-4" />
+                <span>Tap to view photo</span>
+              </span>
+            </div>
           )}
-        </div>
 
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-3 h-14">
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          {!isSelf && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => startProfileCall('audio')}
-                aria-label="Audio call"
-                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center active:scale-95 transition-transform"
-                title="Audio Call"
-              >
-                <Phone className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => startProfileCall('video')}
-                aria-label="Video call"
-                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center active:scale-95 transition-transform"
-                title="Video Call"
-              >
-                <VideoCamera className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowReport(true)}
-                aria-label="Report this user"
-                className="w-9 h-9 rounded-full bg-black/35 backdrop-blur text-white flex items-center justify-center"
-              >
-                <Flag className="w-4 h-4" />
-              </button>
+          {/* Vignette gradients for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/30 pointer-events-none" />
+
+          {/* Expand Cover Pill */}
+          {coverMediaUrl && (
+            <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md text-white text-[10px] font-semibold flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm">
+              <ExpandIcon className="w-3 h-3" />
+              <span>View Cover</span>
             </div>
           )}
         </div>
+
+        {/* Top Floating Action Bar */}
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-3 pt-3 h-14 z-20">
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Back"
+            className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center active:scale-95 transition-transform shadow-md"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              aria-label="Share Profile"
+              className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center active:scale-95 transition-transform shadow-md"
+              title="Share Profile"
+            >
+              {shared ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+            </button>
+
+            {!isSelf && (
+              <button
+                onClick={() => setShowReport(true)}
+                aria-label="Report this user"
+                className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md text-white flex items-center justify-center active:scale-95 transition-transform shadow-md"
+                title="Report User"
+              >
+                <Flag className="w-4 h-4 text-rose-300" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* ── Identity card ──────────────────────────────────────── */}
-      <div className="bg-white px-4 pb-4 -mt-10 mx-3 rounded-card shadow-card relative">
-        <div className="flex items-end gap-3 -mt-8">
-          <Avatar
-            src={profile.avatar}
-            nickname={profile.nickname}
-            size="2xl"
-            online={profile.online}
-            ringed
-          />
+      {/* ── Main Profile Header Card ──────────────────────────────── */}
+      <div className="bg-white mx-3 -mt-10 rounded-3xl p-4 shadow-sm border border-gray-100/80 relative z-10">
+        <div className="flex items-start justify-between gap-3 -mt-12">
+          {/* Avatar (Clickable with Lightbox Preview) */}
+          <div className="relative group">
+            <button
+              onClick={() => {
+                if (avatarMediaUrl) {
+                  setPreviewImage({
+                    url: avatarMediaUrl,
+                    title: `${profile.nickname}'s Profile Picture`,
+                  });
+                }
+              }}
+              className="ring-4 ring-white rounded-full bg-white shadow-lg shrink-0 active:scale-95 transition-transform block relative overflow-hidden"
+              title="Click to view full picture"
+            >
+              <Avatar
+                src={profile.avatar}
+                nickname={profile.nickname}
+                size="2xl"
+                online={Boolean(profile.online)}
+              />
+              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full">
+                <ExpandIcon className="w-5 h-5 drop-shadow" />
+              </div>
+            </button>
+          </div>
+
+          {/* Quick Actions (when viewing another user) */}
           {!isSelf && (
-            <div className="flex items-center gap-1.5 pb-2 ml-auto flex-wrap justify-end">
+            <div className="flex items-center gap-1.5 pt-12 flex-wrap justify-end">
               <button
                 onClick={() => startProfileCall('audio')}
-                className="h-9 px-3 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold inline-flex items-center gap-1 active:bg-emerald-100 transition-colors shadow-2xs"
-                title="1:1 Audio Call"
+                className="h-9 px-3 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-emerald-100 transition-all shadow-2xs border border-emerald-200/60 active:scale-95"
+                title="Audio Call"
               >
-                <Phone className="w-3.5 h-3.5" />
-                Call
+                <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Call</span>
               </button>
+
               <button
                 onClick={() => startProfileCall('video')}
-                className="h-9 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold inline-flex items-center gap-1 active:bg-indigo-100 transition-colors shadow-2xs"
-                title="1:1 Video Call"
+                className="h-9 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-indigo-100 transition-all shadow-2xs border border-indigo-200/60 active:scale-95"
+                title="Video Call"
               >
-                <VideoCamera className="w-3.5 h-3.5" />
-                Video
+                <VideoCamera className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Video</span>
               </button>
+
               <button
                 onClick={handleMessage}
-                className="h-9 px-3 rounded-full bg-surface-sunken text-ink text-xs font-semibold inline-flex items-center gap-1"
+                className="h-9 px-3.5 rounded-full bg-gray-100 text-ink text-xs font-bold inline-flex items-center gap-1.5 active:bg-gray-200 transition-all active:scale-95"
+                title="Send Message"
               >
-                <MessageCircle className="w-3.5 h-3.5" />
-                Message
+                <MessageCircle className="w-3.5 h-3.5 text-gray-700" />
+                <span>Chat</span>
               </button>
+
               <FollowButton
                 targetUserId={profile._id}
-                initialFollowing={profile.isFollowing}
+                initialFollowing={Boolean(profile.isFollowing)}
                 size="md"
               />
             </div>
           )}
         </div>
 
-
+        {/* User Details & Nameplate */}
         <div className="mt-3">
-          <UserNameplate user={profile as any} size="lg" showRoles={false} />
-          {roleTags && <div className="mt-2">{roleTags}</div>}
-        </div>
+          {/* Row 1: Nickname + Badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="font-black text-ink text-xl tracking-tight uppercase leading-snug">
+              {profile.nickname}
+            </h1>
 
-        {/* ID + mutual-follow hint */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
-            ID: {profile.uid}
-            <button onClick={copyUid} aria-label="Copy ID" className="text-ink-faint active:text-ink">
-              {copied ? <Check className="w-3.5 h-3.5 text-status-online" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          </span>
-          {profile.isFriend && (
-            <span className="text-[10px] font-bold text-accent-600 bg-accent-50 px-1.5 py-0.5 rounded">
-              FRIENDS
-            </span>
-          )}
-          {!profile.isFriend && profile.isFollowedBy && (
-            <span className="text-[10px] font-bold text-ink-muted bg-surface-sunken px-1.5 py-0.5 rounded">
-              FOLLOWS YOU
-            </span>
-          )}
-        </div>
+            {profile.verification?.verified && (
+              <VerifiedBadge className="w-4 h-4 inline-block text-sky-500" />
+            )}
 
-        {/* Age / country / gender */}
-        <div className="flex items-center gap-2 mt-3 flex-wrap">
-          {typeof profile.age === 'number' && (
-            <Chip icon={<Cake className="w-3.5 h-3.5" />}>{profile.age} yrs</Chip>
-          )}
-          {profile.gender && profile.gender !== 'unspecified' && (
-            <Chip icon={<UserIcon className="w-3.5 h-3.5" />}>{GENDER_LABEL[profile.gender]}</Chip>
-          )}
-          {profile.country && (
-            <Chip icon={<MapPin className="w-3.5 h-3.5" />}>{countryLabel(profile.country)}</Chip>
-          )}
-        </div>
+            {profile.hostBadge && profile.hostBadge !== 'none' && (
+              <HostBadge badge={profile.hostBadge} size="sm" />
+            )}
 
-        {/* Bio */}
-        {profile.bio && <p className="text-sm text-ink-soft mt-3 leading-relaxed">{profile.bio}</p>}
+            {profile.equippedBadge && (
+              <EquippedBadge
+                badge={profile.equippedBadge}
+                size="sm"
+                animated={true}
+              />
+            )}
 
-        {/* Tags */}
-        {profile.tags && profile.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {profile.tags.map((tag) => (
-              <span
-                key={tag}
-                className="h-7 px-2.5 rounded-full bg-accent-50 text-accent-600 text-xs font-medium inline-flex items-center"
-              >
-                #{tag}
-              </span>
-            ))}
+            {profile.noble && (
+              <NobleBadge tier={profile.noble as any} className="h-4" />
+            )}
           </div>
-        )}
+
+          {/* Role tags */}
+          <div className="mt-1.5">
+            <RoleTags user={profile as any} size="sm" />
+          </div>
+
+          {/* Row 2: Live Level + Wealth Level + ID */}
+          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+            <LiveLevelPill
+              level={liveInfo.level}
+              onClick={() => {
+                setLevelSheetTab('live');
+                setShowLevelSheet(true);
+              }}
+            />
+
+            <WealthLevelPill
+              level={wealthInfo.level}
+              onClick={() => {
+                setLevelSheetTab('wealth');
+                setShowLevelSheet(true);
+              }}
+            />
+
+            {/* ID Badge with 1-click Copy */}
+            <button
+              onClick={copyUid}
+              className="h-6 px-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-mono font-bold flex items-center gap-1 active:scale-95 transition-transform"
+              title="Click to copy ID"
+            >
+              <span>ID: {profile.uid}</span>
+              {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-gray-400" />}
+            </button>
+
+            {/* Mutual Follow / Friend Tag */}
+            {profile.isFriend && (
+              <span className="h-6 px-2.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center shadow-xs">
+                Mutual Friends
+              </span>
+            )}
+            {!profile.isFriend && profile.isFollowedBy && (
+              <span className="h-6 px-2 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200/60 flex items-center">
+                Follows You
+              </span>
+            )}
+          </div>
+
+          {/* Row 3: Gender, Age & Location Chips */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {profile.gender && profile.gender !== 'unspecified' && (
+              <span
+                className={`h-6 px-2 rounded-full text-xs font-bold flex items-center gap-1 shadow-2xs ${
+                  profile.gender === 'male'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : profile.gender === 'female'
+                    ? 'bg-pink-50 text-pink-700 border border-pink-200'
+                    : 'bg-purple-50 text-purple-700 border border-purple-200'
+                }`}
+              >
+                {profile.gender === 'male' ? (
+                  <MaleIcon className="w-3 h-3" />
+                ) : profile.gender === 'female' ? (
+                  <FemaleIcon className="w-3 h-3" />
+                ) : (
+                  <UserIcon className="w-3 h-3" />
+                )}
+                <span>{profile.age ? `${profile.age}` : profile.gender}</span>
+              </span>
+            )}
+
+            {typeof profile.age === 'number' && !profile.gender && (
+              <span className="h-6 px-2.5 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold flex items-center gap-1">
+                <Cake className="w-3 h-3 text-amber-500" />
+                <span>{profile.age} yrs</span>
+              </span>
+            )}
+
+            {profile.country && (
+              <span className="h-6 px-2.5 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold flex items-center gap-1">
+                <span>{flagEmoji(profile.country)}</span>
+                <span>{countryLabel(profile.country)}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Bio text */}
+          {profile.bio && (
+            <div className="mt-3.5 p-3 rounded-2xl bg-gray-50 border border-gray-100 text-xs text-gray-700 leading-relaxed">
+              <p className="italic">"{profile.bio}"</p>
+            </div>
+          )}
+
+          {/* Tags */}
+          {profile.tags && profile.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {profile.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="h-6 px-2.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-semibold inline-flex items-center border border-indigo-100"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── Requirement #2 — stats ─────────────────────────────── */}
-      <div className="bg-white mx-3 mt-3 rounded-card py-3 px-1">
+      {/* ── Interactive Stats Row ──────────────────────────────────── */}
+      <div className="bg-white mx-3 mt-3 rounded-3xl py-3 px-2 shadow-2xs border border-gray-100">
         <ProfileStatsRow
           userId={profile._id}
           stats={profile}
-          // Visitors are private — only the owner can open that list.
           showVisitors={isSelf}
         />
       </div>
 
-      {/* ── Requirement #4 — level progress + badges ───────────── */}
-      <div className="bg-white mx-3 mt-3 rounded-card p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-bold text-ink">Level</h2>
-          <span className={`text-xs font-bold ${tier.text}`}>
-            {tier.label} · Lv.{profile.level}
-          </span>
+      {/* ── Level & Privileges Showcase Card ───────────────────────── */}
+      <div className="bg-white mx-3 mt-3 rounded-3xl p-4 shadow-2xs border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-extrabold text-ink text-sm flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <span>Levels & Badges</span>
+          </h2>
+          <button
+            onClick={() => {
+              setLevelSheetTab('wealth');
+              setShowLevelSheet(true);
+            }}
+            className="text-xs font-bold text-accent-600 hover:underline"
+          >
+            View Details
+          </button>
         </div>
-        <div className="h-1.5 rounded-full bg-line overflow-hidden">
-          <div className={`h-full rounded-full ${tier.pill}`} style={{ width: `${Math.round(progress * 100)}%` }} />
-        </div>
-        <p className="text-[11px] text-ink-muted mt-2">
-          {nextAt ? `Next tier unlocks at Lv.${nextAt}` : 'Top tier reached'}
-        </p>
 
-        <div className="flex flex-wrap gap-2 mt-4">
-          <BadgeTile label={`Lv.${profile.level}`} sub={tier.label} className={tier.pill} />
-          {vip && <BadgeTile label={vip.label} sub="Noble" className={vip.pill} />}
-          {profile.country && (
-            <BadgeTile
-              label={flagEmoji(profile.country)}
-              sub={countryLabel(profile.country).replace(/^\S+\s/, '')}
-              className="bg-surface-sunken text-ink"
+        {/* Wealth Level Ladder */}
+        <div
+          onClick={() => {
+            setLevelSheetTab('wealth');
+            setShowLevelSheet(true);
+          }}
+          className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 border border-amber-300/40 cursor-pointer active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+              <DiamondIcon className="w-4 h-4 text-cyan-500" />
+              <span>Wealth Level</span>
+            </span>
+            <span className="text-xs font-black text-amber-600">Lv.{wealthInfo.level}</span>
+          </div>
+
+          <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(5, wealthInfo.progress))}%` }}
             />
-          )}
-          {profile.verification?.verified && (
-            <BadgeTile label="✓" sub="Verified" className="bg-role-official text-white" />
-          )}
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-amber-800/80 mt-1 font-semibold">
+            <span>Exp: {wealthInfo.currentPoints.toLocaleString()}</span>
+            <span>Next: {wealthInfo.tierNext === Infinity ? 'MAX' : wealthInfo.tierNext.toLocaleString()}</span>
+          </div>
+        </div>
+
+        {/* Live Level Ladder */}
+        <div
+          onClick={() => {
+            setLevelSheetTab('live');
+            setShowLevelSheet(true);
+          }}
+          className="p-3 rounded-2xl bg-gradient-to-r from-sky-500/10 via-blue-500/5 to-indigo-500/10 border border-sky-300/40 cursor-pointer active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-black text-sky-900 flex items-center gap-1.5">
+              <BroadcastIcon className="w-4 h-4 text-sky-600" />
+              <span>Live Level (Broadcast Time)</span>
+            </span>
+            <span className="text-xs font-black text-sky-600">Lv.{liveInfo.level}</span>
+          </div>
+
+          <div className="h-2 rounded-full bg-sky-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-600 transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(5, liveInfo.progress))}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-sky-800/80 mt-1 font-semibold">
+            <span>Streamed: {formatLiveTime(liveInfo.currentPoints)}</span>
+            <span>Next: {liveInfo.tierNext === Infinity ? 'MAX' : formatLiveTime(liveInfo.tierNext)}</span>
+          </div>
         </div>
       </div>
 
+      {/* ── Interactive Lightbox Photo Viewer Modal ───────────────── */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col justify-between p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          {/* Top Bar */}
+          <div
+            className="flex items-center justify-between text-white pt-2 px-2 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Avatar src={profile.avatar} nickname={profile.nickname} size="sm" />
+              <span className="font-extrabold text-sm">{previewImage.title}</span>
+            </div>
+
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center transition-all"
+              aria-label="Close Preview"
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Centered High-Res Image */}
+          <div
+            className="flex-1 flex items-center justify-center p-2 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImage.url}
+              alt={previewImage.title}
+              className="max-h-[80vh] max-w-full w-auto h-auto object-contain rounded-2xl shadow-2xl transition-transform"
+              referrerPolicy="no-referrer"
+              onError={(e: any) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          </div>
+
+          {/* Bottom Hint */}
+          <div className="text-center pb-4 text-xs text-white/60 font-medium">
+            Tap anywhere to close
+          </div>
+        </div>
+      )}
+
+      {/* Level Detail Sheet Drawer */}
+      <LevelDetailSheet
+        isOpen={showLevelSheet}
+        onClose={() => setShowLevelSheet(false)}
+        initialTab={levelSheetTab}
+        userWealthExp={profile.wealthExp || profile.diamonds || 0}
+        userLiveTimeMinutes={
+          profile.liveStreamMinutes ||
+          (profile.liveStreamSeconds ? Math.floor(profile.liveStreamSeconds / 60) : 0)
+        }
+      />
+
+      {/* Report Modal */}
       {showReport && (
-        <ReportModal targetType="user" targetId={profile._id} onClose={() => setShowReport(false)} />
+        <ReportModal
+          targetType="user"
+          targetId={profile._id}
+          onClose={() => setShowReport(false)}
+        />
       )}
 
       {/* Insufficient Coins Modal */}
@@ -436,7 +738,11 @@ export const PublicProfile = () => {
             channel: activeCall.channel,
             type: activeCall.type,
             token: activeCall.token,
-            callee: { nickname: profile.nickname, avatar: profile.avatar, online: Boolean(profile.online) },
+            callee: {
+              nickname: profile.nickname,
+              avatar: profile.avatar,
+              online: Boolean(profile.online),
+            },
           }}
           accepted={callAccepted}
           coinsPerMinute={activeCall.coinsPerMinute}
@@ -450,26 +756,3 @@ export const PublicProfile = () => {
     </div>
   );
 };
-
-
-function Chip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-surface-sunken text-ink-soft text-xs font-medium">
-      {icon}
-      {children}
-    </span>
-  );
-}
-
-function BadgeTile({ label, sub, className }: { label: string; sub: string; className: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span
-        className={`w-14 h-14 rounded-2xl flex items-center justify-center text-base font-bold ${className}`}
-      >
-        {label}
-      </span>
-      <span className="text-[10px] text-ink-muted">{sub}</span>
-    </div>
-  );
-}

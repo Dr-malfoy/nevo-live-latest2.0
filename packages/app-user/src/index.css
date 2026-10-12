@@ -294,4 +294,81 @@
     animation: badge-shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
     pointer-events: none;
   }
+
+  /* ── EQUIPPED BADGE DYNAMIC ANIMATIONS ───────────────────────────── */
+  @keyframes equipped-badge-shimmer {
+    0% {
+      transform: translateX(-160%) skewX(-25deg);
+      opacity: 0;
+    }
+    15% {
+      opacity: 0.95;
+    }
+    55% {
+      transform: translateX(280%) skewX(-25deg);
+      opacity: 0.95;
+    }
+    70%, 100% {
+      transform: translateX(280%) skewX(-25deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes equipped-badge-aura {
+    0%, 100% {
+      filter: drop-shadow(0 0 1px var(--badge-glow-color, rgba(245, 158, 11, 0.3)));
+    }
+    50% {
+      filter: drop-shadow(0 0 3px var(--badge-glow-color, rgba(245, 158, 11, 0.5))) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+    }
+  }
+
+  @keyframes equipped-badge-twinkle {
+    0%, 100% {
+      transform: scale(0) rotate(0deg);
+      opacity: 0;
+    }
+    20% {
+      transform: scale(1.25) rotate(45deg);
+      opacity: 1;
+    }
+    45% {
+      transform: scale(0.7) rotate(90deg);
+      opacity: 0.85;
+    }
+    70% {
+      transform: scale(0) rotate(135deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes equipped-badge-float {
+    0%, 100% {
+      transform: translateY(0px) scale(1);
+    }
+    50% {
+      transform: translateY(-1.2px) scale(1.05);
+    }
+  }
+
+  @keyframes equipped-badge-bg-flow {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  @keyframes equipped-badge-text-glow {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
 }

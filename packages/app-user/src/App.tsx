@@ -69,7 +69,6 @@ import {
   CreateAgency,
   AgencyDetails,
   ActivityCenter,
-  AgentProfileMock,
   TransferHistory,
   TransactionDetails,
   HelpCenter,
@@ -218,20 +217,25 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     }
   }, [isAuthenticated, token, connect, disconnect, fetchProfile, navigate, user?._id]);
 
-  // Real-time balance sync (gifts, etc.) — keeps the persisted user fresh
+  // Real-time balance sync (gifts, recharges, games, etc.) — keeps the persisted user fresh
   useEffect(() => {
     if (!socket) return;
-    const onBalance = (data: { coins?: number; diamonds?: number }) => {
-      updateUser({
-        coins: data.coins ?? undefined,
-        diamonds: data.diamonds ?? undefined,
-      });
+    const onBalance = (data: { coins?: number; diamonds?: number; tickets?: number; wealthExp?: number; wealthLevel?: number }) => {
+      const updates: any = {};
+      if (typeof data.coins === 'number') updates.coins = data.coins;
+      if (typeof data.diamonds === 'number') updates.diamonds = data.diamonds;
+      if (typeof data.tickets === 'number') updates.tickets = data.tickets;
+      if (typeof data.wealthExp === 'number') updates.wealthExp = data.wealthExp;
+      if (typeof data.wealthLevel === 'number') updates.wealthLevel = data.wealthLevel;
+      if (Object.keys(updates).length > 0) {
+        updateUser(updates);
+      }
     };
     socket.on('balance:update', onBalance);
     return () => {
       socket.off('balance:update', onBalance);
     };
-  }, [socket]);
+  }, [socket, updateUser]);
 
   // Real-time verification sync — admin approve/reject updates profile state instantly
   useEffect(() => {
@@ -625,10 +629,6 @@ export default function App() {
             {/* #57 short video feed — full-bleed, own chrome */}
             <Route path="/videos" element={<ProtectedRoute><VideoFeed /></ProtectedRoute>} />
 
-            <Route
-              path="/user/59237509"
-              element={<ProtectedRoute><AgentProfileMock /></ProtectedRoute>}
-            />
             <Route
               path="/user/:id"
               element={<ProtectedRoute><PublicProfile /></ProtectedRoute>}

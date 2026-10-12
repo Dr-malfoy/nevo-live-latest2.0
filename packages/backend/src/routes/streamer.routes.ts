@@ -25,6 +25,9 @@ router.get('/milestones', authenticate, streamerController.getMilestones);
 // GET /api/streamer/creator-stats — creator content summary
 router.get('/creator-stats', authenticate, streamerController.getCreatorStats);
 
+// POST /api/streamer/claim-video-reward — claim 1k (200 diamonds) or 5k (1000 diamonds) video reward
+router.post('/claim-video-reward', authenticate, streamerController.claimVideoReward);
+
 // GET /api/streamer/videos — video/reel feed
 router.get('/videos', streamerController.getVideoFeed);
 

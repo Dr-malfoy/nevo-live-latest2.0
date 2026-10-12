@@ -28,6 +28,8 @@ export interface AgencyMemberInfo {
 export interface AgencyRelationship {
   isOwner: boolean;
   isMember: boolean;
+  isAdmin?: boolean;
+  canViewFullDetails?: boolean;
   hasPendingJoinRequest: boolean;
   hasPendingLeaveRequest: boolean;
   joinRequestId?: string;

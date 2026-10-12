@@ -416,7 +416,7 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 <p className="text-[11px] text-white/60 font-medium">
                   {currentInfo.remaining > 0
                     ? activeTab === 'wealth'
-                      ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} Diamonds`
+                      ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} EXP`
                       : `Remaining live time to upgrade: ${formatLiveTime(currentInfo.remaining)}`
                     : 'Top level reached!'}
                 </p>

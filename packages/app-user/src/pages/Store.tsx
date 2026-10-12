@@ -54,6 +54,7 @@ export const Store = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const fetchProfile = useAuthStore((s) => s.fetchProfile);
   const showToast = useUIStore((s) => s.showToast);
 
@@ -136,6 +137,14 @@ export const Store = () => {
       if (res.success) {
         showToast(`${item.name} purchased & equipped!`, 'success');
         setSelectedItem(null);
+        const balances = (res as any).data?.balances || (res as any).balances;
+        if (balances) {
+          const updates: any = {};
+          if (typeof balances.coins === 'number') updates.coins = balances.coins;
+          if (typeof balances.diamonds === 'number') updates.diamonds = balances.diamonds;
+          if (typeof balances.tickets === 'number') updates.tickets = balances.tickets;
+          updateUser(updates);
+        }
         await fetchProfile().catch(() => {});
       } else {
         showToast(res.error || 'Purchase failed', 'error');
@@ -327,7 +336,7 @@ export const Store = () => {
                       ID:{item.displayId}
                     </span>
                   ) : item.category === 'badge' ? (
-                    <div className="scale-110 flex items-center justify-center">
+                    <div className="w-full h-full flex items-center justify-center p-1 overflow-hidden">
                       <EquippedBadge
                         badge={{
                           name: item.name,
@@ -335,8 +344,9 @@ export const Store = () => {
                           preview: item.preview,
                           rarity: item.rarity,
                         }}
-                        size="sm"
-                        showLabel={false}
+                        size="xs"
+                        showLabel={true}
+                        animated={true}
                       />
                     </div>
                   ) : isEmoji ? (

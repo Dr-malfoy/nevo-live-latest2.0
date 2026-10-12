@@ -111,8 +111,14 @@ export const walletService = {
         $set: setObj,
       };
     } else {
+      const currentWealthExp = target.wealthExp || 0;
+      const newWealthExp = currentWealthExp + amount;
+      const wealthInfo = calculateWealthLevel(newWealthExp, target.wealthLevel);
+      const newWealthLevel = Math.max(target.wealthLevel || 1, wealthInfo.level);
+
       updateQuery = {
-        $inc: { coins: amount },
+        $inc: { coins: amount, wealthExp: amount },
+        $set: { wealthLevel: newWealthLevel },
       };
     }
 
@@ -166,6 +172,8 @@ export const walletService = {
       getIO()?.to(`user:${target._id}`).emit('balance:update', {
         diamonds: target.diamonds,
         coins: target.coins,
+        wealthExp: target.wealthExp,
+        wealthLevel: target.wealthLevel,
       });
     } catch {}
 

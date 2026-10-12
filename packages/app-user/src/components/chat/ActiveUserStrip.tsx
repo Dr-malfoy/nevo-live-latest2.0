@@ -10,6 +10,7 @@ import type { ActiveChatUser } from '../../api/chat.api';
 import type { UserStoryGroup } from '../../api/story.api';
 import type { NoteItem } from '../../api/note.api';
 import { chatApi } from '../../api';
+import { getMediaUrl } from '../../lib/media';
 
 interface ActiveUserStripProps {
   users: ActiveChatUser[];
@@ -139,9 +140,12 @@ export const ActiveUserStrip = ({
               <div className="w-full h-full rounded-full bg-white p-[1.5px] overflow-hidden">
                 {currentUser?.avatar ? (
                   <img
-                    src={currentUser.avatar}
+                    src={getMediaUrl(currentUser.avatar)}
                     alt={currentUser.nickname || 'You'}
                     className="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-700 font-bold text-base">
@@ -267,7 +271,7 @@ export const ActiveUserStrip = ({
                   <div className="w-full h-full rounded-full bg-white p-[1.5px] overflow-hidden">
                     {user.avatar ? (
                       <img
-                        src={user.avatar}
+                        src={getMediaUrl(user.avatar)}
                         alt={user.nickname}
                         className="w-full h-full rounded-full object-cover"
                         onError={(e) => {

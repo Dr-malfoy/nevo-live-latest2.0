@@ -8,7 +8,7 @@ export const roomsApi = {
   get: (id: string) =>
     client.get<ApiResponse<Room>>(`/rooms/${id}`),
 
-  create: (data: { name: string; description?: string; seatCount?: number; isPrivate?: boolean }) =>
+  create: (data: { name: string; description?: string; seatCount?: number; isPrivate?: boolean; password?: string }) =>
     client.post<ApiResponse<Room>>('/rooms', data),
 
   join: (id: string, seatIndex?: number) =>

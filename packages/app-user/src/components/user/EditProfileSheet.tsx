@@ -178,7 +178,7 @@ export const EditProfileSheet = ({ isOpen, onClose }: EditProfileSheetProps) => 
               className="w-14 h-10 rounded-lg bg-surface-sunken flex items-center justify-center overflow-hidden shrink-0 disabled:opacity-60"
             >
               {user.cover ? (
-                <img src={getMediaUrl(user.cover)} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                <img src={getMediaUrl(user.cover)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <ImageIcon className="w-4 h-4 text-ink-faint" />
               )}

@@ -244,6 +244,13 @@ export const AgencyDetails = () => {
     hasPendingLeaveRequest: false,
   };
 
+  const isUserAdmin = user?.role === 'admin' || (user as any)?.isAdmin === true;
+  const isUserOwner = relationship.isOwner || (user && agency.agent._id === user._id);
+  const isUserMember = relationship.isMember || (user && user.agencyId === agency._id);
+  const canViewFullDetails =
+    relationship.canViewFullDetails ??
+    (isUserAdmin || isUserOwner || isUserMember);
+
   const isPrivate = agency.type === 'private';
   const members = agency.members || [];
 
@@ -423,18 +430,36 @@ export const AgencyDetails = () => {
                 Contribution
               </span>
               <div className="w-7 h-7 rounded-xl bg-amber-50 border border-amber-100/80 text-amber-600 flex items-center justify-center shrink-0">
-                <PiCoinsFill className="w-3.5 h-3.5" />
+                {canViewFullDetails ? (
+                  <PiCoinsFill className="w-3.5 h-3.5" />
+                ) : (
+                  <PiLockKeyFill className="w-3.5 h-3.5 text-amber-500" />
+                )}
               </div>
             </div>
             <div>
-              <p className="text-xl font-black text-amber-600 tracking-tight leading-none break-all" title={`${(agency.totalContribution || 0).toLocaleString()} points`}>
-                {(agency.totalContribution || 0) >= 100_000_000
-                  ? `${((agency.totalContribution || 0) / 1_000_000).toFixed(1)}M`
-                  : (agency.totalContribution || 0).toLocaleString()}
-              </p>
-              <p className="text-[11px] text-slate-400 font-medium mt-1">
-                Total points
-              </p>
+              {canViewFullDetails ? (
+                <>
+                  <p className="text-xl font-black text-amber-600 tracking-tight leading-none break-all" title={`${(agency.totalContribution || 0).toLocaleString()} points`}>
+                    {(agency.totalContribution || 0) >= 100_000_000
+                      ? `${((agency.totalContribution || 0) / 1_000_000).toFixed(1)}M`
+                      : (agency.totalContribution || 0).toLocaleString()}
+                  </p>
+                  <p className="text-[11px] text-slate-400 font-medium mt-1">
+                    Total points
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-base font-black text-slate-400 tracking-tight leading-none flex items-center gap-1">
+                    <PiLockKeyFill className="w-4 h-4 text-amber-500" />
+                    <span>Members Only</span>
+                  </p>
+                  <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                    Join agency to unlock
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -614,13 +639,61 @@ export const AgencyDetails = () => {
             <div className="flex items-center gap-1.5">
               <PiFlameFill className="w-4 h-4 text-orange-500" />
               <h2 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
-                Agency Hosts ({members.length})
+                Agency Hosts ({agency.memberCount})
               </h2>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">Live Hours & Earnings</span>
+            {canViewFullDetails ? (
+              <span className="text-[11px] font-medium text-slate-400">Live Hours & Earnings</span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <PiLockKeyFill className="w-3 h-3 text-amber-500" />
+                <span>Members Only</span>
+              </span>
+            )}
           </div>
 
-          {members.length === 0 ? (
+          {!canViewFullDetails ? (
+            <div className="py-7 px-4 rounded-2xl bg-gradient-to-b from-slate-50 to-indigo-50/40 border border-slate-200/70 text-center flex flex-col items-center justify-center">
+              <div className="w-14 h-14 rounded-2xl bg-white border border-indigo-100 shadow-sm flex items-center justify-center text-amber-500 text-2xl mb-3">
+                <PiLockKeyFill className="w-7 h-7" />
+              </div>
+              <h3 className="text-sm font-black text-slate-900">
+                Agency Hosts are Protected
+              </h3>
+              <p className="text-xs text-slate-500 max-w-xs mt-1 leading-relaxed">
+                Streamer performance, member list, and coins leaderboard are visible only to agency members and the owner.
+              </p>
+
+              {user ? (
+                isPrivate ? (
+                  <button
+                    onClick={() => setShowJoinModal(true)}
+                    className="mt-4 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition-all flex items-center gap-1.5"
+                  >
+                    <PiLockKeyFill className="w-3.5 h-3.5" />
+                    <span>Request to Join Agency</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleJoinDirect}
+                    disabled={actionLoading}
+                    className="mt-4 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <PiUsersFill className="w-3.5 h-3.5" />
+                    <span>Join Agency to View All Hosts</span>
+                  </button>
+                )
+              ) : (
+                <button
+                  onClick={() => navigate('/login')}
+                  className="mt-4 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5"
+                >
+                  <PiArrowRightBold className="w-3.5 h-3.5" />
+                  <span>Log in to Join</span>
+                </button>
+              )}
+            </div>
+          ) : members.length === 0 ? (
             <div className="py-8 text-center flex flex-col items-center justify-center">
               <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-xl mb-2">
                 👥

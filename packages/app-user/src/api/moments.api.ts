@@ -32,4 +32,7 @@ export const momentsApi = {
 
   share: (id: string) =>
     client.post<ApiResponse<{ shareCount: number }>>(`/moments/${id}/share`),
+
+  recordView: (id: string) =>
+    client.post<ApiResponse<{ viewCount: number }>>(`/moments/${id}/view`),
 };

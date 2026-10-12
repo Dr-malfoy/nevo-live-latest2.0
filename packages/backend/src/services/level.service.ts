@@ -53,7 +53,8 @@ export const levelService = {
       badgeIcon = user?.equippedBadge?.image || '';
     } else {
       const diamonds = Math.max(0, user?.diamonds || 0);
-      const wealthExp = Math.max(user?.wealthExp || 0, diamonds);
+      const coins = Math.max(0, user?.coins || 0);
+      const wealthExp = Math.max(user?.wealthExp || 0, coins + diamonds);
       const levelInfo = calculateWealthLevel(wealthExp, user?.wealthLevel || user?.level || 1);
       points = levelInfo.currentPoints;
       level = levelInfo.level;

@@ -16,6 +16,8 @@ import {
   PiTrashBold as TrashIcon,
   PiEyeSlashBold as EyeSlashIcon,
   PiFilmReelFill as ReelsIcon,
+  PiEyeFill as EyeIcon,
+  PiVideoCameraFill as VideoIcon,
 } from 'react-icons/pi';
 import { Avatar, LevelBadge, VerifiedBadge } from '../user';
 import { momentsApi } from '../../api';
@@ -82,12 +84,27 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [videoError, setVideoError] = useState(false);
 
   // Share count synced with moment.shareCount
   const [sharesCount, setSharesCount] = useState(moment.shareCount || 0);
   useEffect(() => {
     setSharesCount(moment.shareCount || 0);
   }, [moment.shareCount]);
+
+  // Views count synced with moment.viewCount
+  const [viewsCount, setViewsCount] = useState(moment.viewCount || 0);
+  const hasRecordedView = useRef(false);
+  useEffect(() => {
+    setViewsCount(moment.viewCount || 0);
+  }, [moment.viewCount]);
+
+  const handleRecordView = () => {
+    if (hasRecordedView.current) return;
+    hasRecordedView.current = true;
+    setViewsCount((v) => v + 1);
+    momentsApi.recordView(moment._id).catch(() => {});
+  };
 
   // Robust level resolver
   const resolveLevel = (u?: any): number => {
@@ -164,6 +181,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
+      handleRecordView();
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
@@ -260,6 +278,15 @@ export const PostCard: React.FC<PostCardProps> = ({
               <span className="text-[10px] text-accent-500 font-semibold uppercase tracking-wider">
                 {isVideo ? 'Video' : 'Photo'}
               </span>
+              {isVideo && (
+                <>
+                  <span className="w-1 h-1 rounded-full bg-ink-ghost" />
+                  <span className="text-[11px] text-ink-muted font-medium flex items-center gap-1">
+                    <EyeIcon className="w-3 h-3 text-accent-500" />
+                    <span>{compactNumber(viewsCount)} views</span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -374,36 +401,57 @@ export const PostCard: React.FC<PostCardProps> = ({
           }}
         >
           {isVideo ? (
-            <>
-              <video
-                ref={videoRef}
-                src={mediaSrc}
-                loop
-                muted={isMuted}
-                playsInline
-                onTimeUpdate={handleTimeUpdate}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onWatchReel) {
-                    onWatchReel(moment._id);
-                  } else {
-                    togglePlay();
-                  }
-                }}
-                className="w-full h-full object-contain aspect-video"
-              />
+            videoError ? (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 text-white/75 p-6 text-center select-none aspect-video">
+                <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mb-2.5 shadow-inner">
+                  <VideoIcon className="w-6 h-6 text-rose-400" />
+                </div>
+                <span className="text-xs font-bold text-white/90">Video unavailable</span>
+                <span className="text-[11px] text-white/45 max-w-xs mt-1">
+                  Server restarted or media file was wiped by host storage.
+                </span>
+              </div>
+            ) : (
+              <>
+                <video
+                  ref={videoRef}
+                  src={mediaSrc}
+                  loop
+                  muted={isMuted}
+                  playsInline
+                  onPlay={handleRecordView}
+                  onTimeUpdate={handleTimeUpdate}
+                  onError={() => setVideoError(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onWatchReel) {
+                      handleRecordView();
+                      onWatchReel(moment._id);
+                    } else {
+                      togglePlay();
+                    }
+                  }}
+                  className="w-full h-full object-contain aspect-video"
+                />
 
-              {/* Watch Fullscreen Reel Badge Overlay */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onWatchReel?.(moment._id);
-                }}
-                className="absolute top-3 left-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 hover:bg-black/90 active:scale-95 transition-all shadow-lg border border-white/20 z-10"
-              >
-                <ReelsIcon className="w-3.5 h-3.5 text-rose-400" />
-                <span>Watch Reel</span>
-              </button>
+                {/* Watch Fullscreen Reel Badge Overlay */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRecordView();
+                    onWatchReel?.(moment._id);
+                  }}
+                  className="absolute top-3 left-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 hover:bg-black/90 active:scale-95 transition-all shadow-lg border border-white/20 z-10"
+                >
+                  <ReelsIcon className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Watch Reel</span>
+                </button>
+
+                {/* View Count Badge on Video Overlay */}
+                <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 shadow-lg border border-white/20 z-10 pointer-events-none">
+                  <EyeIcon className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{compactNumber(viewsCount)} {viewsCount === 1 ? 'view' : 'views'}</span>
+                </div>
 
               {/* Play / Pause Center Overlay Button */}
               <button
@@ -464,7 +512,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 />
               </div>
             </>
-          ) : (
+          )) : (
             <img
               src={mediaSrc}
               alt="Post content"
@@ -524,6 +572,18 @@ export const PostCard: React.FC<PostCardProps> = ({
             <span className="tabular-nums">{compactNumber(sharesCount)}</span>
           </button>
         </div>
+
+        {/* Views Count Display (Only for Video Posts) */}
+        {isVideo && (
+          <div
+            className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted bg-surface-sunken/80 px-2.5 py-1 rounded-full border border-line/60"
+            title={`${viewsCount} total video views`}
+          >
+            <EyeIcon className="w-3.5 h-3.5 text-accent-500" />
+            <span className="tabular-nums font-bold text-ink">{compactNumber(viewsCount)}</span>
+            <span className="text-[11px] text-ink-muted">{viewsCount === 1 ? 'view' : 'views'}</span>
+          </div>
+        )}
       </div>
 
       {/* ── MODALS ── */}

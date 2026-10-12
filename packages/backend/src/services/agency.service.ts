@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
 import { getIO } from '../socket';
+import { calculateWealthLevel } from '../utils/userLevels';
 
 export function calculateAgencyLevel(totalContribution: number, totalLiveHours: number = 0) {
   const score = (totalContribution || 0) + Math.floor((totalLiveHours || 0) * 1000);
@@ -424,20 +425,27 @@ export const agencyService = {
     const totalLiveHours = Math.max(agency.totalLiveHours || 0, Math.round(calculatedLiveHours * 10) / 10);
     const levelInfo = calculateAgencyLevel(totalContribution, totalLiveHours);
 
-    // Check relationship for the requesting user
+    // Check relationship and admin role for the requesting user
     let userRelationship = {
       isOwner: false,
       isMember: false,
+      isAdmin: false,
+      canViewFullDetails: false,
       hasPendingJoinRequest: false,
       hasPendingLeaveRequest: false,
       joinRequestId: undefined as string | undefined,
     };
 
     if (currentUserId) {
+      const requestingUser = await User.findById(currentUserId).select('role isAdmin agencyId').lean();
+      const isAdmin = requestingUser?.role === 'admin' || (requestingUser as any)?.isAdmin === true;
       const isOwner = agent._id?.toString() === currentUserId;
-      const isMember = hosts.some((h: any) => h._id.toString() === currentUserId);
+      const isMember = hosts.some((h: any) => h._id.toString() === currentUserId) || requestingUser?.agencyId?.toString() === agency._id.toString();
+
+      userRelationship.isAdmin = isAdmin;
       userRelationship.isOwner = isOwner;
       userRelationship.isMember = isMember;
+      userRelationship.canViewFullDetails = isAdmin || isOwner || isMember;
 
       if (!isOwner && !isMember) {
         const pendingJoin = await AgencyJoinRequest.findOne({
@@ -462,6 +470,9 @@ export const agencyService = {
         }
       }
     }
+
+    // Only Admin, Agency Owner, and Agency Members can see the full host roster and member details
+    const visibleMembers = userRelationship.canViewFullDetails ? memberContributions : [];
 
     return {
       _id: agency._id.toString(),
@@ -489,7 +500,7 @@ export const agencyService = {
         country: agent.country || '',
         bio: agent.bio || '',
       },
-      members: memberContributions,
+      members: visibleMembers,
       userRelationship,
       createdAt: agency.createdAt,
     };
@@ -856,9 +867,15 @@ export const agencyService = {
       throw new AppError('Insufficient coin balance', 400);
     }
 
+    const newWealthExp = (target.wealthExp || 0) + cleanAmount;
+    const wealthInfo = calculateWealthLevel(newWealthExp, target.wealthLevel);
+
     const updatedTarget = await User.findByIdAndUpdate(
       target._id,
-      { $inc: { coins: cleanAmount } },
+      {
+        $inc: { coins: cleanAmount, wealthExp: cleanAmount },
+        $set: { wealthLevel: Math.max(target.wealthLevel || 1, wealthInfo.level) },
+      },
       { new: true }
     );
 
@@ -887,9 +904,19 @@ export const agencyService = {
     ]);
 
     // Socket real-time balance updates
-    emitSafe('balance:update', `user:${agentId}`, { coins: updatedAgent.coins, diamonds: updatedAgent.diamonds });
+    emitSafe('balance:update', `user:${agentId}`, {
+      coins: updatedAgent.coins,
+      diamonds: updatedAgent.diamonds,
+      wealthExp: updatedAgent.wealthExp,
+      wealthLevel: updatedAgent.wealthLevel,
+    });
     if (updatedTarget) {
-      emitSafe('balance:update', `user:${target._id}`, { coins: updatedTarget.coins, diamonds: updatedTarget.diamonds });
+      emitSafe('balance:update', `user:${target._id}`, {
+        coins: updatedTarget.coins,
+        diamonds: updatedTarget.diamonds,
+        wealthExp: updatedTarget.wealthExp,
+        wealthLevel: updatedTarget.wealthLevel,
+      });
     }
 
     await notificationService.createNotification(
@@ -955,9 +982,19 @@ export const agencyService = {
       throw new AppError('Insufficient diamond balance', 400);
     }
 
+    const newWealthExp = (target.wealthExp || 0) + cleanAmount;
+    const wealthInfo = calculateWealthLevel(newWealthExp, target.wealthLevel);
+
     const updatedTarget = await User.findByIdAndUpdate(
       target._id,
-      { $inc: { diamonds: cleanAmount, wealthExp: cleanAmount }, $set: { hasPurchasedDiamonds: true, isVip: true } },
+      {
+        $inc: { diamonds: cleanAmount, wealthExp: cleanAmount },
+        $set: {
+          hasPurchasedDiamonds: true,
+          isVip: true,
+          wealthLevel: Math.max(target.wealthLevel || 1, wealthInfo.level),
+        },
+      },
       { new: true }
     );
 
@@ -985,9 +1022,19 @@ export const agencyService = {
       },
     ]);
 
-    emitSafe('balance:update', `user:${agentId}`, { coins: updatedAgent.coins, diamonds: updatedAgent.diamonds });
+    emitSafe('balance:update', `user:${agentId}`, {
+      coins: updatedAgent.coins,
+      diamonds: updatedAgent.diamonds,
+      wealthExp: updatedAgent.wealthExp,
+      wealthLevel: updatedAgent.wealthLevel,
+    });
     if (updatedTarget) {
-      emitSafe('balance:update', `user:${target._id}`, { coins: updatedTarget.coins, diamonds: updatedTarget.diamonds });
+      emitSafe('balance:update', `user:${target._id}`, {
+        coins: updatedTarget.coins,
+        diamonds: updatedTarget.diamonds,
+        wealthExp: updatedTarget.wealthExp,
+        wealthLevel: updatedTarget.wealthLevel,
+      });
     }
 
     await notificationService.createNotification(

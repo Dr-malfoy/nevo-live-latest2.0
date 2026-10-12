@@ -196,6 +196,16 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.user) {
+          if (state.user.avatar && state.user.avatar.startsWith('blob:')) {
+            state.user.avatar = undefined;
+          }
+          if (state.user.cover && state.user.cover.startsWith('blob:')) {
+            state.user.cover = undefined;
+          }
+        }
+      },
     }
   )
 );

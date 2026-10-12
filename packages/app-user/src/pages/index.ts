@@ -57,7 +57,6 @@ export { MyAgency } from './MyAgency';
 export { AgencyPage } from './AgencyPage';
 export { CreateAgency } from './CreateAgency';
 export { AgencyDetails } from './AgencyDetails';
-export { AgentProfileMock } from './AgentProfileMock';
 export { TransferHistory } from './TransferHistory';
 export { TransactionDetails } from './TransactionDetails';
 export { HelpCenter } from './HelpCenter';

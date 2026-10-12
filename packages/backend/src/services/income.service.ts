@@ -193,39 +193,13 @@ export const incomeService = {
 
     let isMyAgent = false;
     let allowed = true;
-    let restrictionMessage: string | undefined = undefined;
 
     if (senderId) {
-      const sender = await User.findById(senderId).select('_id role isAgent isAdmin agencyId');
-      if (sender) {
-        const senderIsAgent = Boolean(
-          sender.role === 'agent' ||
-          sender.isAgent ||
-          sender.isAdmin ||
-          (await Agency.exists({ agentId: sender._id }))
-        );
-
-        if (!senderIsAgent) {
-          let senderAgency: any = null;
-          if (sender.agencyId) {
-            senderAgency = await Agency.findById(sender.agencyId);
-          }
-          if (!senderAgency) {
-            senderAgency = await Agency.findOne({ hosts: sender._id });
-          }
-
-          if (senderAgency) {
-            const agencyAgentId = senderAgency.agentId.toString();
-            if (receiver._id.toString() === agencyAgentId) {
-              isMyAgent = true;
-            } else {
-              allowed = false;
-              restrictionMessage = `As a member of "${senderAgency.name}", you can only transfer coins to your own Agency Agent.`;
-            }
-          } else if (!receiverIsAgent) {
-            allowed = false;
-            restrictionMessage = 'Only certified agents can receive coin transfers.';
-          }
+      const sender = await User.findById(senderId).select('_id agencyId');
+      if (sender && sender.agencyId) {
+        const senderAgency = await Agency.findById(sender.agencyId);
+        if (senderAgency && receiver._id.toString() === senderAgency.agentId.toString()) {
+          isMyAgent = true;
         }
       }
     }
@@ -241,49 +215,26 @@ export const incomeService = {
         isAgent: receiverIsAgent,
         role: receiver.role,
         isMyAgent,
-        allowed,
-        restrictionMessage,
+        allowed: true,
       },
     };
   },
 
   async transferPoints(senderId: string, receiverUid: string, points: number) {
-    const TRANSFER_UNIT = 100000;
-    const MIN_TRANSFER = 100000; // 1 Unit = 100,000
     const CHARGE_PERCENT = 0.05; // 5% transfer charge
 
     const amount = Math.floor(Number(points));
-    if (!amount || isNaN(amount) || amount <= 0) {
-      throw new AppError('Enter a valid transfer amount', 400);
+    if (!amount || isNaN(amount) || amount < 1) {
+      throw new AppError('Enter a valid transfer amount (minimum 1 Coin)', 400);
     }
 
-    // 1. Min 1 Unit = 100,000 points
-    if (amount < MIN_TRANSFER) {
-      throw new AppError('Minimum transfer is 1 Unit (100,000 Coins)', 400);
-    }
-
-    // 2. Exact multiple of 1 Unit = 100,000
-    if (amount % TRANSFER_UNIT !== 0) {
-      throw new AppError('Transfer amount must be an exact multiple of 1 Unit (100,000 Coins)', 400);
-    }
-
-    // 3. Sender check
+    // Sender check
     const sender = await User.findById(senderId);
     if (!sender) {
       throw new AppError('Sender not found', 404);
     }
 
-    const { Agency } = await import('../models');
-
-    // Check if sender is an Agent / Agency Owner / Admin
-    const senderIsAgent = Boolean(
-      sender.role === 'agent' ||
-      sender.isAgent ||
-      sender.isAdmin ||
-      (await Agency.exists({ agentId: sender._id }))
-    );
-
-    // 4. Receiver check
+    // Receiver check
     const cleanUid = receiverUid.trim();
     let receiver: any = await User.findOne({ uid: cleanUid });
     if (!receiver && mongoose.isValidObjectId(cleanUid)) {
@@ -297,46 +248,12 @@ export const incomeService = {
     }
 
     if (receiver._id.toString() === senderId) {
-      throw new AppError('Cannot transfer points to yourself', 400);
+      throw new AppError('Cannot transfer coins to yourself', 400);
     }
 
-    // 5. Transfer Role Permissions:
-    // - AGENT: An Agent can transfer coins to ANY user AND to other agents.
-    // - AGENCY MEMBER: A user of an agency can ONLY transfer coins to their own Agency Agent. They cannot transfer to other agents or users.
-    // - NON-AGENCY USER: Can transfer to certified agents for trading.
-    if (!senderIsAgent) {
-      let senderAgency: any = null;
-      if (sender.agencyId) {
-        senderAgency = await Agency.findById(sender.agencyId);
-      }
-      if (!senderAgency) {
-        senderAgency = await Agency.findOne({ hosts: sender._id });
-      }
-
-      if (senderAgency) {
-        const agencyAgentId = senderAgency.agentId.toString();
-        if (receiver._id.toString() !== agencyAgentId) {
-          throw new AppError(
-            `As a member of "${senderAgency.name}", you can only transfer coins directly to your Agency Agent. You cannot transfer coins to other agents.`,
-            403
-          );
-        }
-      } else {
-        const receiverIsAgent = Boolean(
-          receiver.isAgent ||
-          receiver.role === 'agent' ||
-          receiver.isAdmin ||
-          (await Agency.exists({ agentId: receiver._id }))
-        );
-        if (!receiverIsAgent) {
-          throw new AppError('Only certified agents can receive coin transfers. Join an agency to trade directly with your agent.', 403);
-        }
-      }
-    }
-
-    // 4. Calculate 5% transfer charge and final amount
+    // Calculate 5% transfer charge and final amount
     const charge = Math.round(amount * CHARGE_PERCENT); // 5% charge
-    const finalAmount = amount - charge; // Final amount credited to receiver
+    const finalAmount = Math.max(1, amount - charge); // Final amount credited to receiver
 
     if ((sender.coins || 0) < amount) {
       throw new AppError(`Insufficient coin balance (Balance: ${(sender.coins || 0).toLocaleString()})`, 400);
@@ -442,7 +359,7 @@ export const incomeService = {
 
     return {
       points: amount,
-      units: amount / TRANSFER_UNIT,
+      amount,
       charge,
       chargePercent: 5,
       finalAmount,

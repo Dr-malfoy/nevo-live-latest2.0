@@ -7,7 +7,8 @@ export interface MediaUrlOptions {
 
 /**
  * Resolves any media URL (image, video, avatar, audio) into a fully accessible URL.
- * Handles relative paths (/uploads/...), blob/data URLs, and absolute remote URLs (Cloudinary, S3).
+ * Handles relative paths (/uploads/...), blob/data URLs, and absolute remote URLs (Cloudinary, S3, Render).
+ * Automatically migrates localhost/127.0.0.1 URLs to the configured remote backend.
  * Ensures both Android APK and Web environments load the correct resource.
  */
 export function getMediaUrl(url?: string | null, options?: MediaUrlOptions): string {
@@ -20,29 +21,33 @@ export function getMediaUrl(url?: string | null, options?: MediaUrlOptions): str
     return trimmed;
   }
 
+  // Determine active backend origin
+  const envApi = import.meta.env.VITE_API_URL;
+  const remoteOrigin = (envApi && (envApi.startsWith('http://') || envApi.startsWith('https://')))
+    ? envApi.replace(/\/api\/?$/, '')
+    : 'https://nevo-live-latest.onrender.com';
+
   let finalUrl = trimmed;
 
-  // Already an absolute HTTP/HTTPS URL
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+  // If URL points to localhost or 127.0.0.1, rewrite to the active remote origin
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(trimmed)) {
+    finalUrl = trimmed.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, remoteOrigin);
+  } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    // Already an absolute remote URL (e.g. S3, Cloudinary, Render)
     finalUrl = trimmed;
   } else {
+    // Relative path (e.g. /uploads/... or uploads/...)
     const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-
-    // 1. If explicit environment API URL is configured (e.g. https://nevo-live-latest.onrender.com/api)
-    const envApi = import.meta.env.VITE_API_URL;
-    if (envApi && (envApi.startsWith('http://') || envApi.startsWith('https://'))) {
-      const origin = envApi.replace(/\/api\/?$/, '');
-      finalUrl = `${origin}${cleanPath}`;
-    } else if (Capacitor.isNativePlatform()) {
-      // 2. Native mobile app platform (Android APK / iOS)
-      finalUrl = `https://nevo-live-latest.onrender.com${cleanPath}`;
-    } else {
-      // 3. Web environment (Vite proxy forwards /uploads to http://localhost:5000 in dev)
-      finalUrl = cleanPath;
-    }
+    finalUrl = `${remoteOrigin}${cleanPath}`;
   }
 
-  if (options?.cacheBust && !finalUrl.startsWith('data:') && !finalUrl.startsWith('blob:')) {
+  if (
+    options?.cacheBust &&
+    !finalUrl.startsWith('data:') &&
+    !finalUrl.startsWith('blob:') &&
+    !finalUrl.includes('googleusercontent.com') &&
+    !finalUrl.includes('ggpht.com')
+  ) {
     const separator = finalUrl.includes('?') ? '&' : '?';
     const bustValue = typeof options.cacheBust === 'boolean' ? Date.now() : options.cacheBust;
     return `${finalUrl}${separator}t=${bustValue}`;

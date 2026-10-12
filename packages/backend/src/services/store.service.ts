@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { StoreItem, UserInventory, User, AuditLog, StoreCategory } from '../models';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../socket';
 
 export interface BuyItemParams {
   userId: string;
@@ -211,6 +212,17 @@ export const storeService = {
       recipient.markModified('equippedBadge');
       await recipient.save();
     }
+
+    // Push real-time balance update to buyer socket room
+    try {
+      getIO().to(`user:${userId}`).emit('balance:update', {
+        coins: updatedBuyer.coins,
+        diamonds: updatedBuyer.diamonds,
+        tickets: updatedBuyer.tickets,
+        wealthExp: updatedBuyer.wealthExp,
+        wealthLevel: updatedBuyer.wealthLevel,
+      });
+    } catch {}
 
     return {
       success: true,

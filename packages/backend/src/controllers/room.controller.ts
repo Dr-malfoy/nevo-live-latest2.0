@@ -24,7 +24,7 @@ export const roomController = {
         $or: [{ status: 'closed' }, { ownerId: null }, { ownerId: { $exists: false } }],
       }).catch(() => {});
 
-      const filter: any = { isPrivate: false, status: 'active' };
+      const filter: any = { status: 'active' };
 
       if (country) {
         const codes = String(country).split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean);
@@ -73,8 +73,9 @@ export const roomController = {
           memberCount: activeSeats.length,
           viewerCount: activeSeats.length,
           memberAvatars,
-          tag: { type: 'chat', label: 'Party' },
+          tag: { type: 'chat', label: room.isPrivate ? 'Private' : 'Party' },
           followingInside,
+          isPrivate: room.isPrivate || false,
         };
       });
 
@@ -92,7 +93,7 @@ export const roomController = {
       await Room.deleteMany({
         $or: [{ status: 'closed' }, { ownerId: null }, { ownerId: { $exists: false } }],
       }).catch(() => {});
-      const filter = { isPrivate: false, status: 'active' };
+      const filter = { status: 'active' };
       const total = await Room.countDocuments(filter);
       const rooms = await Room.find(filter)
         .populate('ownerId', 'uid nickname avatar')
@@ -117,11 +118,19 @@ export const roomController = {
       }
 
       const { name, description, seatCount = 8, isPrivate, password } = req.body;
+      const parsedSeatCount = Number(seatCount) === 16 ? 16 : 8;
+      const roomIsPrivate = Boolean(isPrivate);
+      const roomPassword = roomIsPrivate && password ? String(password).trim() : undefined;
+
+      if (roomIsPrivate && !roomPassword) {
+        sendError(res, 'Password is required for a private party room', 400);
+        return;
+      }
 
       // Clean up any previous rooms created by this user
       await Room.deleteMany({ ownerId: req.user!.userId });
 
-      const seats = Array.from({ length: seatCount }, (_, i) => ({
+      const seats = Array.from({ length: parsedSeatCount }, (_, i) => ({
         index: i + 1,
         userId: null,
         isLocked: i === 0, // First seat is host seat
@@ -133,8 +142,9 @@ export const roomController = {
         name: name || 'Party Room',
         description: description || '',
         seats,
-        isPrivate: isPrivate || false,
-        password,
+        seatCount: parsedSeatCount,
+        isPrivate: roomIsPrivate,
+        password: roomPassword,
         status: 'active',
       });
 
@@ -186,6 +196,7 @@ export const roomController = {
       }
 
       const room = await Room.findById(req.params.id)
+        .select('+password')
         .populate('ownerId', 'uid nickname avatar')
         .populate('seats.userId', 'uid nickname avatar');
       if (!room || room.status === 'closed' || !room.ownerId) {
@@ -194,6 +205,26 @@ export const roomController = {
         }
         sendError(res, 'Party room not found or has been closed', 404);
         return;
+      }
+
+      const callerId = req.user?.userId;
+      const hostId = typeof room.ownerId === 'object' && '_id' in (room.ownerId as any)
+        ? (room.ownerId as any)._id.toString()
+        : room.ownerId.toString();
+      const isHost = callerId && hostId === callerId;
+
+      if (room.isPrivate && room.password && !isHost) {
+        const providedPassword = (req.query.password as string) || (req.headers['x-room-password'] as string);
+        if (!providedPassword || providedPassword.trim() !== room.password.trim()) {
+          sendError(res, 'Private room requires password', 403, {
+            requiresPassword: true,
+            isPrivate: true,
+            roomId: room._id,
+            roomName: room.name,
+            owner: room.ownerId,
+          });
+          return;
+        }
       }
 
       // Self-heal: Deduplicate seats if any user occupies multiple seats
@@ -221,11 +252,49 @@ export const roomController = {
       const token = generateAgoraToken(channelName, 0, 'publisher');
 
       const data = room.toObject();
+      delete data.password;
+
       sendSuccess(res, {
         ...data,
         agoraChannel: channelName,
         agoraToken: token,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async verifyPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.params.id || req.params.id.length !== 24) {
+        sendError(res, 'Party room not found', 404);
+        return;
+      }
+
+      const room = await Room.findById(req.params.id).select('+password');
+      if (!room || room.status === 'closed') {
+        sendError(res, 'Room not found or closed', 404);
+        return;
+      }
+
+      if (!room.isPrivate || !room.password) {
+        sendSuccess(res, { valid: true }, 'Room is public');
+        return;
+      }
+
+      const callerId = req.user?.userId;
+      const isHost = callerId && room.ownerId.toString() === callerId;
+      if (isHost) {
+        sendSuccess(res, { valid: true }, 'Host authorized');
+        return;
+      }
+
+      const { password } = req.body;
+      if (password && String(password).trim() === room.password.trim()) {
+        sendSuccess(res, { valid: true }, 'Password verified');
+      } else {
+        sendError(res, 'Incorrect room password', 401);
+      }
     } catch (error) {
       next(error);
     }
@@ -239,7 +308,7 @@ export const roomController = {
         return;
       }
 
-      const room = await Room.findById(req.params.id);
+      const room = await Room.findById(req.params.id).select('+password');
       if (!room) {
         sendError(res, 'Room not found', 404);
         return;
@@ -252,6 +321,14 @@ export const roomController = {
 
       const userId = req.user!.userId;
       const isHost = room.ownerId.toString() === userId;
+
+      if (room.isPrivate && room.password && !isHost) {
+        const providedPassword = (req.body.password as string) || (req.headers['x-room-password'] as string);
+        if (!providedPassword || providedPassword.trim() !== room.password.trim()) {
+          sendError(res, 'Incorrect room password', 403);
+          return;
+        }
+      }
 
       // Host already occupies seat 1; do not assign host to a guest seat
       if (isHost) {
@@ -382,10 +459,21 @@ export const roomController = {
         return;
       }
 
-      const room = await Room.findById(req.params.id);
+      const room = await Room.findById(req.params.id).select('+password');
       if (!room) {
         sendError(res, 'Room not found', 404);
         return;
+      }
+
+      const userId = req.user!.userId;
+      const isHost = room.ownerId.toString() === userId;
+
+      if (room.isPrivate && room.password && !isHost) {
+        const providedPassword = (req.body.password as string) || (req.headers['x-room-password'] as string);
+        if (!providedPassword || providedPassword.trim() !== room.password.trim()) {
+          sendError(res, 'Incorrect room password', 403);
+          return;
+        }
       }
       const index = parseInt(req.params.index, 10);
       const seat = room.seats.find((s) => s.index === index);

@@ -84,6 +84,14 @@ export interface MilestoneData {
   rewards: MilestoneReward[];
 }
 
+export interface VideoRewardTierInfo {
+  required: number;
+  diamonds: number;
+  eligible: boolean;
+  claimed: boolean;
+  progress: number;
+}
+
 export interface CreatorVideoItem {
   _id: string;
   content?: string;
@@ -94,9 +102,16 @@ export interface CreatorVideoItem {
   durationSec?: number;
   viewCount: number;
   likes: string[];
+  likesCount?: number;
   comments: any[];
+  commentsCount?: number;
   shareCount: number;
   giftCount: number;
+  claimedViewRewards?: string[];
+  rewards?: {
+    tier1k: VideoRewardTierInfo;
+    tier5k: VideoRewardTierInfo;
+  };
   createdAt: string;
 }
 
@@ -124,6 +139,23 @@ export interface CreatorAcademyItem {
   url?: string;
   duration?: string;
   category?: string;
+}
+
+export interface CreatorDailyInsight {
+  date: string;
+  label: string;
+  views: number;
+  likes: number;
+  comments: number;
+  watchTimeMinutes: number;
+}
+
+export interface CreatorRewardsSummary {
+  tier1k: { views: number; diamonds: number };
+  tier5k: { views: number; diamonds: number };
+  totalClaimedDiamonds: number;
+  totalPendingDiamonds: number;
+  totalEligibleClaimable: number;
 }
 
 export interface CreatorStats {
@@ -160,6 +192,8 @@ export interface CreatorStats {
   allTime?: CreatorPeriodStats;
   myVideos?: CreatorVideoItem[];
   topVideos?: CreatorVideoItem[];
+  dailyInsights?: CreatorDailyInsight[];
+  rewardsSummary?: CreatorRewardsSummary;
   perks?: CreatorPerk[];
   academy?: CreatorAcademyItem[];
 }
@@ -189,4 +223,15 @@ export const streamerApi = {
     ),
 
   getCreatorStats: () => client.get<ApiResponse<CreatorStats>>('/streamer/creator-stats'),
+
+  claimVideoReward: (videoId: string, tier: '1k' | '5k') =>
+    client.post<ApiResponse<{
+      success: boolean;
+      tier: string;
+      videoId: string;
+      rewardDiamonds: number;
+      claimedViewRewards: string[];
+      currentDiamonds: number;
+      message: string;
+    }>>('/streamer/claim-video-reward', { videoId, tier }),
 };

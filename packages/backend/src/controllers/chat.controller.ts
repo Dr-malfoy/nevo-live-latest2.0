@@ -56,14 +56,28 @@ export const chatController = {
 
   async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
-      const { message, kind, giftId, giftName, giftCount, voiceUrl, voiceDuration } = req.body;
+      const {
+        message,
+        kind,
+        giftId,
+        giftName,
+        giftIcon,
+        giftAnimation,
+        giftCount,
+        voiceUrl,
+        voiceDuration,
+        imageUrl,
+      } = req.body;
       const msg = await chatService.sendMessage(req.params.chatId, req.user!.userId, message, {
         kind,
         giftId,
         giftName,
+        giftIcon,
+        giftAnimation,
         giftCount,
         voiceUrl,
         voiceDuration,
+        imageUrl,
       });
       sendSuccess(res, msg, 'Message sent', 201);
     } catch (error) {

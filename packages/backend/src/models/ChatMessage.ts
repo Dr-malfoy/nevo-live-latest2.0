@@ -8,8 +8,10 @@ export interface IChatMessageDocument extends Document {
   callType?: 'audio' | 'video';
   callDuration?: number;
   callStatus?: 'completed' | 'missed' | 'rejected' | 'cancelled';
-  giftId?: Schema.Types.ObjectId;
+  giftId?: Schema.Types.ObjectId | string;
   giftName?: string;
+  giftIcon?: string;
+  giftAnimation?: string;
   giftCount?: number;
   voiceUrl?: string;
   voiceDuration?: number;
@@ -35,8 +37,10 @@ const chatMessageSchema = new Schema<IChatMessageDocument>(
     callType: { type: String, enum: ['audio', 'video'] },
     callDuration: { type: Number, default: 0 },
     callStatus: { type: String, enum: ['completed', 'missed', 'rejected', 'cancelled'] },
-    giftId: { type: Schema.Types.ObjectId, ref: 'Gift' },
+    giftId: { type: Schema.Types.Mixed },
     giftName: { type: String },
+    giftIcon: { type: String },
+    giftAnimation: { type: String },
     giftCount: { type: Number },
     voiceUrl: { type: String },
     voiceDuration: { type: Number },

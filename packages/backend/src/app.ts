@@ -113,6 +113,9 @@ app.use('/uploads', express.static(path.resolve(__dirname, '../uploads'), static
 app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads'), staticUploadOptions));
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), staticUploadOptions));
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'packages/backend/uploads'), staticUploadOptions));
+app.use('/uploads', (_req, res) => {
+  res.status(404).json({ success: false, error: 'File not found' });
+});
 
 // Root & Health check
 app.get('/', (_req, res) => {

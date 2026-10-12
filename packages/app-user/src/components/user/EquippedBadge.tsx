@@ -291,6 +291,9 @@ interface BadgeThemeConfig {
   capsuleBorder: string;
   textStyle: string;
   glowShadow: string;
+  glowColor: string;
+  sparkleColor: string;
+  shimmerBeam: string;
 }
 
 function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
@@ -302,7 +305,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#1A0A02] via-[#381B05] to-[#170801]',
       capsuleBorder: 'border-[#F59E0B]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FDE68A] to-[#F59E0B]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(245,158,11,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(245,158,11,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(245, 158, 11, 0.45)',
+      sparkleColor: '#FFD700',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 245, 160, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -312,7 +318,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#1F1401] via-[#3E2905] to-[#1A1001]',
       capsuleBorder: 'border-[#FBBF24]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FEF08A] to-[#EAB308]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(251,191,36,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(251,191,36,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(251, 191, 36, 0.45)',
+      sparkleColor: '#FFF59D',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 250, 180, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -322,7 +331,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#031526] via-[#082E4D] to-[#02101C]',
       capsuleBorder: 'border-[#38BDF8]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#BAE6FD] to-[#38BDF8]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(56,189,248,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(56,189,248,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(56, 189, 248, 0.45)',
+      sparkleColor: '#E0F7FA',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(220, 245, 255, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -332,7 +344,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#240404] via-[#4D0A0A] to-[#1F0303]',
       capsuleBorder: 'border-[#FB7185]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FECDD3] to-[#F43F5E]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(244,63,94,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(244,63,94,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(244, 63, 94, 0.45)',
+      sparkleColor: '#FFCDD2',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 220, 225, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -342,7 +357,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#031C0D] via-[#073B1B] to-[#021409]',
       capsuleBorder: 'border-[#34D399]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#A7F3D0] to-[#10B981]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(52,211,153,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(52,211,153,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(52, 211, 153, 0.45)',
+      sparkleColor: '#A7F3D0',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(220, 255, 240, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -352,7 +370,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#29081A] via-[#521235] to-[#210515]',
       capsuleBorder: 'border-[#F472B6]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FBCFE8] to-[#EC4899]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(244,114,182,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(244,114,182,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(244, 114, 182, 0.45)',
+      sparkleColor: '#FCE7F3',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 230, 245, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -362,7 +383,10 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
       capsuleBg: 'bg-gradient-to-r from-[#170529] via-[#330B59] to-[#120321]',
       capsuleBorder: 'border-[#C084FC]',
       textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#E9D5FF] to-[#A855F7]',
-      glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(192,132,252,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+      glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(192,132,252,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+      glowColor: 'rgba(192, 132, 252, 0.45)',
+      sparkleColor: '#F3E8FF',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(245, 230, 255, 0.95) 50%, transparent 100%)',
     };
   }
 
@@ -371,18 +395,22 @@ function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
     capsuleBg: 'bg-gradient-to-r from-[#1F1401] via-[#3E2905] to-[#1A1001]',
     capsuleBorder: 'border-[#FBBF24]',
     textStyle: 'text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FEF08A] to-[#EAB308]',
-    glowShadow: 'shadow-[0_2px_10px_rgba(0,0,0,0.6),0_0_10px_rgba(251,191,36,0.5),inset_0_1px_1px_rgba(255,255,255,0.45)]',
+    glowShadow: 'shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_4px_rgba(251,191,36,0.3),inset_0_0.5px_0.5px_rgba(255,255,255,0.35)]',
+    glowColor: 'rgba(251, 191, 36, 0.45)',
+    sparkleColor: '#FFF59D',
+    shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 250, 180, 0.95) 50%, transparent 100%)',
   };
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Main EquippedBadge Component
+ * Main EquippedBadge Component (Animated)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 export const EquippedBadge: React.FC<EquippedBadgeProps> = ({
   badge,
   size = 'sm',
   showLabel = true,
+  animated = true,
   className = '',
   onClick,
 }) => {
@@ -412,7 +440,7 @@ export const EquippedBadge: React.FC<EquippedBadgeProps> = ({
       ? 'h-[22px] px-2 gap-1.5 text-[10px]'
       : size === 'md'
       ? 'h-[26px] px-2.5 gap-1.5 text-[11px]'
-      : 'h-[30px] px-3 gap-2 text-xs';
+      : 'h-[32px] px-3 gap-2 text-xs';
 
   const iconDims =
     size === 'xs'
@@ -428,31 +456,90 @@ export const EquippedBadge: React.FC<EquippedBadgeProps> = ({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       title={badgeName}
+      style={{
+        ['--badge-glow-color' as any]: theme.glowColor,
+        backgroundSize: animated ? '200% 200%' : undefined,
+        animation: animated
+          ? 'equipped-badge-aura 2.8s ease-in-out infinite, equipped-badge-bg-flow 6s ease infinite'
+          : undefined,
+      }}
       className={`relative inline-flex items-center rounded-full border border-solid font-black uppercase tracking-wider select-none shrink-0 overflow-hidden transition-all ${dims} ${theme.capsuleBg} ${theme.capsuleBorder} ${theme.glowShadow} ${
         onClick ? 'cursor-pointer active:scale-95 hover:brightness-110' : ''
       } ${className}`}
     >
       {/* Glossy Upper Light Reflex Overlay */}
-      <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 via-white/10 to-transparent pointer-events-none rounded-t-full" />
+      <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 via-white/10 to-transparent pointer-events-none rounded-t-full z-10" />
 
-      {/* 3D Emblem or Custom Upload Image */}
-      {isCustomImage ? (
-        <img
-          src={getMediaUrl(rawSrc)}
-          alt={badgeName}
-          className={`${iconDims} object-contain shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]`}
-          onError={(e: any) => {
-            e.target.style.display = 'none';
+      {/* Dynamic Animated Sweeping Holographic Light Beam */}
+      {animated && (
+        <span
+          className="absolute inset-y-0 w-2/5 pointer-events-none z-20"
+          style={{
+            background: theme.shimmerBeam,
+            animation: 'equipped-badge-shimmer 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite',
           }}
         />
-      ) : (
-        renderBadgeEmblem(badgeName, rawSrc, iconDims)
       )}
 
-      {/* High-Contrast Luxury Metallic Text */}
+      {/* Twinkling Star Glints */}
+      {animated && (
+        <>
+          <svg
+            viewBox="0 0 24 24"
+            className="absolute -top-1 left-0.5 w-2.5 h-2.5 pointer-events-none z-20 drop-shadow-[0_0_2px_rgba(255,255,255,0.9)]"
+            style={{
+              color: theme.sparkleColor,
+              animation: 'equipped-badge-twinkle 2.6s ease-in-out infinite',
+            }}
+            fill="currentColor"
+          >
+            <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" />
+          </svg>
+          <svg
+            viewBox="0 0 24 24"
+            className="absolute -bottom-0.5 right-1.5 w-2 h-2 pointer-events-none z-20 drop-shadow-[0_0_2px_rgba(255,255,255,0.9)]"
+            style={{
+              color: '#FFFFFF',
+              animation: 'equipped-badge-twinkle 2.6s ease-in-out 1.3s infinite',
+            }}
+            fill="currentColor"
+          >
+            <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" />
+          </svg>
+        </>
+      )}
+
+      {/* 3D Emblem with Micro-Floating Animation */}
+      <span
+        className="shrink-0 flex items-center justify-center relative z-10"
+        style={animated ? { animation: 'equipped-badge-float 2.2s ease-in-out infinite' } : undefined}
+      >
+        {isCustomImage ? (
+          <img
+            src={getMediaUrl(rawSrc)}
+            alt={badgeName}
+            className={`${iconDims} object-contain shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]`}
+            onError={(e: any) => {
+              e.target.style.display = 'none';
+            }}
+          />
+        ) : (
+          renderBadgeEmblem(badgeName, rawSrc, iconDims)
+        )}
+      </span>
+
+      {/* High-Contrast Luxury Metallic Text with Animated Sheen */}
       {showLabel && (
         <span
           className={`relative z-10 font-extrabold tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] whitespace-nowrap ${theme.textStyle}`}
+          style={
+            animated
+              ? {
+                  backgroundSize: '200% auto',
+                  animation: 'equipped-badge-text-glow 4s ease-in-out infinite',
+                }
+              : undefined
+          }
         >
           {badgeName}
         </span>

@@ -456,10 +456,26 @@ export const callService = {
       call.companyCommission = companyCommission;
       await call.save();
 
-      // Emit updated balance to host
-      const host = await User.findById(call.hostId).select('coins').lean();
+      // Emit updated balance to host & audience
+      const [host, audience] = await Promise.all([
+        User.findById(call.hostId).select('coins diamonds wealthExp wealthLevel').lean(),
+        call.audienceId ? User.findById(call.audienceId).select('coins diamonds wealthExp wealthLevel').lean() : null,
+      ]);
       if (host) {
-        emitSafe('balance:update', `user:${call.hostId!.toString()}`, { coins: host.coins });
+        emitSafe('balance:update', `user:${call.hostId!.toString()}`, {
+          coins: host.coins,
+          diamonds: host.diamonds,
+          wealthExp: host.wealthExp,
+          wealthLevel: host.wealthLevel,
+        });
+      }
+      if (audience) {
+        emitSafe('balance:update', `user:${call.audienceId!.toString()}`, {
+          coins: audience.coins,
+          diamonds: audience.diamonds,
+          wealthExp: audience.wealthExp,
+          wealthLevel: audience.wealthLevel,
+        });
       }
 
       return {

@@ -76,7 +76,7 @@ const toStreamDTO = (doc: any) => {
   const dto = doc.toObject ? doc.toObject() : { ...doc };
   if (host) {
     const rawHost = typeof host.toObject === 'function' ? host.toObject() : host;
-    const wealthExp = Math.max(rawHost?.wealthExp || 0, rawHost?.diamonds || 0);
+    const wealthExp = Math.max(rawHost?.wealthExp || 0, (rawHost?.coins || 0) + (rawHost?.diamonds || 0));
     const wealthLevel = rawHost?.wealthLevel && rawHost.wealthLevel > 1
       ? rawHost.wealthLevel
       : calculateWealthLevel(wealthExp, rawHost?.level).level;
@@ -355,7 +355,7 @@ export const streamService = {
     if (!stream) throw new AppError('Stream not found', 404);
     return (stream.viewers || []).map((v: any) => {
       const isVip = Boolean(v.isVip || v.hasPurchasedDiamonds || v.noble || (v.diamonds && v.diamonds > 0));
-      const wealthExp = Math.max(v.wealthExp || 0, v.diamonds || 0);
+      const wealthExp = Math.max(v.wealthExp || 0, (v.coins || 0) + (v.diamonds || 0));
       const wealthLevel = v.wealthLevel && v.wealthLevel > 1 ? v.wealthLevel : calculateWealthLevel(wealthExp, v.level).level;
       const liveStreamSeconds = v.liveStreamSeconds || 0;
       const liveStreamMinutes = v.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);

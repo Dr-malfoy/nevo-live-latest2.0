@@ -283,19 +283,27 @@ export const StoryViewerModal = ({
               />
             )
           ) : currentStory.mediaType === 'video' && currentStory.mediaUrl ? (
-            <video
-              key={currentStory._id || currentStory.mediaUrl}
-              src={getMediaUrl(currentStory.mediaUrl)}
-              autoPlay
-              playsInline
-              muted={false}
-              onLoadedData={() => setImageLoading(false)}
-              onError={() => {
-                setImageLoading(false);
-                setImageError(true);
-              }}
-              className="w-full h-full object-contain bg-black"
-            />
+            imageError ? (
+              <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-white/90 gap-2">
+                <span className="text-4xl">🎬</span>
+                <p className="text-sm font-bold">Unable to play video</p>
+                <p className="text-xs text-white/50">{currentStory.caption || 'Tap right to continue'}</p>
+              </div>
+            ) : (
+              <video
+                key={currentStory._id || currentStory.mediaUrl}
+                src={getMediaUrl(currentStory.mediaUrl)}
+                autoPlay
+                playsInline
+                muted={false}
+                onLoadedData={() => setImageLoading(false)}
+                onError={() => {
+                  setImageLoading(false);
+                  setImageError(true);
+                }}
+                className="w-full h-full object-contain bg-black"
+              />
+            )
           ) : (
             /* Text Story */
             <div

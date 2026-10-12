@@ -8,10 +8,11 @@ export const sendSuccess = (res: Response, data: any, message?: string, status: 
   });
 };
 
-export const sendError = (res: Response, error: string, status: number = 400) => {
+export const sendError = (res: Response, error: string, status: number = 400, details?: any) => {
   return res.status(status).json({
     success: false,
     error,
+    ...(details && { details }),
   });
 };
 

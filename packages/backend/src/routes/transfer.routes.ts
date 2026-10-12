@@ -8,7 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/quote', incomeController.getTransferQuote);
-router.post('/', requireNidVerified, incomeController.transfer);
+router.post('/', incomeController.transfer);
 router.get('/history', incomeController.getTransferHistory);
 
 export default router;

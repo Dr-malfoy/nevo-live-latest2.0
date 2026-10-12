@@ -80,7 +80,7 @@ const getAgentActions = (isAgent: boolean, pendingRequestsCount: number = 0) => 
 
 export const Profile = () => {
   const navigate = useNavigate();
-  const { user, logout, isAuthenticated, updateUser } = useAuthStore();
+  const { user, logout, isAuthenticated, updateUser, fetchProfile } = useAuthStore();
 
   const [showContact, setShowContact] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -101,6 +101,12 @@ export const Profile = () => {
   );
 
   const socket = useSocketStore((s) => s.socket);
+
+  // Keep balances and levels synchronized on visit
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchProfile().catch(() => {});
+  }, [isAuthenticated, fetchProfile]);
 
   // Sync notification unread count
   useEffect(() => {
@@ -192,7 +198,7 @@ export const Profile = () => {
     );
   }
 
-  const wealthPoints = Math.max((user as any).wealthExp || 0, user.diamonds || 0);
+  const wealthPoints = Math.max((user as any).wealthExp || 0, ((user as any).coins || 0) + (user.diamonds || 0));
   const liveTimeMinutes = (user as any).liveStreamMinutes || Math.floor(((user as any).liveStreamSeconds || 0) / 60);
   const wealthInfo = calculateWealthLevel(wealthPoints, (user as any).wealthLevel || user.level);
   const liveInfo = calculateLiveLevel(liveTimeMinutes, (user as any).liveLevel || user.level);
@@ -236,7 +242,7 @@ export const Profile = () => {
       <div className="relative">
         <div className="h-44 w-full overflow-hidden bg-wash relative group">
           {user.cover ? (
-            <img src={getMediaUrl(user.cover)} alt="Cover photo" className="w-full h-full object-cover" crossOrigin="anonymous" />
+            <img src={getMediaUrl(user.cover)} alt="Cover photo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-purple-200 via-pink-100 to-rose-200 opacity-60" />
           )}

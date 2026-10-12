@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   PiCaretLeftBold as ArrowLeft,
   PiWaveformBold as AudioLines,
   PiGiftFill as GiftIcon,
+  PiSparkleFill as Sparkles,
   PiMicrophoneFill as Mic,
   PiDotsThreeBold as MoreHorizontal,
   PiPauseFill as Pause,
@@ -17,6 +18,8 @@ import {
   PiPlusBold as Plus,
   PiPaperPlaneRightFill as Send,
   PiSmileyFill as Smile,
+  PiThumbsUpFill as ThumbsUp,
+  PiHeartFill as HeartFill,
   PiVideoCameraFill as Video,
   PiXBold as X,
   PiCheckBold as Check,
@@ -75,6 +78,92 @@ const QUICK_REPLIES = [
   { label: 'For you', emoji: '🎁' },
   { label: 'Starlink', emoji: '⭐' },
 ];
+
+const EMOJI_CATEGORIES = [
+  {
+    id: 'smileys',
+    name: 'Smileys',
+    icon: '😀',
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊',
+      '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪',
+      '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏',
+      '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
+      '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓',
+      '🧐', '😕', '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨',
+      '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱',
+      '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '💩', '🤡', '👻', '👽', '🤖'
+    ],
+  },
+  {
+    id: 'gestures',
+    name: 'Gestures',
+    icon: '👍',
+    emojis: [
+      '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇',
+      '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '🙌', '👐', '🤲', '👏', '🙏',
+      '✊', '👊', '🤛', '🤜', '💪', '💅', '✍️', '🤳', '👀', '👁️', '👅', '👄',
+      '💋', '🧠', '🫀', '🫁', '👂', '👃'
+    ],
+  },
+  {
+    id: 'hearts',
+    name: 'Love',
+    icon: '❤️',
+    emojis: [
+      '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
+      '💞', '💓', '💗', '💖', '💘', '💝', '💟', '💌', '💐', '🌹', '🥀', '🌺',
+      '🌸', '🌼', '🌻', '✨', '⭐', '🌟', '💫', '🔥'
+    ],
+  },
+  {
+    id: 'party',
+    name: 'Party',
+    icon: '🎉',
+    emojis: [
+      '🎉', '🎊', '🎈', '🎂', '🍰', '🧁', '🍩', '🍪', '🍫', '🍬', '🍭', '🍿',
+      '🍾', '🥂', '🍻', '🍺', '🍷', '🍸', '🍹', '🍔', '🍕', '🍟', '🌭', '🌮',
+      '🌯', '🍓', '🍒', '🍎', '🍉', '🍑'
+    ],
+  },
+  {
+    id: 'vibes',
+    name: 'Vibes',
+    icon: '🔥',
+    emojis: [
+      '🔥', '⚡', '💥', '💢', '💯', '🌈', '☀️', '🌙', '⭐', '🚀', '🛸', '👑',
+      '🏆', '🥇', '🥈', '🥉', '🎯', '🎲', '🎮', '🎵', '🎶', '🎸', '🥁', '🎤'
+    ],
+  },
+];
+
+const countEmojiGlyphs = (text: string): number => {
+  const stripped = text.replace(/\s+/g, '');
+  if (typeof Intl !== 'undefined' && (Intl as any).Segmenter) {
+    try {
+      return Array.from(new (Intl as any).Segmenter().segment(stripped)).length;
+    } catch {}
+  }
+  return Array.from(stripped).length;
+};
+
+const isPureEmojiMessage = (text?: string): boolean => {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const emojiRegex = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\u200D|\uFE0F|\s)+$/u;
+  if (!emojiRegex.test(trimmed)) return false;
+  return countEmojiGlyphs(trimmed) <= 6;
+};
+
+const getEmojiFontSize = (text?: string): string => {
+  if (!text) return 'text-5xl';
+  const count = countEmojiGlyphs(text.trim());
+  if (count <= 1) return 'text-6xl sm:text-7xl';
+  if (count === 2) return 'text-5xl sm:text-6xl';
+  if (count === 3) return 'text-4xl sm:text-5xl';
+  return 'text-3xl sm:text-4xl';
+};
 
 const REPORT_REASONS = [
   'Spam or advertising',
@@ -161,6 +250,374 @@ const VoiceBubble = ({ url, duration, mine }: { url: string; duration?: number; 
   );
 };
 
+interface VoiceReviewProps {
+  voice: { blob: Blob; url: string; duration: number };
+  onCancel: () => void;
+  onSend: () => void;
+  sending: boolean;
+}
+
+const VoiceReviewBar = ({ voice, onCancel, onSend, sending }: VoiceReviewProps) => {
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio(voice.url);
+    audioRef.current = audio;
+
+    audio.ontimeupdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+
+    audio.onended = () => {
+      setPlaying(false);
+      setCurrentTime(0);
+    };
+
+    return () => {
+      audio.pause();
+      audioRef.current = null;
+    };
+  }, [voice.url]);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      audio.play().catch(() => {});
+      setPlaying(true);
+    }
+  };
+
+  const progress = voice.duration > 0 ? Math.min(1, currentTime / voice.duration) : 0;
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2.5 bg-white border-t border-line safe-bottom animate-in fade-in slide-in-from-bottom-2">
+      {/* Discard Button */}
+      <button
+        onClick={onCancel}
+        disabled={sending}
+        title="Discard voice recording"
+        aria-label="Discard voice recording"
+        className="w-10 h-10 rounded-full flex items-center justify-center text-rose-500 hover:bg-rose-50 active:scale-95 transition-all shrink-0 border border-rose-200"
+      >
+        <Trash className="w-5 h-5" />
+      </button>
+
+      {/* Review Player Pill */}
+      <div className="flex-1 flex items-center gap-2.5 h-11 px-3.5 rounded-full bg-surface-sunken border border-line-subtle min-w-0">
+        <button
+          onClick={togglePlay}
+          disabled={sending}
+          aria-label={playing ? 'Pause preview' : 'Play preview'}
+          className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-2xs hover:bg-primary-700 active:scale-95 transition-all"
+        >
+          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+
+        <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-ink-muted leading-none">
+            <span className="tabular-nums">{formatTime(currentTime)}</span>
+            <span className="tabular-nums font-bold text-primary-600">{formatTime(voice.duration)}</span>
+          </div>
+          <div
+            onClick={(e) => {
+              const audio = audioRef.current;
+              if (!audio || voice.duration <= 0) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+              audio.currentTime = ratio * voice.duration;
+              setCurrentTime(audio.currentTime);
+            }}
+            className="w-full h-1.5 rounded-full bg-line-strong overflow-hidden cursor-pointer relative"
+          >
+            <div
+              className="h-full bg-gradient-to-r from-primary-500 to-indigo-600 transition-[width] duration-150"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Send Button */}
+      <button
+        onClick={onSend}
+        disabled={sending}
+        title="Send voice message"
+        aria-label="Send voice message"
+        className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 shadow-sm disabled:opacity-50 active:scale-95 transition-all"
+      >
+        {sending ? (
+          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <Send className="w-[18px] h-[18px]" />
+        )}
+      </button>
+    </div>
+  );
+};
+
+const isMediaUrl = (val?: string) => {
+  if (!val || typeof val !== 'string') return false;
+  const t = val.trim();
+  return (
+    t.startsWith('http://') ||
+    t.startsWith('https://') ||
+    t.startsWith('/') ||
+    t.startsWith('data:') ||
+    t.startsWith('blob:') ||
+    /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(t)
+  );
+};
+
+const KNOWN_GIFT_ICONS: Record<string, string> = {
+  rose: '🌹',
+  lollipop: '🍭',
+  crown: '👑',
+  rocket: '🚀',
+  lamborghini: '🏎️',
+  car: '🏎️',
+  yacht: '🛥️',
+  boat: '🛥️',
+  castle: '🏰',
+  diamond: '💎',
+  heart: '💖',
+  kiss: '💋',
+  ring: '💍',
+  cake: '🎂',
+  fire: '🔥',
+  balloon: '🎈',
+  star: '⭐',
+};
+
+const getFallbackEmoji = (name?: string) => {
+  if (!name) return '🎁';
+  const lower = name.toLowerCase().trim();
+  for (const [k, v] of Object.entries(KNOWN_GIFT_ICONS)) {
+    if (lower.includes(k)) return v;
+  }
+  return '🎁';
+};
+
+const resolveGiftIcon = (item: any, giftList: any[] = []) => {
+  const nameLower = (item?.giftName || '').toLowerCase().trim();
+
+  // If gift name is Rose, ensure it always uses 🌹 unless a custom image URL was provided
+  if (nameLower.includes('rose')) {
+    if (item?.giftIcon && isMediaUrl(item.giftIcon)) {
+      return item.giftIcon.trim();
+    }
+    return '🌹';
+  }
+
+  // If item has a valid media url or emoji (and not generic 🎁)
+  if (item?.giftIcon && typeof item.giftIcon === 'string' && item.giftIcon.trim() && item.giftIcon !== '🎁') {
+    return item.giftIcon.trim();
+  }
+
+  // Lookup in loaded giftList
+  if (giftList.length > 0) {
+    const found = giftList.find(
+      (g: any) =>
+        (item?.giftId && (g._id === item.giftId || g.giftId === item.giftId)) ||
+        (nameLower && g.name?.toLowerCase() === nameLower)
+    );
+    if (found?.icon && found.icon !== '🎁') {
+      if (nameLower.includes('rose') && found.icon === '🎈') return '🌹';
+      return found.icon;
+    }
+  }
+
+  return getFallbackEmoji(item?.giftName);
+};
+
+interface GiftBurstData {
+  id: string;
+  senderName: string;
+  giftName: string;
+  giftIcon: string;
+  count: number;
+  priceDiamonds?: number;
+}
+
+const SPARKLE_POSITIONS = [
+  { top: '10%', left: '15%', delay: 0.1 },
+  { top: '20%', right: '15%', delay: 0.4 },
+  { top: '65%', left: '12%', delay: 0.7 },
+  { top: '70%', right: '14%', delay: 0.3 },
+  { top: '12%', left: '55%', delay: 0.5 },
+];
+
+const ChatGiftOverlay = ({
+  burst,
+  onDismiss,
+}: {
+  burst: GiftBurstData | null;
+  onDismiss: () => void;
+}) => {
+  const icon = burst ? resolveGiftIcon(burst) : '🎁';
+  return (
+    <AnimatePresence>
+      {burst && (
+        <motion.div
+          key={burst.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          onClick={onDismiss}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/45 backdrop-blur-[3px] select-none cursor-pointer"
+        >
+          {/* Floating gift mini particles drifting up */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <motion.div
+                key={i}
+                initial={{
+                  opacity: 0,
+                  y: 140,
+                  x: (i - 3) * 50 + Math.sin(i) * 20,
+                  scale: 0.5,
+                }}
+                animate={{
+                  opacity: [0, 1, 1, 0],
+                  y: -300,
+                  scale: [0.5, 1, 0.8],
+                }}
+                transition={{
+                  duration: 2.2 + (i % 3) * 0.3,
+                  delay: i * 0.12,
+                  ease: 'easeOut',
+                }}
+                className="absolute top-1/2 left-1/2"
+              >
+                {isMediaUrl(icon) ? (
+                  <img
+                    src={getMediaUrl(icon)}
+                    alt=""
+                    className="w-10 h-10 object-contain drop-shadow-[0_0_12px_rgba(236,72,153,0.8)]"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <span className="text-3xl drop-shadow-[0_0_12px_rgba(236,72,153,0.8)]">
+                    {icon}
+                  </span>
+                )}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Main Burst Card */}
+          <motion.div
+            initial={{ scale: 0.3, y: 50, rotate: -8 }}
+            animate={{ scale: 1, y: 0, rotate: 0 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 18 }}
+            className="relative flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Ambient pulsing glow */}
+            <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-pink-500/40 via-purple-500/40 to-yellow-400/30 blur-3xl animate-pulse" />
+
+            {/* Sparkles rotating around center */}
+            {SPARKLE_POSITIONS.map((pos, idx) => (
+              <motion.span
+                key={idx}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: [0, 1.3, 0.7], opacity: [0, 1, 0] }}
+                transition={{ duration: 1.4, delay: pos.delay, repeat: Infinity }}
+                className="absolute text-yellow-300 pointer-events-none drop-shadow-[0_0_8px_rgba(253,224,71,0.8)]"
+                style={pos}
+              >
+                <Sparkles className="w-6 h-6" />
+              </motion.span>
+            ))}
+
+            {/* Gift Icon Display Bubble */}
+            <motion.div
+              animate={{
+                scale: [1, 1.08, 1],
+                rotate: [0, -3, 3, 0],
+              }}
+              transition={{
+                duration: 1.8,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-3xl bg-gradient-to-br from-pink-500/40 via-purple-600/30 to-indigo-600/40 border-2 border-white/30 backdrop-blur-md shadow-[0_0_40px_rgba(236,72,153,0.5)] flex items-center justify-center overflow-hidden"
+            >
+              {isMediaUrl(icon) ? (
+                <img
+                  src={getMediaUrl(icon)}
+                  alt={burst.giftName}
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.7)]"
+                  crossOrigin="anonymous"
+                />
+              ) : (
+                <span className="text-7xl sm:text-8xl drop-shadow-[0_0_24px_rgba(236,72,153,0.9)] select-none">
+                  {icon}
+                </span>
+              )}
+
+              {/* Shimmer line sweep */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <motion.div
+                  initial={{ x: '-100%' }}
+                  animate={{ x: '200%' }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }}
+                  className="w-1/2 h-full bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12"
+                />
+              </div>
+            </motion.div>
+
+            {/* Count multiplier pill */}
+            <motion.div
+              initial={{ scale: 0, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ delay: 0.18, type: 'spring', stiffness: 350, damping: 14 }}
+              className="-mt-4 z-10 px-4 py-1 rounded-full bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500 text-slate-950 font-black text-lg sm:text-xl shadow-[0_4px_16px_rgba(245,158,11,0.5)] border-2 border-white flex items-center gap-1"
+            >
+              <span className="text-sm font-bold text-slate-900/80">COMBO</span>
+              <span>×{burst.count}</span>
+            </motion.div>
+
+            {/* Sender and Gift Info Banner */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.35 }}
+              className="mt-4 px-6 py-2.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 text-center shadow-xl"
+            >
+              <p className="text-base sm:text-lg font-black text-white">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-yellow-300 font-extrabold">
+                  {burst.senderName}
+                </span>{' '}
+                sent a gift!
+              </p>
+              <p className="text-sm font-bold text-pink-300 mt-0.5">
+                {burst.giftName} × {burst.count}
+              </p>
+            </motion.div>
+
+            <span className="text-[11px] text-white/50 mt-3 font-medium">Tap anywhere to close</span>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export const ChatThread = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
@@ -175,6 +632,46 @@ export const ChatThread = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showGift, setShowGift] = useState(false);
+  const [giftList, setGiftList] = useState<Gift[]>([]);
+  const [giftBurst, setGiftBurst] = useState<GiftBurstData | null>(null);
+  const giftBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    giftsApi
+      .list()
+      .then(({ data }) => {
+        if (data.success && data.data) {
+          setGiftList(data.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const triggerGiftBurst = useCallback((data: GiftBurstData) => {
+    if (giftBurstTimerRef.current) clearTimeout(giftBurstTimerRef.current);
+    setGiftBurst(data);
+    giftBurstTimerRef.current = setTimeout(() => {
+      setGiftBurst(null);
+    }, 3800);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (giftBurstTimerRef.current) clearTimeout(giftBurstTimerRef.current);
+    };
+  }, []);
+
+  const [voiceReview, setVoiceReview] = useState<{ blob: Blob; url: string; duration: number } | null>(null);
+  const [sendingVoice, setSendingVoice] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (voiceReview?.url) {
+        URL.revokeObjectURL(voiceReview.url);
+      }
+    };
+  }, [voiceReview]);
+
   const [call, setCall] = useState<CallState | null>(null);
   const [callAccepted, setCallAccepted] = useState(false);
   const [insufficientCoins, setInsufficientCoins] = useState<{
@@ -189,6 +686,43 @@ export const ChatThread = () => {
   // Context / Action state
   const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
   const [editingMessage, setEditingMessage] = useState<any | null>(null);
+  const [showQuickReacts, setShowQuickReacts] = useState(false);
+  const likeLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLikeStart = () => {
+    likeLongPressTimer.current = setTimeout(() => {
+      setShowQuickReacts(true);
+    }, 350);
+  };
+
+  const handleLikeEnd = () => {
+    if (likeLongPressTimer.current) {
+      clearTimeout(likeLongPressTimer.current);
+      likeLongPressTimer.current = null;
+    }
+  };
+
+  const handleLikeClick = () => {
+    if (showQuickReacts) {
+      setShowQuickReacts(false);
+      return;
+    }
+    sendText('👍');
+  };
+
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [selectedEmojiCategory, setSelectedEmojiCategory] = useState('smileys');
+
+  const activeCategoryEmojis = useMemo(() => {
+    const found = EMOJI_CATEGORIES.find((c) => c.id === selectedEmojiCategory);
+    return found ? found.emojis : EMOJI_CATEGORIES[0].emojis;
+  }, [selectedEmojiCategory]);
+
+  const handleEmojiSelect = (emoji: string) => {
+    setInput((prev) => prev + emoji);
+    inputRef.current?.focus();
+  };
+
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
@@ -297,6 +831,17 @@ export const ChatThread = () => {
         chatApi.markRead(chatId).catch(() => {});
         socket.emit('chat:read', { chatId });
         socket.emit('chat:delivered', { chatId });
+
+        if (msg.kind === 'gift') {
+          triggerGiftBurst({
+            id: `burst-${msg._id || Date.now()}`,
+            senderName: other?.nickname || 'Friend',
+            giftName: msg.giftName || 'Gift',
+            giftIcon: msg.giftIcon || '🎁',
+            count: msg.giftCount || 1,
+            priceDiamonds: msg.giftPrice,
+          });
+        }
       }
     };
     socket.on('chat:message', handler);
@@ -457,6 +1002,7 @@ export const ChatThread = () => {
     const text = input.trim();
     if (!text) return;
     setInput('');
+    setShowEmojiPicker(false);
     await sendText(text);
   };
 
@@ -653,18 +1199,43 @@ export const ChatThread = () => {
         }
       }
 
+      const resolvedIcon = resolveGiftIcon(
+        { giftName: gift.name, giftIcon: gift.icon, giftId: gift._id },
+        giftList
+      );
+
       const { data: msg } = await chatApi.sendMessage(chatId, `Sent ${gift.name} x${quantity}`, {
         kind: 'gift',
         giftId: gift._id,
         giftName: gift.name,
-        giftIcon: gift.icon,
+        giftIcon: resolvedIcon,
+        giftAnimation: (gift as any).animationUrl || (gift as any).animation,
         giftCount: quantity,
         giftPrice: gift.priceDiamonds,
       });
-      if (msg.success) setMessages((prev) => [...prev, msg.data]);
+
+      const messageToStore = {
+        ...(msg?.data || {}),
+        kind: 'gift',
+        giftId: gift._id,
+        giftName: gift.name,
+        giftIcon: resolvedIcon,
+        giftCount: quantity,
+        senderId: user?._id,
+      };
+      setMessages((prev) => [...prev, messageToStore]);
+
       const costCoins = (gift.priceDiamonds || 0) * quantity;
       showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
       setShowGift(false);
+      triggerGiftBurst({
+        id: `burst-${Date.now()}`,
+        senderName: 'You',
+        giftName: gift.name,
+        giftIcon: resolvedIcon,
+        count: quantity,
+        priceDiamonds: gift.priceDiamonds,
+      });
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to send gift', 'error');
       throw err;
@@ -680,18 +1251,47 @@ export const ChatThread = () => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
     const result = await stopRecording();
-    if (!result || !chatId) return;
+    if (!result) return;
+    if (result.duration < 1 && result.blob.size < 500) {
+      showToast('Hold longer to record a voice message', 'info');
+      return;
+    }
+    const url = URL.createObjectURL(result.blob);
+    setVoiceReview({
+      blob: result.blob,
+      url,
+      duration: result.duration,
+    });
+  };
+
+  const handleSendVoiceReview = async () => {
+    if (!voiceReview || !chatId || sendingVoice) return;
+    setSendingVoice(true);
     try {
-      const url = await uploadApi.upload(result.blob, 'voice-messages');
+      const url = await uploadApi.upload(voiceReview.blob, 'voice-messages');
       const { data } = await chatApi.sendMessage(chatId, 'Voice message', {
         kind: 'voice',
         voiceUrl: url,
-        voiceDuration: result.duration,
+        voiceDuration: voiceReview.duration,
       });
-      if (data.success) setMessages((prev) => [...prev, data.data]);
+      if (data.success && data.data) {
+        setMessages((prev) => [...prev, data.data]);
+      }
+      URL.revokeObjectURL(voiceReview.url);
+      setVoiceReview(null);
+      showToast('Voice message sent', 'success');
     } catch {
       showToast('Failed to send voice message', 'error');
+    } finally {
+      setSendingVoice(false);
     }
+  };
+
+  const handleDiscardVoiceReview = () => {
+    if (voiceReview?.url) {
+      URL.revokeObjectURL(voiceReview.url);
+    }
+    setVoiceReview(null);
   };
 
   const handleSendImage = async (file: File) => {
@@ -749,9 +1349,9 @@ export const ChatThread = () => {
   }, [messages]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface-soft">
+    <div className="h-[100dvh] max-h-screen flex flex-col bg-surface-soft overflow-hidden select-none">
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-line shadow-xs">
+      <header className="shrink-0 sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-line shadow-xs">
         <div className="flex items-center gap-2.5 px-3 h-14">
           <button onClick={() => navigate(-1)} aria-label="Back" className="p-1 -ml-1 text-ink">
             <ArrowLeft className="w-6 h-6" />
@@ -805,7 +1405,13 @@ export const ChatThread = () => {
       </header>
 
       {/* ── Messages List ─────────────────────────────────────────── */}
-      <div className="flex-1 px-4 py-3 space-y-3 overflow-y-auto">
+      <div
+        className="flex-1 min-h-0 px-4 py-3 space-y-3 overflow-y-auto"
+        onClick={() => {
+          setShowEmojiPicker(false);
+          setShowQuickReacts(false);
+        }}
+      >
         {loading ? (
           <p className="text-center text-sm text-ink-muted py-10">Loading…</p>
         ) : messages.length === 0 ? (
@@ -831,6 +1437,8 @@ export const ChatThread = () => {
             }
 
             const mine = item.senderId === user?._id;
+            const isGift = item.kind === 'gift';
+            const resolvedGiftIcon = isGift ? resolveGiftIcon(item, giftList) : '';
             const isLastSent =
               mine &&
               index ===
@@ -840,6 +1448,7 @@ export const ChatThread = () => {
             const isDelivered = (item.delivered || item.status === 'delivered') && !isSeen;
             const isSending = item.status === 'sending';
             const isFailed = item.failed || item.status === 'failed';
+            const isPureEmoji = !isGift && (!item.kind || item.kind === 'text') && isPureEmojiMessage(item.message);
 
             return (
               <div key={item._id || index} className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -859,10 +1468,18 @@ export const ChatThread = () => {
                       e.preventDefault();
                       setSelectedMessage(item);
                     }}
-                    className={`relative px-3.5 py-2.5 text-sm rounded-2xl shadow-xs transition-all cursor-pointer select-none active:scale-[0.98] ${
-                      mine
-                        ? 'bg-gradient-to-tr from-primary-600 to-indigo-600 text-white rounded-br-xs'
-                        : 'bg-white text-ink rounded-bl-xs border border-slate-100'
+                    className={`relative select-none active:scale-[0.98] transition-all cursor-pointer ${
+                      isGift
+                        ? mine
+                          ? 'p-2.5 bg-gradient-to-br from-pink-500/20 via-purple-600/20 to-indigo-600/20 border border-pink-400/30 rounded-2xl shadow-sm backdrop-blur-xs'
+                          : 'p-2.5 bg-white/95 border border-pink-200 rounded-2xl shadow-sm backdrop-blur-xs'
+                        : isPureEmoji
+                          ? 'p-0 bg-transparent shadow-none border-0'
+                          : `px-3.5 py-2.5 text-sm rounded-2xl shadow-xs ${
+                              mine
+                                ? 'bg-gradient-to-tr from-primary-600 to-indigo-600 text-white rounded-br-xs'
+                                : 'bg-white text-ink rounded-bl-xs border border-slate-100'
+                            }`
                     } ${isFailed ? 'opacity-70 ring-1 ring-red-400' : ''}`}
                   >
                     {item.kind === 'image' || item.imageUrl ? (
@@ -882,18 +1499,53 @@ export const ChatThread = () => {
                     ) : item.kind === 'voice' ? (
                       <VoiceBubble url={item.voiceUrl} duration={item.voiceDuration} mine={mine} />
                     ) : item.kind === 'gift' ? (
-                      <div className="flex items-center gap-2.5">
-                        {item.giftIcon ? (
-                          <img src={getMediaUrl(item.giftIcon)} alt="" className="w-9 h-9 object-contain shrink-0" crossOrigin="anonymous" />
-                        ) : (
-                          <GiftIcon className="w-6 h-6 text-pink-300" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm leading-tight">{item.giftName || 'Gift'}</p>
-                          <p className={`text-[11px] leading-tight ${mine ? 'text-white/80' : 'text-pink-500'}`}>
-                            {item.message || `x${item.giftCount || 1}`}
-                          </p>
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerGiftBurst({
+                            id: `burst-${item._id || Date.now()}`,
+                            senderName: mine ? 'You' : other?.nickname || 'Friend',
+                            giftName: item.giftName || 'Gift',
+                            giftIcon: resolvedGiftIcon,
+                            count: item.giftCount || 1,
+                          });
+                        }}
+                        className="flex flex-col items-center justify-center p-1 min-w-[96px] sm:min-w-[110px]"
+                      >
+                        {/* Prominent Gift Picture */}
+                        <div className="relative my-1 flex items-center justify-center">
+                          {isMediaUrl(resolvedGiftIcon) ? (
+                            <img
+                              src={getMediaUrl(resolvedGiftIcon)}
+                              alt={item.giftName || 'Gift'}
+                              className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)] transition-transform hover:scale-110"
+                              crossOrigin="anonymous"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                if (e.currentTarget.parentElement) {
+                                  const span = document.createElement('span');
+                                  span.innerText = getFallbackEmoji(item.giftName);
+                                  span.className = 'text-5xl select-none drop-shadow-md';
+                                  e.currentTarget.parentElement.appendChild(span);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span className="text-5xl sm:text-6xl select-none leading-none drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)] transition-transform hover:scale-110">
+                              {resolvedGiftIcon}
+                            </span>
+                          )}
+
+                          {/* Multiplier Badge attached to top-right of gift picture */}
+                          <div className="absolute -top-1 -right-3 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 via-orange-400 to-pink-500 text-white font-black text-xs shadow-md border-1.5 border-white flex items-center leading-none">
+                            ×{item.giftCount || 1}
+                          </div>
                         </div>
+
+                        {/* Gift Name */}
+                        <p className={`font-black text-xs text-center mt-1 leading-tight ${mine ? 'text-white' : 'text-ink'}`}>
+                          {item.giftName || 'Gift'}
+                        </p>
                       </div>
                     ) : item.kind === 'call' ? (
                       <div
@@ -936,6 +1588,12 @@ export const ChatThread = () => {
                             Tap to call back
                           </p>
                         </div>
+                      </div>
+                    ) : isPureEmoji ? (
+                      <div className="py-1 px-0.5 select-none transition-transform hover:scale-105 active:scale-95 leading-none">
+                        <span className={`${getEmojiFontSize(item.message)} leading-none inline-block drop-shadow-xs select-none`}>
+                          {item.message}
+                        </span>
                       </div>
                     ) : (
                       <p className="whitespace-pre-wrap break-words leading-relaxed">{item.message}</p>
@@ -1014,168 +1672,291 @@ export const ChatThread = () => {
         <div ref={bottomRef} />
       </div>
 
-      {/* Recording banner */}
-      <AnimatePresence>
-        {recording && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="px-4 py-2.5 flex items-center justify-between bg-role-host/10 border-t border-role-host/20"
-          >
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-role-host animate-pulse" />
-              <span className="text-sm text-role-host font-medium">Recording… {duration}s</span>
+      {/* ── Fixed Bottom Footer (Quick Replies + Input Bar + Floating Emoji Popover) ── */}
+      <footer className="shrink-0 z-30 bg-surface-soft relative">
+        {/* Floating Emoji Picker Popover */}
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <>
+              {/* Click outside backdrop */}
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setShowEmojiPicker(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="absolute bottom-full left-2 right-2 sm:left-auto sm:right-3 sm:w-96 mb-2 bg-white/98 backdrop-blur-md rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.22)] border border-slate-200/90 z-40 flex flex-col h-72 overflow-hidden ring-1 ring-black/5"
+              >
+                {/* Category tabs */}
+                <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 overflow-x-auto no-scrollbar bg-slate-50/90 shrink-0">
+                  {EMOJI_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedEmojiCategory(cat.id)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 ${
+                        selectedEmojiCategory === cat.id
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200 ring-1 ring-slate-100'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <span className="text-sm select-none">{cat.icon}</span>
+                      <span>{cat.name}</span>
+                    </button>
+                  ))}
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(false)}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors shrink-0"
+                    title="Close emoji panel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Emoji Grid */}
+                <div className="flex-1 overflow-y-auto p-3 grid grid-cols-8 sm:grid-cols-10 gap-1.5 content-start no-scrollbar">
+                  {activeCategoryEmojis.map((emoji, idx) => (
+                    <button
+                      key={`${emoji}-${idx}`}
+                      type="button"
+                      onClick={() => handleEmojiSelect(emoji)}
+                      className="h-10 rounded-xl hover:bg-slate-100 active:scale-125 flex items-center justify-center text-2xl transition-all duration-150 select-none cursor-pointer"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Recording banner */}
+        <AnimatePresence>
+          {recording && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="px-4 py-2.5 flex items-center justify-between bg-role-host/10 border-t border-role-host/20"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-role-host animate-pulse" />
+                <span className="text-sm text-role-host font-medium">Recording… {duration}s</span>
+              </div>
+              <button
+                onClick={() => {
+                  recordingRef.current = false;
+                  cancelRecording();
+                }}
+                className="flex items-center gap-1 text-xs text-role-host font-semibold"
+              >
+                <X className="w-3.5 h-3.5" /> Cancel
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {voiceError && <p className="px-4 pb-1 text-xs text-role-host">{voiceError}</p>}
+
+        {/* ── Editing Message Banner ─────────────────────────────────── */}
+        {editingMessage && (
+          <div className="flex items-center justify-between px-4 py-2 bg-primary-50 border-t border-primary-100 animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Pencil className="w-4 h-4 text-primary-600 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-primary-700">Editing message</p>
+                <p className="text-xs text-ink-muted truncate">{editingMessage.message}</p>
+              </div>
             </div>
             <button
               onClick={() => {
-                recordingRef.current = false;
-                cancelRecording();
+                setEditingMessage(null);
+                setInput('');
               }}
-              className="flex items-center gap-1 text-xs text-role-host font-semibold"
+              className="p-1 rounded-full text-ink-muted hover:text-ink hover:bg-white"
             >
-              <X className="w-3.5 h-3.5" /> Cancel
+              <X className="w-4 h-4" />
             </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {voiceError && <p className="px-4 pb-1 text-xs text-role-host">{voiceError}</p>}
-
-      {/* ── Editing Message Banner ─────────────────────────────────── */}
-      {editingMessage && (
-        <div className="flex items-center justify-between px-4 py-2 bg-primary-50 border-t border-primary-100 animate-in fade-in slide-in-from-bottom-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Pencil className="w-4 h-4 text-primary-600 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-primary-700">Editing message</p>
-              <p className="text-xs text-ink-muted truncate">{editingMessage.message}</p>
-            </div>
           </div>
-          <button
-            onClick={() => {
-              setEditingMessage(null);
-              setInput('');
-            }}
-            className="p-1 rounded-full text-ink-muted hover:text-ink hover:bg-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* ── Quick replies ──────────────────────────────────────────── */}
-      {!editingMessage && (
-        <div className="flex gap-2 px-3 pb-2 pt-1 overflow-x-auto no-scrollbar bg-surface-soft">
-          {QUICK_REPLIES.map(({ label, emoji }) => (
-            <button
-              key={label}
-              onClick={() => sendText(label)}
-              disabled={sending}
-              className="shrink-0 h-9 px-3.5 rounded-full bg-white border border-line text-sm text-ink
-                flex items-center gap-1.5 active:bg-surface-sunken disabled:opacity-50"
-            >
-              <span>{emoji}</span>
-              {label}
-            </button>
-          ))}
-          <button
-            onClick={() => setShowGift(true)}
-            className="shrink-0 h-9 px-3.5 rounded-full bg-primary-50 border border-primary-200 text-sm font-medium text-primary-600 flex items-center gap-1.5"
-          >
-            <GiftIcon className="w-4 h-4" />
-            Gift
-          </button>
-        </div>
-      )}
-
-      {/* ── Input bar ──────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-t border-line safe-bottom">
-        {!editingMessage && (
-          <button
-            onPointerDown={handleVoiceStart}
-            onPointerUp={handleVoiceStop}
-            onPointerLeave={() => {
-              if (recordingRef.current) handleVoiceStop();
-            }}
-            aria-label="Hold to record a voice message"
-            className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-              recording ? 'bg-role-host border-role-host text-white' : 'border-ink text-ink'
-            }`}
-          >
-            <AudioLines className="w-5 h-5" />
-          </button>
         )}
 
-        <div className="flex-1 flex items-center gap-1.5 h-11 pl-4 pr-1.5 rounded-full bg-surface-sunken">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={editingMessage ? 'Edit your message…' : 'Say something'}
-            className="flex-1 min-w-0 bg-transparent text-ink placeholder:text-ink-faint focus:outline-none text-sm"
-          />
-          <button aria-label="Emoji" className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted">
-            <Smile className="w-5 h-5" />
-          </button>
-          {!editingMessage && (
-            <button
-              onClick={() => imageInputRef.current?.click()}
-              disabled={uploadingImage}
-              aria-label="Send photo"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted hover:text-primary-600 transition-colors"
-              title="Send photo"
-            >
-              {uploadingImage ? (
-                <span className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <ImageIcon className="w-5 h-5" />
-              )}
-            </button>
-          )}
-          {!editingMessage && (
+        {/* ── Quick replies ──────────────────────────────────────────── */}
+        {!editingMessage && !voiceReview && (
+          <div className="flex gap-2 px-3 pb-2 pt-1.5 overflow-x-auto no-scrollbar bg-surface-soft border-t border-slate-200/60">
+            {QUICK_REPLIES.map(({ label, emoji }) => (
+              <button
+                key={label}
+                onClick={() => sendText(label)}
+                disabled={sending}
+                className="shrink-0 h-9 px-3.5 rounded-full bg-white border border-line text-sm text-ink
+                  flex items-center gap-1.5 active:bg-surface-sunken disabled:opacity-50 shadow-2xs hover:shadow-xs transition-shadow"
+              >
+                <span>{emoji}</span>
+                {label}
+              </button>
+            ))}
             <button
               onClick={() => setShowGift(true)}
-              aria-label="More"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted"
+              className="shrink-0 h-9 px-3.5 rounded-full bg-primary-50 border border-primary-200 text-sm font-medium text-primary-600 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-shadow"
             >
-              <Plus className="w-5 h-5" />
+              <GiftIcon className="w-4 h-4" />
+              Gift
             </button>
-          )}
-        </div>
-
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleSendImage(f);
-            e.target.value = '';
-          }}
-        />
-
-        {input.trim() ? (
-          <button
-            onClick={handleSend}
-            disabled={sending}
-            aria-label="Send"
-            className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors"
-          >
-            <Send className="w-[18px] h-[18px]" />
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowGift(true)}
-            aria-label="Send a gift"
-            className="w-10 h-10 rounded-full bg-surface-sunken text-ink flex items-center justify-center shrink-0"
-          >
-            <Mic className="w-[18px] h-[18px] hidden" />
-            <GiftIcon className="w-[18px] h-[18px]" />
-          </button>
+          </div>
         )}
-      </div>
+
+        {/* ── Input bar / Voice Review Bar ────────────────────────────── */}
+        {voiceReview ? (
+          <VoiceReviewBar
+            voice={voiceReview}
+            onCancel={handleDiscardVoiceReview}
+            onSend={handleSendVoiceReview}
+            sending={sendingVoice}
+          />
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-t border-line safe-bottom">
+            {!editingMessage && (
+              <button
+                onPointerDown={handleVoiceStart}
+                onPointerUp={handleVoiceStop}
+                onPointerLeave={() => {
+                  if (recordingRef.current) handleVoiceStop();
+                }}
+                aria-label="Hold to record a voice message"
+                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                  recording ? 'bg-role-host border-role-host text-white' : 'border-ink text-ink'
+                }`}
+              >
+                <AudioLines className="w-5 h-5" />
+              </button>
+            )}
+
+            <div className="flex-1 flex items-center gap-1.5 h-11 pl-4 pr-1.5 rounded-full bg-surface-sunken">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                placeholder={editingMessage ? 'Edit your message…' : 'Say something'}
+                className="flex-1 min-w-0 bg-transparent text-ink placeholder:text-ink-faint focus:outline-none text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmojiPicker((prev) => !prev);
+                  setShowQuickReacts(false);
+                }}
+                aria-label="Emoji"
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                  showEmojiPicker
+                    ? 'text-amber-500 bg-amber-50 scale-110 shadow-xs'
+                    : 'text-ink-muted hover:text-amber-500 hover:bg-slate-100'
+                }`}
+                title="Emoji picker"
+              >
+                <Smile className="w-5 h-5" />
+              </button>
+              {!editingMessage && (
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  aria-label="Send photo"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted hover:text-primary-600 transition-colors"
+                  title="Send photo"
+                >
+                  {uploadingImage ? (
+                    <span className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-5 h-5" />
+                  )}
+                </button>
+              )}
+              {!editingMessage && (
+                <button
+                  onClick={() => setShowGift(true)}
+                  aria-label="Send a gift"
+                  title="Send a gift"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-rose-500 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
+                >
+                  <GiftIcon className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleSendImage(f);
+                e.target.value = '';
+              }}
+            />
+
+            {input.trim() ? (
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                aria-label="Send"
+                className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors"
+              >
+                <Send className="w-[18px] h-[18px]" />
+              </button>
+            ) : (
+              <div className="relative shrink-0">
+                {showQuickReacts && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-30"
+                      onClick={() => setShowQuickReacts(false)}
+                    />
+                    <div className="absolute bottom-12 right-0 bg-white/95 backdrop-blur-md shadow-2xl rounded-full px-2.5 py-1.5 flex items-center gap-1.5 border border-slate-200/80 z-40 animate-in fade-in zoom-in-95">
+                      {['👍', '❤️', '🔥', '🎉', '😂', '😍'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowQuickReacts(false);
+                            sendText(emoji);
+                          }}
+                          className="w-8 h-8 rounded-full hover:bg-slate-100 active:scale-125 flex items-center justify-center text-xl transition-all"
+                          title={emoji}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={handleLikeClick}
+                  onMouseDown={handleLikeStart}
+                  onMouseUp={handleLikeEnd}
+                  onTouchStart={handleLikeStart}
+                  onTouchEnd={handleLikeEnd}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setShowQuickReacts((prev) => !prev);
+                  }}
+                  disabled={sending}
+                  aria-label="Like or React"
+                  title="Send Like (tap to send, hold for reactions)"
+                  className="w-10 h-10 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-600 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-sm border border-primary-100/60"
+                >
+                  <ThumbsUp className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </footer>
 
       {/* ── Message Long-Press Context Modal ───────────────────────── */}
       <Modal
@@ -1478,6 +2259,9 @@ export const ChatThread = () => {
           }}
         />
       )}
+
+      {/* Gift Animation Burst Overlay */}
+      <ChatGiftOverlay burst={giftBurst} onDismiss={() => setGiftBurst(null)} />
     </div>
   );
 };

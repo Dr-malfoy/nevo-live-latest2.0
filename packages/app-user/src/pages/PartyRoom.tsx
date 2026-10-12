@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PiGiftFill as Gift, PiHeartFill as Heart, PiStarFill as Star, PiUsersFill as Users, PiXBold as X, PiMicrophoneFill, PiMicrophoneSlashFill, PiSlidersFill } from 'react-icons/pi';
+import { PiGiftFill as Gift, PiHeartFill as Heart, PiStarFill as Star, PiUsersFill as Users, PiXBold as X, PiMicrophoneFill, PiMicrophoneSlashFill, PiSlidersFill, PiLockKeyFill as LockIcon } from 'react-icons/pi';
 import { partyApi, type PartyRoomDetail, type RoomSeat } from '../api/party.api';
 import { giftsApi } from '../api/gifts.api';
 import { optional } from '../api/pending';
@@ -65,42 +65,67 @@ export const PartyRoom = () => {
   const burstTimerRef = useRef<any>(null);
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
 
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [roomPassword, setRoomPassword] = useState('');
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [privateRoomInfo, setPrivateRoomInfo] = useState<{ name?: string; owner?: any } | null>(null);
+
   const isHost = !!room && !!user && room.ownerId?._id === user._id;
 
   const joinRoom = useSocketStore((s) => s.joinRoom);
   const leaveRoom = useSocketStore((s) => s.leaveRoom);
 
+  const fetchRoomData = useCallback(async (pwd?: string) => {
+    if (!id) return;
+    const effectivePwd = pwd || sessionStorage.getItem(`party_pwd_${id}`) || undefined;
+
+    try {
+      const res = await partyApi.getRoom(id, effectivePwd);
+      if (res?.data?.success && res.data.data) {
+        setRoom(res.data.data);
+        setShowPasswordModal(false);
+        if (effectivePwd) {
+          sessionStorage.setItem(`party_pwd_${id}`, effectivePwd);
+        }
+        partyApi.joinRoom(id, effectivePwd).catch(() => {});
+        return true;
+      } else {
+        showToast('Party room not found or has been closed', 'info');
+        navigate('/party', { replace: true });
+        return false;
+      }
+    } catch (err: any) {
+      const status = err.response?.status;
+      const details = err.response?.data?.details;
+      if (status === 403 && (details?.requiresPassword || details?.isPrivate)) {
+        setPrivateRoomInfo({
+          name: details.roomName,
+          owner: details.owner,
+        });
+        setShowPasswordModal(true);
+        setLoading(false);
+        return false;
+      }
+
+      showToast(err.response?.data?.error || 'Party room has ended or does not exist', 'info');
+      navigate('/party', { replace: true });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [id, navigate, showToast]);
+
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
 
-    partyApi.getRoom(id)
-      .then((res) => {
-        if (!cancelled) {
-          if (res?.data?.success && res.data.data) {
-            setRoom(res.data.data);
-            partyApi.joinRoom(id).catch(() => {});
-          } else {
-            showToast('Party room not found or has been closed', 'info');
-            navigate('/party', { replace: true });
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          showToast('Party room has ended or does not exist', 'info');
-          navigate('/party', { replace: true });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    fetchRoomData();
 
     return () => {
       cancelled = true;
       partyApi.leaveRoom(id).catch(() => {});
     };
-  }, [id, navigate, showToast]);
+  }, [id, fetchRoomData]);
 
   const { joinChannel, toggleMic, micOn, error: agoraError, leaveChannel, remoteUsers } = useAgora();
 
@@ -272,7 +297,8 @@ export const PartyRoom = () => {
       return;
     }
 
-    const res = await optional(partyApi.sit(id, seat.index)).catch(() => null);
+    const currentPwd = sessionStorage.getItem(`party_pwd_${id}`) || undefined;
+    const res = await optional(partyApi.sit(id, seat.index, currentPwd)).catch(() => null);
     if (!res?.success) {
       showToast(res?.error || 'Failed to take seat', 'error');
       return;
@@ -393,6 +419,19 @@ export const PartyRoom = () => {
           count: quantity,
         });
       }
+
+      // Immediately trigger pop-up animation and floating gifts for sender
+      setGiftBurst({
+        id: `${Date.now()}-${Math.random()}`,
+        gift,
+        count: quantity,
+        nickname: user?.nickname || 'You',
+      });
+      if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
+      burstTimerRef.current = setTimeout(() => setGiftBurst(null), 3600);
+
+      triggerGifts(gift.icon || gift.animation || '🎁', gift.name, Math.min(quantity, 6));
+
       setGiftPanelOpen(false);
       const costCoins = (gift.priceDiamonds || 0) * quantity;
       showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
@@ -402,10 +441,78 @@ export const PartyRoom = () => {
     }
   };
 
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomPassword.trim()) {
+      showToast('Please enter room password', 'error');
+      return;
+    }
+
+    setVerifyingPassword(true);
+    try {
+      const success = await fetchRoomData(roomPassword.trim());
+      if (!success) {
+        showToast('Incorrect password. Please try again.', 'error');
+      }
+    } catch {
+      showToast('Incorrect password. Please try again.', 'error');
+    } finally {
+      setVerifyingPassword(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#1A0E38]">
         <Loading className="pt-32" size="lg" />
+      </div>
+    );
+  }
+
+  if (showPasswordModal && !room) {
+    return (
+      <div className="min-h-screen bg-[#150B2E] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-[#1F133D] border border-white/10 rounded-3xl p-6 shadow-2xl text-center animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 mx-auto flex items-center justify-center shadow-lg shadow-orange-500/20 text-white mb-4">
+            <LockIcon className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-xl font-extrabold text-white">Private Party Room</h2>
+          <p className="text-sm text-white/70 mt-1">
+            {privateRoomInfo?.name ? `"${privateRoomInfo.name}"` : 'This room'} is password protected. Please enter the password to join.
+          </p>
+
+          <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
+            <div>
+              <input
+                type="password"
+                required
+                autoFocus
+                value={roomPassword}
+                onChange={(e) => setRoomPassword(e.target.value)}
+                placeholder="Enter Room Password"
+                className="w-full h-12 px-4 rounded-xl bg-white/10 text-white placeholder-white/40 text-center text-lg font-semibold tracking-wider border border-white/15 focus:outline-none focus:border-amber-400 focus:bg-white/15 transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate('/party', { replace: true })}
+                className="h-11 rounded-xl bg-white/10 text-white font-bold text-sm hover:bg-white/15 active:scale-95 transition-all"
+              >
+                Back to Parties
+              </button>
+              <button
+                type="submit"
+                disabled={verifyingPassword || !roomPassword.trim()}
+                className="h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-sm shadow-md active:scale-95 transition-all disabled:opacity-50"
+              >
+                {verifyingPassword ? 'Entering…' : 'Enter Room'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     );
   }
@@ -480,12 +587,16 @@ export const PartyRoom = () => {
         </div>
       </div>
 
-      {/* ── 16-seat board (#17.3) ──────────────────────────────── */}
+      {/* ── Seat board (#17.3) ──────────────────────────────── */}
       <div className="px-3">
         <SeatBoard
           host={room?.ownerId}
           seats={room?.seats ?? []}
-          seatCount={room?.seatCount ?? 16}
+          seatCount={
+            room?.seatCount && room.seatCount <= 16
+              ? (room.seats && room.seats.length > 0 ? Math.min(room.seatCount, room.seats.length) : room.seatCount)
+              : (room?.seats && room.seats.length > 0 ? room.seats.length : 8)
+          }
           onSeatPress={handleSeatPress}
           onHostPress={() => room?.ownerId?._id && navigate(`/user/${room.ownerId._id}`)}
         />
@@ -619,7 +730,8 @@ export const PartyRoom = () => {
         }}
         onSuccess={async () => {
           if (pendingSeatIndex && id) {
-            await optional(partyApi.sit(id, pendingSeatIndex)).catch(() => null);
+            const currentPwd = sessionStorage.getItem(`party_pwd_${id}`) || undefined;
+            await optional(partyApi.sit(id, pendingSeatIndex, currentPwd)).catch(() => null);
             setPendingSeatIndex(null);
           }
         }}

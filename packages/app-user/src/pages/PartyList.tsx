@@ -34,6 +34,7 @@ export const PartyList = () => {
   const [partyName, setPartyName] = useState(user?.nickname ? `${user.nickname}'s Party` : 'My Party Room');
   const [seatCount, setSeatCount] = useState<number>(8);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [password, setPassword] = useState('');
   const [creating, setCreating] = useState(false);
 
   const loadFeed = async () => {
@@ -62,6 +63,7 @@ export const PartyList = () => {
           owner: room.ownerId,
           memberCount: (room.seats || []).filter((s: any) => s.userId).length,
           viewerCount: room.viewerCount ?? 0,
+          isPrivate: room.isPrivate || false,
         }));
       setRooms(mapped);
       setLive(false);
@@ -121,6 +123,11 @@ export const PartyList = () => {
       return;
     }
 
+    if (isPrivate && !password.trim()) {
+      showToast('Please enter a password for the private room', 'error');
+      return;
+    }
+
     if (!user?.gender || user.gender === 'unspecified') {
       setShowGenderModal(true);
       return;
@@ -132,11 +139,14 @@ export const PartyList = () => {
         name: partyName.trim(),
         seatCount,
         isPrivate,
+        password: isPrivate ? password.trim() : undefined,
       });
 
       if (data.success && data.data?._id) {
         showToast('Party room created!', 'success');
         setShowCreateModal(false);
+        setPassword('');
+        setIsPrivate(false);
         navigate(`/party/${data.data._id}`);
       } else {
         showToast(data.message || 'Failed to create party', 'error');
@@ -220,10 +230,15 @@ export const PartyList = () => {
                     )}
                   </div>
 
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-1.5">
                     <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#f6a02d]">
-                      <span className="text-[14px]">😎</span> {room.tag?.label ?? 'Chatting'}
+                      <span className="text-[14px]">😎</span> {room.tag?.label ?? (room.isPrivate ? 'Private' : 'Chatting')}
                     </span>
+                    {room.isPrivate && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-500/10 text-purple-600 text-[11px] font-bold">
+                        <LockIcon className="w-3 h-3" /> Private
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-2.5 flex items-center justify-between w-full">
@@ -353,16 +368,34 @@ export const PartyList = () => {
                   <LockIcon className="w-4 h-4 text-ink-muted" />
                   <div>
                     <p className="text-xs font-bold text-ink">Private Room</p>
-                    <p className="text-[11px] text-ink-muted">Only invited friends can join</p>
+                    <p className="text-[11px] text-ink-muted">Set password to restrict access</p>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={isPrivate}
-                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  onChange={(e) => {
+                    setIsPrivate(e.target.checked);
+                    if (!e.target.checked) setPassword('');
+                  }}
                   className="w-5 h-5 rounded text-amber-500 focus:ring-amber-400"
                 />
               </div>
+
+              {isPrivate && (
+                <div className="animate-fade-in">
+                  <label className="block text-xs font-bold text-ink-muted uppercase mb-1">Room Password</label>
+                  <input
+                    type="password"
+                    required={isPrivate}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter Room Password"
+                    className="w-full h-11 px-3.5 rounded-xl bg-surface-sunken text-ink text-sm font-medium border border-transparent focus:bg-white focus:border-amber-500 focus:outline-none transition-colors"
+                  />
+                  <p className="text-[11px] text-ink-muted mt-1">Users will need this password to enter your party.</p>
+                </div>
+              )}
 
               <button
                 type="submit"

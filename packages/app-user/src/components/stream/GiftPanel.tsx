@@ -1,8 +1,22 @@
 import { useState, useEffect } from 'react';
 import { giftsApi } from '../../api';
 import { useAuthStore } from '../../stores';
-import { CoinIcon } from '../ui/CurrencyIcon';
+import { CoinIcon, DiamondIcon } from '../ui/CurrencyIcon';
+import { getMediaUrl } from '../../lib/media';
 import type { Gift } from '../../types';
+
+const isMediaUrl = (val?: string) => {
+  if (!val || typeof val !== 'string') return false;
+  const t = val.trim();
+  return (
+    t.startsWith('http://') ||
+    t.startsWith('https://') ||
+    t.startsWith('/') ||
+    t.startsWith('data:') ||
+    t.startsWith('blob:') ||
+    /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(t)
+  );
+};
 
 interface GiftPanelProps {
   receiverId: string;
@@ -61,10 +75,16 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
       {/* Sender balance */}
       <div className="flex items-center justify-between mb-4 px-1">
         <span className="text-sm text-ink-muted">Your balance</span>
-        <span className="inline-flex items-center gap-1.5 text-sm font-bold text-yellow-400">
-          <CoinIcon className="w-4 h-4" />
-          {coins.toLocaleString()} Coins
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1 text-sm font-bold text-yellow-400">
+            <CoinIcon className="w-4 h-4" />
+            {coins.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-1 text-sm font-bold text-cyan-400">
+            <DiamondIcon className="w-4 h-4" />
+            {(user?.diamonds || 0).toLocaleString()}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-3 mb-4">
@@ -81,7 +101,13 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
               selected?._id === gift._id ? 'bg-black text-white ring-2 ring-yellow-400' : 'bg-dark-700 hover:bg-dark-600'
             }`}
           >
-            <span className="text-2xl">{gift.icon?.startsWith('http') ? <img src={gift.icon} alt={gift.name} className="w-8 h-8 object-contain" /> : gift.icon}</span>
+            <span className="text-2xl flex items-center justify-center w-8 h-8">
+              {isMediaUrl(gift.icon) ? (
+                <img src={getMediaUrl(gift.icon)} alt={gift.name} className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
+              ) : (
+                gift.icon || '🎁'
+              )}
+            </span>
             <span className="text-[10px] truncate w-full text-center">{gift.name}</span>
             <span className="text-[10px] text-yellow-400 inline-flex items-center gap-0.5"><CoinIcon className="w-3 h-3 text-yellow-400" />{gift.priceDiamonds}</span>
           </button>

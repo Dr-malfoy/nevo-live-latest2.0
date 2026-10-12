@@ -12,20 +12,15 @@ import {
 } from 'react-icons/pi';
 import {
   transferApi,
-  TRANSFER_UNIT,
-  TRANSFER_MIN_UNITS,
-  TRANSFER_MIN_POINTS,
   TRANSFER_CHARGE_PERCENT,
   calculateTransferBreakdown,
-  validateTransferUnits,
+  validateTransferAmount,
 } from '../api/transfer.api';
 import { usersApi, agencyApi, type AgencyItem } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { CoinIcon } from '../components/ui/CurrencyIcon';
-import { VerificationGateModal } from '../components/ui';
-import { canUseTradeFeatures } from '../services/verification';
 import type { TransferQuote } from '../api/transfer.api';
 
 /**
@@ -38,12 +33,11 @@ export const TransferPoints = () => {
   const showToast = useUIStore((s) => s.showToast);
 
   const [receiverUid, setReceiverUid] = useState('');
-  const [unitsInput, setUnitsInput] = useState('1');
+  const [amountInput, setAmountInput] = useState('');
   const [quote, setQuote] = useState<TransferQuote['receiver'] | null>(null);
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'missing' | 'unavailable'>('idle');
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [showGate, setShowGate] = useState(false);
   const [myAgency, setMyAgency] = useState<AgencyItem | null>(null);
 
   useEffect(() => {
@@ -84,11 +78,10 @@ export const TransferPoints = () => {
 
   const isAgencyMember = Boolean(!isOwner && myAgency && myAgency.agent);
 
-  const units = parseInt(unitsInput.replace(/\D/g, ''), 10) || 0;
-  const breakdown = calculateTransferBreakdown(units);
-  const unitError = unitsInput ? validateTransferUnits(units) : 'Enter transfer units';
+  const amount = parseInt(amountInput.replace(/\D/g, ''), 10) || 0;
+  const breakdown = calculateTransferBreakdown(amount);
+  const amountError = amountInput ? validateTransferAmount(amount) : 'Enter transfer amount';
   const available = user?.coins ?? 0;
-  const maxAffordableUnits = Math.floor(available / TRANSFER_UNIT);
   const insufficient = breakdown.transferAmount > available;
 
   // Look the receiver up as they type, so the nickname appears before confirming.
@@ -129,8 +122,8 @@ export const TransferPoints = () => {
 
   const canSubmit =
     receiverUid.trim().length >= 4 &&
-    units >= TRANSFER_MIN_UNITS &&
-    !unitError &&
+    amount > 0 &&
+    !amountError &&
     !insufficient &&
     !submitting &&
     quote?.allowed !== false;
@@ -151,7 +144,7 @@ export const TransferPoints = () => {
         } else {
           updateUser({ coins: Math.max(0, available - breakdown.transferAmount) });
         }
-        showToast(`Successfully transferred ${breakdown.transferAmount.toLocaleString()} coins (${units} Units)`, 'success');
+        showToast(`Successfully transferred ${breakdown.transferAmount.toLocaleString()} coins`, 'success');
         navigate(-1);
       } else {
         showToast(res.error || 'Transfer failed', 'error');
@@ -197,8 +190,8 @@ export const TransferPoints = () => {
 
         <div className="flex items-stretch gap-4 mt-3 pt-3 border-t border-amber-900/10">
           <div className="flex-1">
-            <p className="text-base font-bold text-ink tabular-nums">{maxAffordableUnits.toLocaleString()} Units</p>
-            <p className="text-[11px] text-ink-muted">Transferable Balance (1 Unit = 100k)</p>
+            <p className="text-base font-bold text-ink tabular-nums">{available.toLocaleString()} Coins</p>
+            <p className="text-[11px] text-ink-muted">Transferable Balance (No limit)</p>
           </div>
           <div className="w-px bg-amber-900/10" />
           <div className="flex-1">
@@ -348,72 +341,72 @@ export const TransferPoints = () => {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-sm font-semibold text-ink flex items-center gap-1">
-              Transfer Units <span className="text-role-host">*</span>
-              <span className="text-xs font-normal text-ink-muted">(1 Unit = 100,000 Coins)</span>
+              Transfer Amount <span className="text-role-host">*</span>
+              <span className="text-xs font-normal text-ink-muted">(Coins)</span>
             </label>
-            {maxAffordableUnits > 0 && (
+            {available > 0 && (
               <button
                 type="button"
-                onClick={() => setUnitsInput(maxAffordableUnits.toString())}
+                onClick={() => setAmountInput(available.toString())}
                 className="text-xs font-bold text-amber-600 hover:text-amber-700"
               >
-                Transfer Max ({maxAffordableUnits} {maxAffordableUnits === 1 ? 'Unit' : 'Units'})
+                Transfer Max ({available.toLocaleString()} Coins)
               </button>
             )}
           </div>
 
           <div className="flex items-center h-12 px-4 rounded-xl bg-surface-sunken border border-transparent focus-within:bg-white focus-within:border-amber-500 transition-colors">
             <input
-              value={unitsInput}
+              value={amountInput}
               onChange={(e) => {
                 const raw = e.target.value.replace(/\D/g, '');
-                setUnitsInput(raw);
+                setAmountInput(raw);
               }}
               inputMode="numeric"
-              placeholder="Enter units (e.g. 1, 5, 10)"
+              placeholder="Enter coin amount (e.g. 1, 100, 10,000, 1,000,000)"
               className="flex-1 min-w-0 bg-transparent text-ink placeholder:text-ink-faint focus:outline-none tabular-nums font-bold text-lg"
             />
             <span className="text-sm text-amber-600 font-bold shrink-0 flex items-center gap-1">
-              {units === 1 ? 'Unit' : 'Units'}
+              Coins
             </span>
           </div>
 
-          {/* Quick Preset Unit Chips */}
+          {/* Quick Preset Coins Chips */}
           <div className="flex flex-wrap gap-2 mt-2.5">
-            {[1, 5, 10, 20, 50].map((presetUnits) => (
+            {[1, 100, 1000, 10000, 100000, 1000000].map((preset) => (
               <button
-                key={presetUnits}
+                key={preset}
                 type="button"
-                onClick={() => setUnitsInput(presetUnits.toString())}
+                onClick={() => setAmountInput(preset.toString())}
                 className={`py-1 px-3 rounded-lg text-xs font-semibold border transition-all ${
-                  units === presetUnits
+                  amount === preset
                     ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
                     : 'border-line bg-surface-sunken text-ink-muted hover:bg-surface-sunken/80 hover:text-ink'
                 }`}
               >
-                {presetUnits} {presetUnits === 1 ? 'Unit' : 'Units'} ({(presetUnits * TRANSFER_UNIT).toLocaleString()})
+                {preset.toLocaleString()} Coins
               </button>
             ))}
           </div>
 
           {/* Status Message */}
           <p className="text-xs mt-2 tabular-nums">
-            {unitError ? (
-              <span className="text-role-host">{unitError}</span>
+            {amountError ? (
+              <span className="text-role-host">{amountError}</span>
             ) : insufficient ? (
               <span className="text-role-host">
                 Not enough available coins (Required: {breakdown.transferAmount.toLocaleString()}, Available: {available.toLocaleString()})
               </span>
             ) : (
               <span className="text-emerald-700 font-semibold">
-                = {breakdown.transferAmount.toLocaleString()} Coins ({units} {units === 1 ? 'Unit' : 'Units'})
+                = {breakdown.transferAmount.toLocaleString()} Coins
               </span>
             )}
           </p>
         </div>
 
         {/* ── Fee Breakdown Summary Card ── */}
-        {units > 0 && (
+        {amount > 0 && (
           <div className="rounded-xl bg-amber-50/70 border border-amber-200/80 p-3.5 space-y-2 text-xs">
             <div className="flex items-center gap-1.5 text-amber-900 font-bold pb-1 border-b border-amber-200/60">
               <ReceiptIcon className="w-4 h-4 text-amber-600" />
@@ -421,7 +414,7 @@ export const TransferPoints = () => {
             </div>
             
             <div className="flex items-center justify-between text-ink-soft">
-              <span>Transfer Amount ({units} {units === 1 ? 'Unit' : 'Units'}):</span>
+              <span>Transfer Amount:</span>
               <span className="font-bold text-ink tabular-nums">{breakdown.transferAmount.toLocaleString()} Coins</span>
             </div>
 
@@ -440,25 +433,18 @@ export const TransferPoints = () => {
 
       {/* Rules */}
       <div className="mx-3 mt-3 bg-white rounded-card p-4 shadow-sm">
-        <h2 className="font-bold text-ink mb-2">Agency Transfer Rules</h2>
+        <h2 className="font-bold text-ink mb-2">Transfer Information</h2>
         <ol className="text-sm text-ink-muted space-y-1.5 list-decimal list-inside">
-          <li><strong>Unit Value:</strong> 1 Unit = {TRANSFER_UNIT.toLocaleString()} Coins fixed (5 Units = 500,000, 10 Units = 1,000,000).</li>
-          <li><strong>Minimum Transfer:</strong> Minimum transfer is {TRANSFER_MIN_UNITS} Unit ({TRANSFER_MIN_POINTS.toLocaleString()} Coins).</li>
-          <li><strong>Transfer Charge:</strong> A {TRANSFER_CHARGE_PERCENT}% transfer charge applies to every transfer.</li>
-          <li>Users trade coins with certified agents for trading and local payouts. Transfers are irreversible once completed.</li>
+          <li><strong>Flexible Amount:</strong> Transfer any amount from 1 Coin to 1,000,000+ Coins based on your available balance.</li>
+          <li><strong>Direct Transfer:</strong> Send coins to any user or agent by their UID without role restrictions.</li>
+          <li><strong>Transfer Charge:</strong> A {TRANSFER_CHARGE_PERCENT}% transfer charge applies to every transfer (recipient gets at least 1 Coin).</li>
         </ol>
       </div>
 
       {/* Submit */}
       <div className="px-3 mt-4">
         <button
-          onClick={() => {
-            if (!canUseTradeFeatures(user?.verification, user?.role)) {
-              setShowGate(true);
-              return;
-            }
-            setConfirming(true);
-          }}
+          onClick={() => setConfirming(true)}
           disabled={!canSubmit}
           className={`w-full h-13 py-3.5 rounded-full font-bold text-amber-950 transition-all ${
             canSubmit
@@ -524,10 +510,6 @@ export const TransferPoints = () => {
             {/* Financial Breakdown Table */}
             <div className="rounded-xl bg-surface-sunken p-3.5 space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-ink-muted">Transfer Units:</span>
-                <span className="font-bold text-ink">{units} {units === 1 ? 'Unit' : 'Units'}</span>
-              </div>
-              <div className="flex items-center justify-between">
                 <span className="text-ink-muted">Gross Transfer Amount:</span>
                 <span className="font-bold text-ink tabular-nums">{breakdown.transferAmount.toLocaleString()} Coins</span>
               </div>
@@ -571,14 +553,6 @@ export const TransferPoints = () => {
           </div>
         </div>
       )}
-
-      <VerificationGateModal
-        isOpen={showGate}
-        onClose={() => setShowGate(false)}
-        type="nid"
-        title="NID Verification Required"
-        message="NID Verification is required to trade and transfer coins. Please verify your Government ID to unlock trading features."
-      />
     </div>
   );
 };

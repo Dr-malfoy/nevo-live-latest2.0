@@ -64,4 +64,12 @@ export const streamerController = {
       sendPaginated(res, result.data, result.total, page, limit);
     } catch (error) { next(error); }
   },
+
+  async claimVideoReward(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { videoId, tier } = req.body;
+      const result = await streamerService.claimVideoReward(req.user!.userId, videoId, tier);
+      sendSuccess(res, result);
+    } catch (error) { next(error); }
+  },
 };

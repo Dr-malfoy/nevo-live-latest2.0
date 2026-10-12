@@ -155,6 +155,9 @@ export const paymentService = {
       }
     } else {
       user.coins += order.coins || 0;
+      user.wealthExp = (user.wealthExp || 0) + (order.coins || 0);
+      const wealthInfo = calculateWealthLevel(user.wealthExp, user.wealthLevel);
+      user.wealthLevel = Math.max(user.wealthLevel || 1, wealthInfo.level);
     }
     await user.save();
 
@@ -216,6 +219,8 @@ export const paymentService = {
       getIO()?.to(`user:${order.userId}`).emit('balance:update', {
         diamonds: user.diamonds,
         coins: user.coins,
+        wealthExp: user.wealthExp,
+        wealthLevel: user.wealthLevel,
       });
       if (agent) {
         getIO()?.to(`user:${order.agentId}`).emit('balance:update', {
