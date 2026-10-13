@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 
 import java.util.Map;
 
@@ -33,13 +34,23 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
     public void onNewToken(@NonNull String token) {
         super.onNewToken(token);
         Log.d(TAG, "New FCM Token received: " + token);
-        // Token will be synced by the Capacitor PushNotifications plugin or app init
+        try {
+            PushNotificationsPlugin.onNewToken(token);
+        } catch (Throwable e) {
+            Log.w(TAG, "Could not forward token to PushNotificationsPlugin: " + e.getMessage());
+        }
     }
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "FCM Message received from: " + remoteMessage.getFrom());
+
+        try {
+            PushNotificationsPlugin.sendRemoteMessage(remoteMessage);
+        } catch (Throwable e) {
+            Log.w(TAG, "Could not forward remoteMessage to PushNotificationsPlugin: " + e.getMessage());
+        }
 
         Map<String, String> data = remoteMessage.getData();
         if (data != null && !data.isEmpty()) {
@@ -205,6 +216,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
         String targetUrl = data != null ? data.get("targetUrl") : "";
         String chatId = data != null ? data.get("chatId") : "";
         String streamId = data != null ? data.get("streamId") : "";
+        String roomId = data != null ? data.get("roomId") : "";
         String senderId = data != null ? data.get("senderId") : "";
         String imageUrl = data != null ? (data.containsKey("imageUrl") ? data.get("imageUrl") : data.get("senderAvatar")) : null;
 
@@ -213,6 +225,8 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
                 targetUrl = "/chat/" + chatId;
             } else if (streamId != null && !streamId.isEmpty()) {
                 targetUrl = "/stream/" + streamId;
+            } else if (roomId != null && !roomId.isEmpty()) {
+                targetUrl = "/party/" + roomId;
             } else if (senderId != null && !senderId.isEmpty()) {
                 targetUrl = "/user/" + senderId;
             } else if ("gift".equalsIgnoreCase(type) || "recharge".equalsIgnoreCase(type) || "withdrawal".equalsIgnoreCase(type)) {

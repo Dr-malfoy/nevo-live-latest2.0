@@ -94,6 +94,8 @@ export const pushNotificationService = {
           handlers.onNavigate(`/user/${data.senderId}`);
         } else if (data.type === 'live_started' && data.streamId && handlers.onNavigate) {
           handlers.onNavigate(`/stream/${data.streamId}`);
+        } else if ((data.type === 'live_started' || data.type === 'party') && data.roomId && handlers.onNavigate) {
+          handlers.onNavigate(`/party/${data.roomId}`);
         } else if ((data.type === 'gift' || data.type === 'recharge' || data.type === 'coin_transfer' || data.type === 'withdrawal') && handlers.onNavigate) {
           handlers.onNavigate('/wallet');
         } else if (data.type && data.type.startsWith('agency') && handlers.onNavigate) {
@@ -184,3 +186,15 @@ export const pushNotificationService = {
     currentToken = null;
   },
 };
+
+// Listen for native FCM token dispatched directly by MainActivity
+if (typeof window !== 'undefined') {
+  window.addEventListener('nativeFcmToken', (e: any) => {
+    const token = e.detail?.token;
+    if (token) {
+      currentToken = token;
+      localStorage.setItem('nevo_push_token', token);
+      pushNotificationService.syncTokenWithBackend().catch(() => {});
+    }
+  });
+}

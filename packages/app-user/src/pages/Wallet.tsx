@@ -55,7 +55,7 @@ export const Wallet = () => {
   const fetchWalletData = async () => {
     try {
       const [t, o, s, u] = await Promise.all([
-        client.get('/transactions', { params: { limit: 50 } }),
+        client.get('/transactions', { params: { limit: 100, types: 'recharge,agent_recharge,withdraw,coin_sale' } }),
         client.get('/payment/orders', { params: { limit: 50 } }),
         paymentApi.getWithdrawals({ limit: 50 }),
         client.get('/users/me'),
@@ -122,6 +122,12 @@ export const Wallet = () => {
       : activeTab === 'withdraw'
       ? unifiedOrders.filter((o) => o.orderType === 'withdraw')
       : [];
+
+  // Only buy (recharge / top-up) and withdraw transactions are shown in Ledger
+  const BUY_WITHDRAW_TYPES = ['recharge', 'agent_recharge', 'withdraw', 'coin_sale'];
+  const ledgerTransactions = transactions.filter((tx) =>
+    BUY_WITHDRAW_TYPES.includes(tx.type)
+  );
 
   const getMethodLogo = (methodKey: string) => {
     const m = (methodKey || '').toLowerCase();
@@ -316,11 +322,11 @@ export const Wallet = () => {
               }`}
             >
               <span>Ledger</span>
-              {transactions.length > 0 && (
+              {ledgerTransactions.length > 0 && (
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                   activeTab === 'history' ? 'bg-slate-100 text-slate-900' : 'bg-slate-300 text-slate-700'
                 }`}>
-                  {transactions.length}
+                  {ledgerTransactions.length}
                 </span>
               )}
             </button>
@@ -334,76 +340,130 @@ export const Wallet = () => {
             <p className="text-slate-400 text-xs font-medium">Loading wallet records...</p>
           </div>
         ) : activeTab === 'history' ? (
-          /* ── Ledger Transactions Tab ─────────────────────────────── */
-          transactions.length === 0 ? (
+          /* ── Ledger Transactions Tab (Buy & Withdraw Only) ───────── */
+          ledgerTransactions.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-2 shadow-sm">
               <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                 <ReceiptIcon className="w-6 h-6" />
               </div>
-              <p className="text-sm font-bold text-slate-800">No Transactions Found</p>
+              <p className="text-sm font-bold text-slate-800">No Buy or Withdrawal Records</p>
               <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                All your coin and diamond transfers, gifts, and game records will be listed here.
+                Only your buy (recharge) and withdrawal transactions are recorded in this ledger.
               </p>
             </div>
           ) : (
             <div className="space-y-2.5">
-              {transactions.map((tx) => {
+              {ledgerTransactions.map((tx) => {
                 const displayId = tx.txId || tx._id;
                 const isCopied = copiedId === displayId;
-                const isDeduct = ['gift_send', 'withdraw', 'coin_sale', 'game_bet'].includes(tx.type);
+                const isBuy = tx.type === 'recharge' || tx.type === 'agent_recharge';
 
                 return (
                   <div
                     key={tx._id}
                     onClick={() => navigate(`/transactions/${tx._id}`)}
-                    className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl shadow-sm transition-all cursor-pointer space-y-1.5"
+                    className="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-2xl shadow-sm transition-all cursor-pointer space-y-2.5 active:scale-[0.99]"
                   >
+                    {/* Top Row: Type Badge + Amount */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-mono font-bold text-slate-700">
-                          {displayId.slice(0, 10)}...
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyId(displayId);
-                          }}
-                          className={`p-1 rounded-md transition-colors ${
-                            isCopied
-                              ? 'bg-emerald-50 text-emerald-600'
-                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs ${
+                            isBuy
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-600 border border-rose-200'
                           }`}
-                          title="Copy Transaction ID"
                         >
-                          {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
+                          {isBuy ? (
+                            <ArrowDownLeft className="w-4 h-4" />
+                          ) : (
+                            <ArrowUpRight className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div>
+                          <span
+                            className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                              isBuy
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}
+                          >
+                            {isBuy ? 'Buy / Recharge' : 'Withdrawal'}
+                          </span>
+                        </div>
                       </div>
 
-                      <span
-                        className={`text-sm font-black tabular-nums ${
-                          isDeduct ? 'text-rose-600' : 'text-emerald-600'
-                        }`}
-                      >
-                        {isDeduct ? '-' : '+'}
-                        {tx.amount?.toLocaleString()}
+                      <div className="text-right">
+                        <span
+                          className={`text-sm font-black tabular-nums ${
+                            isBuy ? 'text-emerald-600' : 'text-rose-600'
+                          }`}
+                        >
+                          {isBuy ? '+' : '-'}
+                          {tx.amount?.toLocaleString()}
+                        </span>
                         <span className="text-[10px] ml-1 uppercase font-bold text-slate-400">
                           {tx.currency}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Transaction Number with One-Click Copy */}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        copyId(displayId);
+                      }}
+                      className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2 text-xs hover:bg-slate-100/70 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                          Tx No:
+                        </span>
+                        <span className="font-mono font-bold text-slate-800 truncate select-all">
+                          {displayId}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyId(displayId);
+                        }}
+                        className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md shrink-0 transition-all ${
+                          isCopied
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 shadow-2xs'
+                        }`}
+                        title="Copy Transaction Number"
+                      >
+                        {isCopied ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Timestamp & Status */}
+                    <div className="flex items-center justify-between text-xs text-slate-500 pt-0.5">
+                      <span className="text-[11px] text-slate-400 tabular-nums">
+                        {new Date(tx.createdAt).toLocaleString()}
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full capitalize">
+                        {tx.status || 'Completed'}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <p className="font-semibold capitalize text-slate-800">
-                        {tx.type?.replace(/_/g, ' ')}
-                      </p>
-                      <p className="tabular-nums text-[11px] text-slate-400">
-                        {new Date(tx.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-
                     {tx.description && (
-                      <p className="text-[11px] text-slate-500 truncate pt-0.5 border-t border-slate-100">
+                      <p className="text-[11px] text-slate-500 truncate pt-1 border-t border-slate-100">
                         {tx.description}
                       </p>
                     )}
@@ -523,6 +583,17 @@ export const Wallet = () => {
                         </span>
                       )}
                     </div>
+
+                    {o.transactionId && (
+                      <div className="flex items-center justify-between text-xs bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Tx No:
+                        </span>
+                        <span className="font-mono font-bold text-slate-700 truncate">
+                          {o.transactionId}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

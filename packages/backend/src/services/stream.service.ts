@@ -1,4 +1,4 @@
-import { LiveStream, User, WatchHistory } from '../models';
+import { LiveStream, User, WatchHistory, Agency } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { generateAgoraToken, generateChannelName } from '../config/agora';
 import { getSkip } from '../utils/pagination';
@@ -299,19 +299,26 @@ export const streamService = {
 
     const populated = await stream.populate('hostId', HOST_FIELDS);
 
-    // Notify followers about the new live stream
+    // Notify followers and agency members about the new live stream
     try {
       User.findById(hostId)
-        .select('followers nickname avatar')
+        .select('followers nickname avatar agencyId')
         .lean()
-        .then((hostDoc: any) => {
-          if (hostDoc?.followers && hostDoc.followers.length > 0) {
+        .then(async (hostDoc: any) => {
+          if (!hostDoc) return;
+          const notifiedUserIds = new Set<string>();
+
+          // 1. Notify followers
+          if (hostDoc.followers && hostDoc.followers.length > 0) {
             for (const followerId of hostDoc.followers) {
+              const fIdStr = followerId.toString();
+              if (fIdStr === hostId) continue;
+              notifiedUserIds.add(fIdStr);
               notificationService
                 .createNotification({
-                  userId: followerId.toString(),
+                  userId: fIdStr,
                   type: 'live_started',
-                  title: '🔴 Live Room Started',
+                  title: '🔴 Live Stream Started',
                   message: `${hostDoc.nickname || 'Someone you follow'} is now live: "${data.title}"`,
                   senderId: hostId,
                   senderInfo: {
@@ -323,6 +330,39 @@ export const streamService = {
                 })
                 .catch(() => {});
             }
+          }
+
+          // 2. Notify Agency members & Agent
+          if (hostDoc.agencyId) {
+            try {
+              const agency = await Agency.findById(hostDoc.agencyId).select('agentId hosts name').lean();
+              if (agency) {
+                const agencyTargetIds = new Set<string>();
+                if (agency.agentId) agencyTargetIds.add(agency.agentId.toString());
+                if (Array.isArray(agency.hosts)) {
+                  agency.hosts.forEach((h: any) => agencyTargetIds.add(h.toString()));
+                }
+                for (const targetId of agencyTargetIds) {
+                  if (targetId === hostId || notifiedUserIds.has(targetId)) continue;
+                  notifiedUserIds.add(targetId);
+                  notificationService
+                    .createNotification({
+                      userId: targetId,
+                      type: 'live_started',
+                      title: `🏢 Agency Live: ${hostDoc.nickname || 'Host'}`,
+                      message: `${hostDoc.nickname || 'Host'} from your agency has started a live stream: "${data.title}"`,
+                      senderId: hostId,
+                      senderInfo: {
+                        nickname: hostDoc.nickname,
+                        avatar: hostDoc.avatar,
+                      },
+                      targetUrl: `/stream/${stream._id}`,
+                      data: { streamId: stream._id.toString(), isAgency: 'true' },
+                    })
+                    .catch(() => {});
+                }
+              }
+            } catch {}
           }
         })
         .catch(() => {});

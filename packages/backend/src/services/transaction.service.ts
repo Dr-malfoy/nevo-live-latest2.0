@@ -4,9 +4,13 @@ import { getSkip } from '../utils/pagination';
 import { AppError } from '../middleware/errorHandler';
 
 export const transactionService = {
-  async getUserTransactions(userId: string, page: number = 1, limit: number = 20) {
-    const total = await Transaction.countDocuments({ userId });
-    const transactions = await Transaction.find({ userId })
+  async getUserTransactions(userId: string, page: number = 1, limit: number = 20, types?: string[]) {
+    const filter: any = { userId };
+    if (types && types.length > 0) {
+      filter.type = { $in: types };
+    }
+    const total = await Transaction.countDocuments(filter);
+    const transactions = await Transaction.find(filter)
       .populate('giftId', 'name icon')
       .populate('targetId', 'uid nickname avatar isAgent role')
       .populate('userId', 'uid nickname avatar isAgent role')

@@ -27,6 +27,7 @@ export interface IRoomDocument extends Document {
   seats: ISeat[];
   isPrivate: boolean;
   password?: string;
+  viewerCount: number;
   status: 'active' | 'closed';
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ const roomSchema = new Schema<IRoomDocument>(
     ],
     isPrivate: { type: Boolean, default: false },
     password: { type: String, select: false },
+    viewerCount: { type: Number, default: 0, min: 0 },
     status: { type: String, enum: ['active', 'closed'], default: 'active', index: true },
   },
   { timestamps: true }

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi, usersApi } from '../api';
 import type { User } from '../types';
+import { pushNotificationService } from '../services/pushNotification';
 
 interface AuthState {
   user: User | null;
@@ -64,6 +65,7 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             });
+            pushNotificationService.syncTokenWithBackend().catch(() => {});
           }
         } catch (err: any) {
           set({
@@ -85,6 +87,7 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             });
+            pushNotificationService.syncTokenWithBackend().catch(() => {});
           }
         } catch (err: any) {
           set({
@@ -106,6 +109,7 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             });
+            pushNotificationService.syncTokenWithBackend().catch(() => {});
           }
         } catch (err: any) {
           set({
@@ -127,6 +131,7 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             });
+            pushNotificationService.syncTokenWithBackend().catch(() => {});
           }
         } catch (err: any) {
           set({
@@ -151,6 +156,7 @@ export const useAuthStore = create<AuthState>()(
               isAuthenticated: true,
               isLoading: false,
             });
+            pushNotificationService.syncTokenWithBackend().catch(() => {});
           }
         } catch (err: any) {
           set({

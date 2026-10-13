@@ -6,11 +6,12 @@ export const broadcastViewerCount = async (roomId: string) => {
   try {
     const io = getIO();
     const sockets = await io.in(`room:${roomId}`).fetchSockets();
-    const count = Math.max(0, sockets.length); // Should be 0 if no one is left
+    const count = sockets.length;
     io.to(`room:${roomId}`).emit('room:viewer-count', { count });
     await Room.updateOne({ _id: roomId }, { viewerCount: count }).catch(() => {});
+    return count;
   } catch {
-    // Ignore error
+    return 0;
   }
 };
 
@@ -22,7 +23,7 @@ const getUserProfile = async (userId?: string) => {
 
 export const registerRoomHandlers = (socket: Socket): void => {
   socket.on('room:join', async ({ roomId, seatIndex }) => {
-    if (!roomId || socket.rooms.has(`room:${roomId}`)) return;
+    if (!roomId) return;
     socket.join(`room:${roomId}`);
     const { userId, nickname, avatar, level } = await getUserProfile(socket.data.user?.userId);
     socket.to(`room:${roomId}`).emit('room:user-joined', {
@@ -36,7 +37,8 @@ export const registerRoomHandlers = (socket: Socket): void => {
       nickname,
       level,
     });
-    await broadcastViewerCount(roomId);
+    const count = await broadcastViewerCount(roomId);
+    socket.emit('room:viewer-count', { count });
   });
 
   socket.on('room:leave', async ({ roomId }) => {

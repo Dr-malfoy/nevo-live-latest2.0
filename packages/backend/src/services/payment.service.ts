@@ -167,7 +167,7 @@ export const paymentService = {
       amount: unitCount,
       currency: currency as 'diamond' | 'coin',
       status: 'completed',
-      description: `${currency === 'diamond' ? 'Diamond' : 'Coin'} purchase via ${order.paymentMethod} — ${order.amountBdt} BDT`,
+      description: `${currency === 'diamond' ? 'Diamond' : 'Coin'} purchase via ${order.paymentMethod} — ${order.amountBdt} BDT${order.transactionId ? ` (Payment TrxID: ${order.transactionId})` : ''}`,
     });
 
     // Deduct from the agent's inventory (agent received the money offline) + give commission

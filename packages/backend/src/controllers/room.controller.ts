@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { Room, User } from '../models';
+import { Room, User, Agency } from '../models';
 import { sendSuccess, sendPaginated, sendError } from '../utils/response';
 import { generateAgoraToken } from '../config/agora';
+import { notificationService } from '../services/notification.service';
 
 export const roomController = {
   async getFeed(req: Request, res: Response, next: NextFunction) {
@@ -71,7 +72,7 @@ export const roomController = {
           thumbnail: owner?.avatar || '',
           owner,
           memberCount: activeSeats.length,
-          viewerCount: activeSeats.length,
+          viewerCount: Math.max(room.viewerCount || 0, activeSeats.length, 1),
           memberAvatars,
           tag: { type: 'chat', label: room.isPrivate ? 'Private' : 'Party' },
           followingInside,
@@ -149,6 +150,70 @@ export const roomController = {
       });
 
       const populated = await room.populate('ownerId', 'uid nickname avatar');
+
+      // Notify followers and agency members about party room creation
+      try {
+        User.findById(req.user!.userId)
+          .select('followers nickname avatar agencyId')
+          .lean()
+          .then(async (userDoc: any) => {
+            if (!userDoc) return;
+            const notifiedUserIds = new Set<string>();
+
+            // 1. Notify followers
+            if (userDoc.followers && userDoc.followers.length > 0) {
+              for (const followerId of userDoc.followers) {
+                const fIdStr = followerId.toString();
+                if (fIdStr === req.user!.userId) continue;
+                notifiedUserIds.add(fIdStr);
+                notificationService
+                  .createNotification({
+                    userId: fIdStr,
+                    type: 'live_started',
+                    title: '🎉 Party Room Created',
+                    message: `${userDoc.nickname || 'Someone you follow'} created a party room: "${name || 'Party Room'}"`,
+                    senderId: req.user!.userId,
+                    senderInfo: { nickname: userDoc.nickname, avatar: userDoc.avatar },
+                    targetUrl: `/party/${room._id}`,
+                    data: { roomId: room._id.toString(), type: 'party' },
+                  })
+                  .catch(() => {});
+              }
+            }
+
+            // 2. Notify agency members & agent
+            if (userDoc.agencyId) {
+              try {
+                const agency = await Agency.findById(userDoc.agencyId).select('agentId hosts name').lean();
+                if (agency) {
+                  const targetIds = new Set<string>();
+                  if (agency.agentId) targetIds.add(agency.agentId.toString());
+                  if (Array.isArray(agency.hosts)) {
+                    agency.hosts.forEach((h: any) => targetIds.add(h.toString()));
+                  }
+                  for (const targetId of targetIds) {
+                    if (targetId === req.user!.userId || notifiedUserIds.has(targetId)) continue;
+                    notifiedUserIds.add(targetId);
+                    notificationService
+                      .createNotification({
+                        userId: targetId,
+                        type: 'live_started',
+                        title: `🏢 Agency Party: ${userDoc.nickname || 'Host'}`,
+                        message: `${userDoc.nickname || 'Host'} from your agency created a party room: "${name || 'Party Room'}"`,
+                        senderId: req.user!.userId,
+                        senderInfo: { nickname: userDoc.nickname, avatar: userDoc.avatar },
+                        targetUrl: `/party/${room._id}`,
+                        data: { roomId: room._id.toString(), isAgency: 'true', type: 'party' },
+                      })
+                      .catch(() => {});
+                  }
+                }
+              } catch {}
+            }
+          })
+          .catch(() => {});
+      } catch {}
+
       sendSuccess(res, populated, 'Room created', 201);
     } catch (error) {
       next(error);
@@ -251,11 +316,24 @@ export const roomController = {
       const channelName = `room_${room._id}`;
       const token = generateAgoraToken(channelName, 0, 'publisher');
 
+      const io = req.app.get('io');
+      let liveViewerCount = room.viewerCount || 0;
+      if (io) {
+        const sockets = await io.in(`room:${room._id}`).fetchSockets();
+        // If sockets are connected, use the socket count; otherwise fallback to seated users or at least 1 (the joining user)
+        const activeSeatsCount = (room.seats || []).filter((s) => s.userId).length;
+        liveViewerCount = Math.max(sockets.length, activeSeatsCount, 1);
+      } else {
+        const activeSeatsCount = (room.seats || []).filter((s) => s.userId).length;
+        liveViewerCount = Math.max(room.viewerCount || 0, activeSeatsCount, 1);
+      }
+
       const data = room.toObject();
       delete data.password;
 
       sendSuccess(res, {
         ...data,
+        viewerCount: liveViewerCount,
         agoraChannel: channelName,
         agoraToken: token,
       });
