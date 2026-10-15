@@ -314,7 +314,18 @@ export const LiveRoom = ({
         onReport={onReport}
       />
 
-      <AudienceList open={showAudience} streamId={stream?._id} viewers={viewers} onClose={() => setShowAudience(false)} />
+      <AudienceList
+        open={showAudience}
+        streamId={stream?._id}
+        viewers={viewers}
+        onClose={() => setShowAudience(false)}
+        onViewerClick={(v) => {
+          setShowAudience(false);
+          if (onHostClick && v.userId) {
+            onHostClick({ _id: v.userId, nickname: v.nickname, avatar: v.avatar } as any);
+          }
+        }}
+      />
 
       {/* Share toast */}
       <AnimatePresence>

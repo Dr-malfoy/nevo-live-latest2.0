@@ -64,6 +64,7 @@ export { ReferralClaim, IReferralClaimDocument } from './ReferralClaim';
 
 // ── Agent analytics (§4.7) ──────────────────────────────────────────
 export { HostApplication, IHostApplicationDocument } from './HostApplication';
+export { OfficialHostApplication, IOfficialHostApplicationDocument, OfficialHostType, OfficialHostApplicationStatus } from './OfficialHostApplication';
 export { HostGroup, IHostGroupDocument } from './HostGroup';
 
 // ── Levels & achievements (§4.6) ────────────────────────────────────

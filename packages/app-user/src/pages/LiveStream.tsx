@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { streamsApi, giftsApi } from '../api';
 import { gamesApi } from '../api/economy.api';
 import { useSocketStore, useAuthStore, useUIStore } from '../stores';
+import { motion, AnimatePresence } from 'framer-motion';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
 import { ReportModal } from '../components/report/ReportModal';
-import { LiveRoom } from '../components/live';
+import { LiveRoom, UserProfileModal } from '../components/live';
 import type { RoomMessage, RoomNotification, TopGifterItem, LiveSpeakerItem, MicRequester } from '../components/live';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { useAgora } from '../hooks/useAgora';
@@ -49,6 +50,9 @@ export const LiveStreamPage = () => {
   const [micRequestPending, setMicRequestPending] = useState(false);
   const [pendingMicRequester, setPendingMicRequester] = useState<MicRequester | null>(null);
   const [customGiftReceiverId, setCustomGiftReceiverId] = useState<string | null>(null);
+  const [profileModalUserId, setProfileModalUserId] = useState<string | null>(null);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const burstTimer = useRef<ReturnType<typeof setTimeout>>();
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
   const sendingGiftRef = useRef(false);
@@ -404,6 +408,18 @@ export const LiveStreamPage = () => {
       toggleMic(false).catch(() => {});
       showToast(data.message || 'You left the microphone.', 'info');
     };
+    const onForceMute = (data: any) => {
+      if (data?.targetUserId && userRef.current && data.targetUserId !== userRef.current._id) {
+        return;
+      }
+      if (data?.isMuted) {
+        toggleMic(false).catch(() => {});
+        showToast('The host muted your microphone.', 'info');
+      } else {
+        toggleMic(true).catch(() => {});
+        showToast('The host unmuted your microphone.', 'success');
+      }
+    };
 
     socket.on('stream:chat-received', onChat);
     socket.on('stream:gift-received', onGift);
@@ -418,6 +434,7 @@ export const LiveStreamPage = () => {
     socket.on('stream:mic:requested', onMicRequested);
     socket.on('stream:mic:response', onMicResponse);
     socket.on('stream:mic:kicked', onMicKicked);
+    socket.on('stream:mic:force-mute', onForceMute);
 
     return () => {
       leaveRoom(`stream:${id}`);
@@ -434,6 +451,7 @@ export const LiveStreamPage = () => {
       socket.off('stream:mic:requested', onMicRequested);
       socket.off('stream:mic:response', onMicResponse);
       socket.off('stream:mic:kicked', onMicKicked);
+      socket.off('stream:mic:force-mute', onForceMute);
     };
   }, [socket, id]);
 
@@ -490,13 +508,13 @@ export const LiveStreamPage = () => {
   }, [socket, id, showToast]);
 
   const handleMuteSpeaker = useCallback((targetUserId: string, targetMuted: boolean) => {
+    if (!socket || !id) return;
     if (userRef.current && targetUserId === userRef.current._id) {
       toggleMic(!targetMuted).catch(() => {});
-      if (socket && id) {
-        socket.emit('stream:mic:toggle', { streamId: id, isMuted: targetMuted });
-      }
     }
-  }, [socket, id, toggleMic]);
+    socket.emit('stream:mic:toggle', { streamId: id, targetUserId, isMuted: targetMuted });
+    showToast(targetMuted ? 'Microphone muted' : 'Microphone unmuted', 'info');
+  }, [socket, id, toggleMic, showToast]);
 
   const handleKickSpeaker = useCallback((targetUserId: string) => {
     if (!socket || !id || !isHostRef.current) return;
@@ -587,15 +605,23 @@ export const LiveStreamPage = () => {
     }
   };
 
-  // End/Leave → centralized idempotent cleanup
-  const handleEndStream = useCallback(() => {
-    if (!id) return;
-    fireEnd();
+  // End/Leave request handlers (show confirmation dialogs)
+  const requestEndStream = useCallback(() => {
+    setShowEndConfirm(true);
+  }, []);
+
+  const requestLeaveStream = useCallback(() => {
+    setShowLeaveConfirm(true);
+  }, []);
+
+  const confirmEndStream = useCallback(() => {
+    setShowEndConfirm(false);
+    if (id) fireEnd();
   }, [id, fireEnd]);
 
-  const handleLeave = useCallback(() => {
-    if (!id) return;
-    fireEnd();
+  const confirmLeaveStream = useCallback(() => {
+    setShowLeaveConfirm(false);
+    if (id) fireEnd();
   }, [id, fireEnd]);
 
   // host is the populated object form; when hostId is null/string (orphaned ref),
@@ -648,8 +674,8 @@ export const LiveStreamPage = () => {
         messages={chatMessages}
         notifications={notifications}
         giftBurst={giftBurst}
-        onLeave={handleLeave}
-        onEnd={handleEndStream}
+        onLeave={requestLeaveStream}
+        onEnd={requestEndStream}
         onToggleCamera={toggleCamera}
         onToggleMic={handleToggleMic}
         onSwitchCamera={switchCamera}
@@ -661,8 +687,9 @@ export const LiveStreamPage = () => {
         }}
         onReport={() => setShowReport(true)}
         onHostClick={(h) => {
-          navigatingAwayRef.current = true;
-          navigate(`/user/${h._id}`);
+          if (h?._id) {
+            setProfileModalUserId(h._id);
+          }
         }}
         likeCount={likeCount}
         onLike={handleLike}
@@ -683,6 +710,124 @@ export const LiveStreamPage = () => {
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters((v) => !v)}
       />
+
+      {/* In-Room User Profile Modal (Keeps live stream running) */}
+      <UserProfileModal
+        userId={profileModalUserId}
+        isOpen={!!profileModalUserId}
+        onClose={() => setProfileModalUserId(null)}
+        onOpenGiftToUser={(targetId) => {
+          setCustomGiftReceiverId(targetId);
+          setShowGift(true);
+        }}
+        currentUserId={user?._id}
+      />
+
+      {/* Host End Stream Confirmation Modal */}
+      <AnimatePresence>
+        {showEndConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-auto select-none">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowEndConfirm(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm bg-[#161726]/95 border border-white/15 rounded-3xl p-6 shadow-2xl z-10 text-white flex flex-col gap-4 backdrop-blur-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <h3 className="text-base font-bold text-white">End Live Stream?</h3>
+                <button
+                  onClick={() => setShowEndConfirm(false)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white/70"
+                  aria-label="Close"
+                >
+                  <span className="text-sm font-bold">✕</span>
+                </button>
+              </div>
+              <p className="text-sm text-white/80 leading-relaxed">
+                Are you sure you want to permanently close this live stream? All viewers and speakers will be disconnected.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEndConfirm(false)}
+                  className="flex-1 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-sm font-semibold text-white/80 transition-colors active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmEndStream}
+                  className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-red-500 via-rose-600 to-red-600 hover:from-red-600 hover:to-rose-700 text-sm font-bold text-white shadow-lg shadow-red-500/30 transition-all active:scale-95"
+                >
+                  Permanently Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Viewer Leave Confirmation Modal */}
+      <AnimatePresence>
+        {showLeaveConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-auto select-none">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowLeaveConfirm(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm bg-[#161726]/95 border border-white/15 rounded-3xl p-6 shadow-2xl z-10 text-white flex flex-col gap-4 backdrop-blur-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <h3 className="text-base font-bold text-white">Leave Live Stream?</h3>
+                <button
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white/70"
+                  aria-label="Close"
+                >
+                  <span className="text-sm font-bold">✕</span>
+                </button>
+              </div>
+              <p className="text-sm text-white/80 leading-relaxed">
+                Are you sure you want to leave this live room?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="flex-1 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-sm font-semibold text-white/80 transition-colors active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmLeaveStream}
+                  className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-sm font-bold text-white shadow-lg shadow-pink-500/30 transition-all active:scale-95"
+                >
+                  Leave
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Gift Modal */}
       <Modal

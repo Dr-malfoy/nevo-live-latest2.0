@@ -360,16 +360,38 @@ export const registerStreamHandlers = (socket: Socket): void => {
     }
   });
 
-  // Speaker toggles their microphone mute/unmute
-  socket.on('stream:mic:toggle', async ({ streamId, isMuted }) => {
-    const userId = socket.data.user?.userId;
-    if (!userId || !streamId) return;
+  // Speaker or Host toggles microphone mute/unmute
+  socket.on('stream:mic:toggle', async ({ streamId, isMuted, targetUserId }) => {
+    const currentUserId = socket.data.user?.userId;
+    if (!currentUserId || !streamId) return;
+
+    const stream = await LiveStream.findById(streamId).select('hostId').lean();
+    const streamHostId = typeof stream?.hostId === 'object' && stream?.hostId !== null
+      ? ((stream.hostId as any)._id?.toString() || stream.hostId.toString())
+      : String(stream?.hostId);
+
+    const isHost = streamHostId === String(currentUserId);
+    const effectiveUserId = (isHost && targetUserId) ? String(targetUserId) : String(currentUserId);
 
     const speakers = streamSpeakersMap.get(streamId);
-    if (speakers && speakers.has(userId)) {
-      const sp = speakers.get(userId)!;
+    if (speakers && speakers.has(effectiveUserId)) {
+      const sp = speakers.get(effectiveUserId)!;
       sp.isMuted = !!isMuted;
-      speakers.set(userId, sp);
+      speakers.set(effectiveUserId, sp);
+
+      // If host muted another user, instruct that user's client to force-mute their local microphone
+      if (isHost && targetUserId && targetUserId !== currentUserId) {
+        getIO().to(`user:${targetUserId}`).emit('stream:mic:force-mute', {
+          streamId,
+          targetUserId,
+          isMuted: !!isMuted,
+        });
+        getIO().to(`stream:${streamId}`).emit('stream:mic:force-mute', {
+          streamId,
+          targetUserId,
+          isMuted: !!isMuted,
+        });
+      }
 
       getIO().to(`stream:${streamId}`).emit('stream:speakers-update', {
         streamId,
@@ -384,7 +406,12 @@ export const registerStreamHandlers = (socket: Socket): void => {
     if (!currentUserId || !streamId || !targetUserId) return;
 
     const stream = await LiveStream.findById(streamId).select('hostId').lean();
-    if (!stream || (stream.hostId.toString() !== currentUserId && currentUserId !== targetUserId)) {
+    const streamHostId = typeof stream?.hostId === 'object' && stream?.hostId !== null
+      ? ((stream.hostId as any)._id?.toString() || stream.hostId.toString())
+      : String(stream?.hostId);
+
+    const isHost = streamHostId === String(currentUserId);
+    if (!isHost && currentUserId !== targetUserId) {
       return;
     }
 
@@ -394,6 +421,13 @@ export const registerStreamHandlers = (socket: Socket): void => {
 
       getIO().to(`user:${targetUserId}`).emit('stream:mic:kicked', {
         streamId,
+        targetUserId,
+        message: 'You have left the microphone.',
+      });
+
+      getIO().to(`stream:${streamId}`).emit('stream:mic:kicked', {
+        streamId,
+        targetUserId,
         message: 'You have left the microphone.',
       });
 

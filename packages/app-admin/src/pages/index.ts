@@ -21,4 +21,5 @@ export { Verification } from './Verification';
 export { Hosts } from './Hosts';
 export { Badges } from './Badges';
 export { AssetPasswords } from './AssetPasswords';
+export { HostApplications } from './HostApplications';
 

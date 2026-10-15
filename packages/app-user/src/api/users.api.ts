@@ -88,4 +88,16 @@ export const usersApi = {
     client.post<ApiResponse<{ blocked: boolean }>>(`/users/me/blacklist/${targetId}`),
   unblockUser: (targetId: string) =>
     client.delete<ApiResponse<{ blocked: boolean }>>(`/users/me/blacklist/${targetId}`),
+
+  /* ── Alpha & Aurora Host Application ───────────────────────────── */
+  getHostEligibility: () => client.get<ApiResponse<any>>('/users/host-application/eligibility'),
+  submitHostApplication: (data: {
+    realName: string;
+    phone: string;
+    whatsapp?: string;
+    bio?: string;
+    socialLink?: string;
+    hostType?: 'alpha' | 'aurora';
+  }) => client.post<ApiResponse<any>>('/users/host-application/apply', data),
+  getMyHostApplication: () => client.get<ApiResponse<any>>('/users/host-application/my'),
 };

@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from './stores/adminAuth';
 import { Sidebar } from './components/Sidebar';
 import { adminApi } from './api';
-import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords } from './pages';
+import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords, HostApplications } from './pages';
 
 const AdminLayout = () => {
   const { logout } = useAdminAuth();
   const [complaintsCount, setComplaintsCount] = useState(0);
   const [pendingVerifications, setPendingVerifications] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
+  const [pendingHostApplications, setPendingHostApplications] = useState(0);
 
   useEffect(() => {
     const load = () => {
@@ -21,6 +22,9 @@ const AdminLayout = () => {
       }).catch(() => {});
       adminApi.getContactMessages({ status: 'pending', limit: 1 }).then(({ data }) => {
         if (data.success) setPendingTickets(data.pagination?.total || 0);
+      }).catch(() => {});
+      adminApi.getHostApplications({ status: 'pending', limit: 1 }).then(({ data }) => {
+        if (data.success) setPendingHostApplications(data.pagination?.total || 0);
       }).catch(() => {});
     };
     load();
@@ -35,6 +39,7 @@ const AdminLayout = () => {
         complaintsCount={complaintsCount}
         pendingVerifications={pendingVerifications}
         pendingTickets={pendingTickets}
+        pendingHostApplications={pendingHostApplications}
       />
       <main className="flex-1 p-6 overflow-y-auto">
         <Outlet />
@@ -58,6 +63,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="users" element={<Users />} />
           <Route path="hosts" element={<Hosts />} />
+          <Route path="host-applications" element={<HostApplications />} />
           <Route path="streams" element={<Streams />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="gifts" element={<Gifts />} />

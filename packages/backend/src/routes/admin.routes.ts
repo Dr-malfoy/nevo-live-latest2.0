@@ -7,6 +7,7 @@ import { contactController } from '../controllers/contact.controller';
 import { walletController } from '../controllers/wallet.controller';
 import { rewardController } from '../controllers/reward.controller';
 import { officialNotificationController } from '../controllers/officialNotification.controller';
+import { hostApplicationController } from '../controllers/hostApplication.controller';
 import { authenticate } from '../middleware/auth';
 import { requireAdmin } from '../middleware/roleGuard';
 
@@ -21,6 +22,11 @@ router.put('/users/:id/seller-type', authenticate, requireAdmin, adminController
 router.get('/hosts', authenticate, requireAdmin, adminController.getHosts);
 router.put('/hosts/:id/badge', authenticate, requireAdmin, adminController.setHostBadge);
 router.post('/hosts/recalculate-badges', authenticate, requireAdmin, adminController.recalculateHostBadges);
+
+// Alpha & Aurora Host Applications
+router.get('/host-applications', authenticate, requireAdmin, hostApplicationController.getApplications);
+router.get('/host-applications/:id', authenticate, requireAdmin, hostApplicationController.getApplicationDetail);
+router.post('/host-applications/:id/review', authenticate, requireAdmin, hostApplicationController.reviewApplication);
 
 router.get('/streams', authenticate, requireAdmin, adminController.getStreams);
 router.get('/transactions', authenticate, requireAdmin, adminController.getTransactions);

@@ -586,6 +586,11 @@ export const Profile = () => {
       {/* ── Centers ────────────────────────────────────────────── */}
       <div className="mx-4 mt-3 list-group">
         <MenuRow
+          icon={<Crown className="w-5 h-5 text-amber-500" />}
+          label="Apply for Host (Alpha & Aurora)"
+          onClick={() => navigate('/host-application')}
+        />
+        <MenuRow
           icon={<PiTelevision className="w-5 h-5" />}
           label="Streamer Center"
           onClick={() => navigate('/streamer-center')}

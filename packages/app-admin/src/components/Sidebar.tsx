@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck, KeyRound } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck, KeyRound, Crown } from 'lucide-react';
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/users', icon: Users, label: 'Users' },
   { to: '/hosts', icon: Award, label: 'Host Management' },
+  { to: '/host-applications', icon: Crown, label: 'Host Applications' },
   { to: '/streams', icon: Radio, label: 'Streams' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
   { to: '/gifts', icon: Gift, label: 'Gifts' },
@@ -31,11 +32,13 @@ export const Sidebar = ({
   complaintsCount,
   pendingVerifications,
   pendingTickets,
+  pendingHostApplications,
 }: {
   onLogout: () => void;
   complaintsCount?: number;
   pendingVerifications?: number;
   pendingTickets?: number;
+  pendingHostApplications?: number;
 }) => (
   <aside className="w-60 min-h-screen bg-dark-900 border-r border-dark-800 flex flex-col">
     <div className="p-4 border-b border-dark-800">
@@ -52,6 +55,11 @@ export const Sidebar = ({
         >
           <Icon className="w-4 h-4" />
           <span className="flex-1">{label}</span>
+          {to === '/host-applications' && pendingHostApplications ? (
+            <span className="min-w-[18px] h-[18px] px-1 bg-amber-500 text-dark-950 text-[10px] font-black rounded-full flex items-center justify-center animate-pulse">
+              {pendingHostApplications > 99 ? '99+' : pendingHostApplications}
+            </span>
+          ) : null}
           {to === '/moderation-reports' && complaintsCount ? (
             <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
               {complaintsCount > 99 ? '99+' : complaintsCount}

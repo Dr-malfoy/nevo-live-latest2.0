@@ -22,4 +22,5 @@ export { TopGifterSeats } from './TopGifterSeats';
 export type { TopGifterItem, LiveSpeakerItem } from './TopGifterSeats';
 export { MicRequestBanner } from './MicRequestBanner';
 export type { MicRequester } from './MicRequestBanner';
+export { UserProfileModal } from './UserProfileModal';
 export type { LiveRoomProps, RoomMessage, RoomNotification } from './types';

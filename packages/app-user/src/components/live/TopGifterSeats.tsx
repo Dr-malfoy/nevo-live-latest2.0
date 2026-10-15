@@ -310,7 +310,8 @@ export const TopGifterSeats = ({
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-xs bg-[#161726]/95 border border-white/15 rounded-3xl p-5 shadow-2xl z-10 text-white flex flex-col items-center gap-3.5"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-xs bg-[#161726]/95 border border-white/15 rounded-3xl p-5 shadow-2xl z-10 text-white flex flex-col items-center gap-3.5 backdrop-blur-2xl"
             >
               <button
                 onClick={() => setSelectedSlot(null)}
@@ -385,11 +386,14 @@ export const TopGifterSeats = ({
                       <div className="flex gap-2">
                         {onMuteSpeaker && (
                           <button
-                            onClick={() => {
-                              onMuteSpeaker(selectedSlot.userId!, !selectedSlot.isMuted);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const uid = selectedSlot.userId!;
+                              const isMutedNow = !selectedSlot.isMuted;
                               setSelectedSlot(null);
+                              onMuteSpeaker(uid, isMutedNow);
                             }}
-                            className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-xs font-semibold text-white flex items-center justify-center gap-1.5"
+                            className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-xs font-semibold text-white flex items-center justify-center gap-1.5 active:scale-95"
                           >
                             {selectedSlot.isMuted ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5 text-red-400" />}
                             {selectedSlot.isMuted ? 'Unmute' : 'Mute'}
@@ -397,11 +401,13 @@ export const TopGifterSeats = ({
                         )}
                         {onKickSpeaker && (
                           <button
-                            onClick={() => {
-                              onKickSpeaker(selectedSlot.userId!);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const uid = selectedSlot.userId!;
                               setSelectedSlot(null);
+                              onKickSpeaker(uid);
                             }}
-                            className="flex-1 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 transition-colors text-xs font-semibold text-red-300 flex items-center justify-center gap-1.5"
+                            className="flex-1 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 transition-colors text-xs font-semibold text-red-300 flex items-center justify-center gap-1.5 active:scale-95"
                           >
                             <KickIcon className="w-3.5 h-3.5" />
                             Kick Mic
@@ -413,24 +419,26 @@ export const TopGifterSeats = ({
                     <div className="flex gap-2">
                       {onViewProfile && (
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const uid = selectedSlot.userId;
                             setSelectedSlot(null);
                             if (uid) onViewProfile(uid);
                           }}
-                          className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-xs font-semibold text-white"
+                          className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 transition-colors text-xs font-semibold text-white active:scale-95"
                         >
                           Profile
                         </button>
                       )}
                       {onOpenGiftToUser && selectedSlot.userId !== currentUserId && (
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const uid = selectedSlot.userId;
                             setSelectedSlot(null);
                             if (uid) onOpenGiftToUser(uid);
                           }}
-                          className="flex-1 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 transition-colors text-xs font-bold text-white shadow"
+                          className="flex-1 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 transition-colors text-xs font-bold text-white shadow active:scale-95"
                         >
                           Send Gift
                         </button>

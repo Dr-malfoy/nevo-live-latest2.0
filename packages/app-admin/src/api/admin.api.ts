@@ -109,4 +109,10 @@ export const adminApi = {
   },
   resetUserAssetPassword: (data: { userId: string; newPassword: string }) => client.post('/admin/asset-password/reset', data),
   unlockUserAssetPassword: (data: { userId: string }) => client.post('/admin/asset-password/unlock', data),
+
+  // Alpha & Aurora Host Applications
+  getHostApplications: (params?: Record<string, any>) => client.get('/admin/host-applications', { params }),
+  getHostApplicationDetail: (id: string) => client.get(`/admin/host-applications/${id}`),
+  reviewHostApplication: (id: string, action: 'approve' | 'reject', reason?: string) =>
+    client.post(`/admin/host-applications/${id}/review`, { action, reason }),
 };

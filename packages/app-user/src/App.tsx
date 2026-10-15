@@ -74,6 +74,7 @@ import {
   HelpCenter,
   Bag,
   AgentRequests,
+  HostApplicationPage,
 } from './pages';
 
 import { PrivacyPolicy, Guidelines, Terms, AboutUs } from './pages/legal/LegalPage';
@@ -612,6 +613,8 @@ export default function App() {
             {/* Creator centers — #40, #42, #62 */}
             <Route path="/streamer-center" element={<ProtectedRoute><StreamerCenter /></ProtectedRoute>} />
             <Route path="/creator-center" element={<ProtectedRoute><CreatorCenter /></ProtectedRoute>} />
+            <Route path="/host-application" element={<ProtectedRoute><HostApplicationPage /></ProtectedRoute>} />
+            <Route path="/apply-host" element={<ProtectedRoute><HostApplicationPage /></ProtectedRoute>} />
 
             {/* #53 achievement posters */}
             <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
