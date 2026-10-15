@@ -252,6 +252,10 @@ export const LiveRoom = ({
         speakers={speakers}
         currentUserId={user?._id}
         isHost={isHost}
+        isSpeaker={isSpeaker}
+        micRequestPending={micRequestPending}
+        onRequestMic={onRequestMic}
+        giftBurst={giftBurst}
         onViewProfile={(uid) => {
           if (onHostClick) onHostClick({ _id: uid, nickname: '', avatar: '' } as any);
         }}

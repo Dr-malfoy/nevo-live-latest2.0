@@ -46,11 +46,13 @@ export const useCall = () => {
   const fallbackVideoElRef = useRef<HTMLVideoElement | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteVideoTracksRef = useRef<Map<UID, any>>(new Map());
+  const remoteAudioTracksRef = useRef<Map<UID, any>>(new Map());
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
 
   const joinedRef = useRef(false);
   const micOnRef = useRef(true);
   const cameraOnRef = useRef(true);
+  const speakerOnRef = useRef(false);
   const joiningRef = useRef(false);
   const networkLostRef = useRef(false);
   const currentFacingModeRef = useRef<'user' | 'environment'>('user');
@@ -61,6 +63,7 @@ export const useCall = () => {
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
+  const [speakerOn, setSpeakerOn] = useState(false);
   const [error, setError] = useState('');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
