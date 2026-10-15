@@ -5,7 +5,6 @@ import {
   PiMicrophoneFill as Mic,
   PiMicrophoneSlashFill as MicOff,
   PiCrownFill as Crown,
-  PiUserFill as UserIcon,
   PiXBold as X,
   PiSignOutBold as KickIcon,
 } from 'react-icons/pi';
@@ -152,6 +151,38 @@ export const TopGifterSeats = ({
           const hasGifts = (slot.totalGifts || 0) > 0;
           const isSpeaking = slot.isSpeaker && !slot.isMuted;
 
+          // If the slot is empty, make it completely transparent ("container gula thakbe but ei skull gula thakbe na")
+          if (!hasOccupant) {
+            return (
+              <div
+                key={slot.index}
+                className="w-[50px] h-[64px] relative pointer-events-none select-none opacity-0"
+                aria-hidden="true"
+              >
+                {/* Floating gift particles specifically rising up from this seat slot if a gift hits it */}
+                <AnimatePresence>
+                  {floatingParticles
+                    .filter((p) => p.slotIndex === i)
+                    .map((p) => (
+                      <motion.div
+                        key={p.id}
+                        initial={{ opacity: 0, y: 8, scale: 0.6 }}
+                        animate={{ opacity: 1, y: -36, scale: 1.15 }}
+                        exit={{ opacity: 0, y: -50, scale: 0.7 }}
+                        transition={{ duration: 1.8, ease: 'easeOut' }}
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-1 bg-gradient-to-r from-pink-500 via-rose-500 to-amber-400 px-2 py-0.5 rounded-lg shadow-xl border border-white/40"
+                      >
+                        <span className="text-xs">{p.icon}</span>
+                        <span className="text-[10px] font-black text-white leading-none whitespace-nowrap">
+                          +{p.count}
+                        </span>
+                      </motion.div>
+                    ))}
+                </AnimatePresence>
+              </div>
+            );
+          }
+
           const ringClass = isSpeaking
             ? 'ring-2 ring-emerald-400 shadow-lg shadow-emerald-500/40 animate-pulse'
             : hasGifts && i === 0
@@ -167,10 +198,14 @@ export const TopGifterSeats = ({
           return (
             <motion.button
               key={slot.index}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 22 }}
               whileTap={{ scale: 0.92 }}
               onClick={() => setSelectedSlot(slot)}
-              className="flex flex-col items-center w-[50px] relative group"
-              aria-label={hasOccupant ? `Seat ${i + 1}: ${slot.nickname}` : `Seat ${i + 1}`}
+              className="flex flex-col items-center w-[50px] relative group pointer-events-auto"
+              aria-label={`Rank ${i + 1}: ${slot.nickname}`}
             >
               {/* Floating gift particles specifically rising up from this seat */}
               <AnimatePresence>
@@ -224,16 +259,12 @@ export const TopGifterSeats = ({
                 <div
                   className={`w-11 h-11 rounded-full overflow-hidden bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all ${ringClass}`}
                 >
-                  {hasOccupant ? (
-                    slot.avatar ? (
-                      <img src={slot.avatar} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-white text-xs font-bold">
-                        {initial(slot.nickname || 'G')}
-                      </span>
-                    )
+                  {slot.avatar ? (
+                    <img src={slot.avatar} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <UserIcon className="w-5 h-5 text-white/30" />
+                    <span className="text-white text-xs font-bold">
+                      {initial(slot.nickname || 'G')}
+                    </span>
                   )}
                 </div>
 
@@ -245,7 +276,7 @@ export const TopGifterSeats = ({
                 )}
               </div>
 
-              {/* Bottom Mic status + Nickname / Seat Number */}
+              {/* Bottom Mic status + Nickname */}
               <div className="flex items-center justify-center gap-0.5 w-full mt-1 bg-black/50 backdrop-blur-xs rounded-full px-1 py-0.5 shadow-sm">
                 {isSpeaking ? (
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
@@ -255,7 +286,7 @@ export const TopGifterSeats = ({
                   <Mic className="w-2 h-2 text-white/50 shrink-0" />
                 )}
                 <span className="text-[9px] text-white/90 font-medium truncate max-w-[36px] leading-tight text-center">
-                  {hasOccupant ? slot.nickname : `${i + 1}`}
+                  {slot.nickname}
                 </span>
               </div>
             </motion.button>

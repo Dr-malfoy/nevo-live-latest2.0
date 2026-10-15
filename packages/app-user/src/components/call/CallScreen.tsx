@@ -15,6 +15,7 @@ import {
   PiXBold as X,
   PiCoinFill as CoinIcon,
   PiSpeakerHighFill as SpeakerIcon,
+  PiSpeakerSlashFill as SpeakerSlashIcon,
   PiWifiHighBold as WifiIcon,
   PiFastForwardFill as FastForwardIcon,
   PiShieldCheckFill as ShieldCheck,
@@ -87,10 +88,12 @@ export const CallScreen = ({
     remoteUsers,
     micOn,
     cameraOn,
+    speakerOn,
     error,
     startCall,
     toggleMic,
     toggleCamera,
+    toggleSpeaker,
     switchCamera,
     playLocalPreview,
     playRemoteVideo,
@@ -703,33 +706,53 @@ export const CallScreen = ({
               </div>
             </motion.div>
 
-            {/* Live Audio Equalizer Waveform Bars (Active when call is connected) */}
+            {/* Live Audio Equalizer Waveform Bars & Speaker Mode Toggle (Active when call is connected) */}
             {callConnected && !isVideo && (
-              <motion.div
+              <motion.button
+                type="button"
+                onClick={toggleSpeaker}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 mt-8 px-5 py-2.5 rounded-2xl bg-white/[0.06] backdrop-blur-2xl border border-white/15 shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                className={`flex items-center gap-2.5 mt-8 px-5 py-2.5 rounded-2xl backdrop-blur-2xl border shadow-[0_8px_30px_rgba(0,0,0,0.4)] cursor-pointer transition-all ${
+                  speakerOn
+                    ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 ring-2 ring-emerald-500/30'
+                    : 'bg-white/[0.06] border-white/15 text-white/80'
+                }`}
+                title="Tap to toggle Loudspeaker / Earpiece mode"
               >
-                <SpeakerIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                {speakerOn ? (
+                  <SpeakerIcon className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
+                ) : (
+                  <SpeakerSlashIcon className="w-4 h-4 text-white/50 shrink-0" />
+                )}
                 <div className="flex items-center gap-1.5 h-8">
                   {waveBars.map((bar, i) => (
                     <motion.span
                       key={i}
-                      animate={{ height: bar.height }}
+                      animate={{ height: speakerOn ? bar.height : Math.max(5, Math.round(bar.height * 0.5)) }}
                       transition={{
                         duration: bar.duration,
                         repeat: Infinity,
                         repeatType: 'reverse',
                         ease: 'easeInOut',
                       }}
-                      className="w-1.5 rounded-full bg-gradient-to-t from-emerald-500 via-teal-400 to-cyan-300"
+                      className={`w-1.5 rounded-full ${
+                        speakerOn
+                          ? 'bg-gradient-to-t from-emerald-500 via-teal-400 to-cyan-300'
+                          : 'bg-white/40'
+                      }`}
                     />
                   ))}
                 </div>
-                <span className="text-[11px] font-black text-emerald-300 ml-1.5 tracking-wider">
-                  HD AUDIO
-                </span>
-              </motion.div>
+                <div className="flex flex-col text-left ml-1.5">
+                  <span className="text-[11px] font-black tracking-wider uppercase leading-tight">
+                    {speakerOn ? 'LOUDSPEAKER ON' : 'EARPIECE MODE'}
+                  </span>
+                  <span className="text-[9px] text-white/50 font-medium">Tap to toggle</span>
+                </div>
+              </motion.button>
             )}
           </div>
 
@@ -1202,6 +1225,20 @@ export const CallScreen = ({
                   title={micOn ? 'Mute microphone' : 'Unmute microphone'}
                 >
                   {micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                </button>
+
+                {/* 6. Loudspeaker Toggle */}
+                <button
+                  onClick={toggleSpeaker}
+                  aria-label={speakerOn ? 'Turn loudspeaker off' : 'Turn loudspeaker on'}
+                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    speakerOn
+                      ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                      : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
+                  }`}
+                  title={speakerOn ? 'Loudspeaker: ON' : 'Loudspeaker: OFF (Earpiece mode)'}
+                >
+                  {speakerOn ? <SpeakerIcon className="w-5 h-5" /> : <SpeakerSlashIcon className="w-5 h-5" />}
                 </button>
               </>
             )}

@@ -128,6 +128,66 @@ export const useCall = () => {
     play(0);
   }, []);
 
+  /**
+   * Adjusts audio output route and volume between Loudspeaker (external speaker / 100% volume)
+   * and Earpiece/Normal mode (receiver / 35% volume).
+   */
+  const applyAudioOutputRoute = useCallback(async (isLoud: boolean) => {
+    // 1. Set Agora remote audio tracks volume (100 for loud speaker, 35 for earpiece)
+    remoteAudioTracksRef.current.forEach((track) => {
+      try {
+        if (typeof track.setVolume === 'function') {
+          track.setVolume(isLoud ? 100 : 35);
+        }
+      } catch (e) {
+        console.warn('[useCall] setVolume error:', e);
+      }
+    });
+
+    // 2. Adjust volume on HTMLMediaElements for WebRTC fallback and Agora media
+    try {
+      const mediaEls = document.querySelectorAll<HTMLMediaElement>('audio, video');
+      mediaEls.forEach((el) => {
+        if (!el.muted) {
+          el.volume = isLoud ? 1.0 : 0.35;
+        }
+      });
+    } catch {}
+
+    // 3. Hardware device routing via setPlaybackDevice / setSinkId when supported by browser
+    try {
+      if (typeof AgoraRTC.getPlaybackDevices === 'function') {
+        const devices = await AgoraRTC.getPlaybackDevices();
+        if (devices && devices.length > 0) {
+          const targetDevice = isLoud
+            ? devices.find((d) => /speaker|loudspeaker|external|built-in speaker/i.test(d.label)) || devices[0]
+            : devices.find((d) => /earpiece|headset|earphone|receiver|communication/i.test(d.label)) || devices[0];
+
+          if (targetDevice?.deviceId) {
+            remoteAudioTracksRef.current.forEach(async (track) => {
+              try {
+                if (typeof track.setPlaybackDevice === 'function') {
+                  await track.setPlaybackDevice(targetDevice.deviceId);
+                }
+              } catch {}
+            });
+
+            const mediaEls = document.querySelectorAll<HTMLMediaElement>('audio, video');
+            mediaEls.forEach(async (el) => {
+              if (typeof (el as any).setSinkId === 'function' && !el.muted) {
+                try {
+                  await (el as any).setSinkId(targetDevice.deviceId);
+                } catch {}
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[useCall] audio output route error:', e);
+    }
+  }, []);
+
   // WebRTC P2P fallback signaling setup
   const setupWebRTCFallback = useCallback(
     (socket: any, callId: string) => {
@@ -152,6 +212,7 @@ export const useCall = () => {
             remoteStreamsRef.current.set(fromSocketId, remoteStream);
             setRemoteUsers((prev) => (prev.includes(fromSocketId as any) ? prev : [...prev, fromSocketId as any]));
             playRemoteVideo(fromSocketId as any);
+            applyAudioOutputRoute(speakerOnRef.current);
           };
 
           pc.onicecandidate = (event) => {
@@ -251,13 +312,18 @@ export const useCall = () => {
         console.warn('[useCall] getUserMedia fallback error:', e);
       }
 
+      const defaultSpeaker = type === 'video';
+      speakerOnRef.current = defaultSpeaker;
+      setSpeakerOn(defaultSpeaker);
+      applyAudioOutputRoute(defaultSpeaker);
+
       if (socket && callId) {
         setupWebRTCFallback(socket, callId);
       }
       setJoined(true);
       joinedRef.current = true;
     },
-    [setupWebRTCFallback]
+    [setupWebRTCFallback, applyAudioOutputRoute]
   );
 
   const playLocalPreview = useCallback(() => {
@@ -299,6 +365,10 @@ export const useCall = () => {
       joiningRef.current = true;
       setError('');
 
+      const defaultSpeaker = type === 'video';
+      speakerOnRef.current = defaultSpeaker;
+      setSpeakerOn(defaultSpeaker);
+
       try {
         if (!clientRef.current) {
           const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -313,7 +383,12 @@ export const useCall = () => {
                 playRemoteVideo(user.uid);
               }
               if (mediaType === 'audio' && user.audioTrack) {
+                remoteAudioTracksRef.current.set(user.uid, user.audioTrack);
+                try {
+                  user.audioTrack.setVolume(speakerOnRef.current ? 100 : 35);
+                } catch {}
                 user.audioTrack.play();
+                applyAudioOutputRoute(speakerOnRef.current);
               }
             } catch (e) {
               console.warn('call subscribe/play error:', e);
@@ -325,10 +400,14 @@ export const useCall = () => {
               remoteVideoTracksRef.current.delete(user.uid);
               setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
             }
+            if (mediaType === 'audio') {
+              remoteAudioTracksRef.current.delete(user.uid);
+            }
           });
 
           client.on('user-left', (user) => {
             remoteVideoTracksRef.current.delete(user.uid);
+            remoteAudioTracksRef.current.delete(user.uid);
             remoteStreamsRef.current.delete(String(user.uid));
             setRemoteUsers((prev) => prev.filter((id) => id !== user.uid));
           });
@@ -375,7 +454,14 @@ export const useCall = () => {
           if (remoteUser.hasAudio) {
             try {
               await client.subscribe(remoteUser, 'audio');
-              remoteUser.audioTrack?.play();
+              if (remoteUser.audioTrack) {
+                remoteAudioTracksRef.current.set(remoteUser.uid, remoteUser.audioTrack);
+                try {
+                  remoteUser.audioTrack.setVolume(speakerOnRef.current ? 100 : 35);
+                } catch {}
+                remoteUser.audioTrack.play();
+                applyAudioOutputRoute(speakerOnRef.current);
+              }
             } catch (e) {
               console.warn('Initial remote audio subscribe error:', e);
             }
@@ -431,7 +517,7 @@ export const useCall = () => {
         joiningRef.current = false;
       }
     },
-    [initLocalMediaFallback, playLocalPreview, playRemoteVideo]
+    [initLocalMediaFallback, playLocalPreview, playRemoteVideo, applyAudioOutputRoute]
   );
 
   const toggleMic = useCallback(async () => {
@@ -455,6 +541,23 @@ export const useCall = () => {
       });
     }
   }, []);
+
+  const toggleSpeaker = useCallback(async () => {
+    const next = !speakerOnRef.current;
+    speakerOnRef.current = next;
+    setSpeakerOn(next);
+    await applyAudioOutputRoute(next);
+    return next;
+  }, [applyAudioOutputRoute]);
+
+  const setSpeaker = useCallback(
+    async (enabled: boolean) => {
+      speakerOnRef.current = enabled;
+      setSpeakerOn(enabled);
+      await applyAudioOutputRoute(enabled);
+    },
+    [applyAudioOutputRoute]
+  );
 
   const toggleCamera = useCallback(async () => {
     const next = !cameraOnRef.current;
@@ -543,6 +646,8 @@ export const useCall = () => {
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
 
+      remoteAudioTracksRef.current.clear();
+
       if (localVideoRef.current) {
         localVideoRef.current.close();
         localVideoRef.current = null;
@@ -586,6 +691,7 @@ export const useCall = () => {
 
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
+      remoteAudioTracksRef.current.clear();
       localVideoRef.current?.close();
       localAudioRef.current?.close();
       if (fallbackStreamRef.current) {
@@ -606,11 +712,14 @@ export const useCall = () => {
     remoteUsers,
     micOn,
     cameraOn,
+    speakerOn,
     facingMode,
     error,
     startCall,
     toggleMic,
     toggleCamera,
+    toggleSpeaker,
+    setSpeaker,
     switchCamera,
     playLocalPreview,
     playRemoteVideo,

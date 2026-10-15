@@ -80,6 +80,14 @@ const getAgentActions = (isAgent: boolean, pendingRequestsCount: number = 0) => 
       ]),
 ];
 
+const getBalanceFontSize = (len: number) => {
+  if (len >= 16) return 'text-[11px] sm:text-xs leading-tight';
+  if (len >= 13) return 'text-xs sm:text-sm leading-tight';
+  if (len >= 10) return 'text-sm sm:text-base leading-snug';
+  if (len >= 8) return 'text-base sm:text-lg leading-snug';
+  return 'text-lg sm:text-xl leading-normal';
+};
+
 export const Profile = () => {
   const navigate = useNavigate();
   const { user, logout, isAuthenticated, updateUser, fetchProfile } = useAuthStore();
@@ -448,37 +456,57 @@ export const Profile = () => {
       </div>
 
       {/* ── Balances (Diamonds for Top-Up / Games, Coins for Income / Earned) ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 px-4 pt-3">
-        {/* Diamonds — Recharged/Purchased for games and store */}
-        <button
-          onClick={() => navigate('/top-up')}
-          className="relative overflow-hidden rounded-card p-3.5 text-left bg-[#E8F4FF] border border-cyan-100 shadow-sm active:scale-[0.98] transition-transform"
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-cyan-900/80">Diamonds</p>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-700">Top-Up</span>
-          </div>
-          <p className="text-xl font-extrabold text-ink mt-1 tabular-nums">
-            {(user.diamonds ?? 0).toLocaleString()}
-          </p>
-          <DiamondIcon className="w-12 h-12 text-cyan-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </button>
+      {(() => {
+        const diamondsStr = (user.diamonds ?? 0).toLocaleString();
+        const coinsStr = (user.coins ?? 0).toLocaleString();
+        return (
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3 px-4 pt-3">
+            {/* Diamonds — Recharged/Purchased for games and store */}
+            <button
+              onClick={() => navigate('/top-up')}
+              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#E8F4FF] border border-cyan-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between gap-1 w-full min-w-0">
+                <p className="text-xs font-semibold text-cyan-900/80 truncate">Diamonds</p>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-700 shrink-0 whitespace-nowrap">
+                  Top-Up
+                </span>
+              </div>
+              <div className="mt-1.5 w-full min-w-0 relative z-10">
+                <p
+                  className={`${getBalanceFontSize(diamondsStr.length)} font-extrabold text-ink tabular-nums tracking-tight truncate`}
+                  title={diamondsStr}
+                >
+                  {diamondsStr}
+                </p>
+              </div>
+              <DiamondIcon className="w-10 h-10 sm:w-12 sm:h-12 text-cyan-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </button>
 
-        {/* Coins — Earned from Live, Party, Games, and Gifts */}
-        <button
-          onClick={() => navigate('/income')}
-          className="relative overflow-hidden rounded-card p-3.5 text-left bg-[#FFF8E5] border border-amber-100 shadow-sm active:scale-[0.98] transition-transform"
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-amber-900/80">Income (Coins)</p>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700">Agency Trade</span>
+            {/* Coins — Earned from Live, Party, Games, and Gifts */}
+            <button
+              onClick={() => navigate('/income')}
+              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#FFF8E5] border border-amber-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between gap-1 w-full min-w-0">
+                <p className="text-xs font-semibold text-amber-900/80 truncate">Income (Coins)</p>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 shrink-0 whitespace-nowrap">
+                  Agency Trade
+                </span>
+              </div>
+              <div className="mt-1.5 w-full min-w-0 relative z-10">
+                <p
+                  className={`${getBalanceFontSize(coinsStr.length)} font-extrabold text-ink tabular-nums tracking-tight truncate`}
+                  title={coinsStr}
+                >
+                  {coinsStr}
+                </p>
+              </div>
+              <CoinIcon className="w-10 h-10 sm:w-12 sm:h-12 text-amber-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </button>
           </div>
-          <p className="text-xl font-extrabold text-ink mt-1 tabular-nums">
-            {(user.coins ?? 0).toLocaleString()}
-          </p>
-          <CoinIcon className="w-12 h-12 text-amber-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </button>
-      </div>
+        );
+      })()}
 
       {/* ── Quick actions ──────────────────────────────────────── */}
       <div className="mx-4 mt-3 bg-white rounded-card p-3">
