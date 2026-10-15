@@ -77,7 +77,7 @@ export const Withdraw = () => {
   const { user, updateUser } = useAuthStore();
 
   const [rates, setRates] = useState<any>({ withdrawalRate: 1, diamondRate: 1, coinRate: 1 });
-  const [currency, setCurrency] = useState<'diamond' | 'coin'>('coin');
+  const [currency] = useState<'coin'>('coin');
   const [method, setMethod] = useState('bkash');
   const [accountNumber, setAccountNumber] = useState('');
   const [amount, setAmount] = useState('');
@@ -130,10 +130,10 @@ export const Withdraw = () => {
     } catch {}
   };
 
-  const rate = currency === 'diamond' ? (rates.withdrawalRate || rates.diamondRate || 1) : (rates.coinRate || 1);
+  const rate = rates.withdrawalRate || rates.coinRate || 1;
   const parsedAmount = parseInt(amount) || 0;
   const bdtValue = Math.floor(parsedAmount / rate);
-  const currentBalance = currency === 'diamond' ? (user?.diamonds || 0) : (user?.coins || 0);
+  const currentBalance = user?.coins || 0;
 
   const handlePresetClick = (preset: number) => {
     setAmount(preset.toString());
@@ -191,9 +191,7 @@ export const Withdraw = () => {
       setShowSetPinModal(false);
       loadRequests();
       // Update local user balance in store
-      if (currency === 'diamond' && user) {
-        updateUser({ diamonds: Math.max(0, (user.diamonds || 0) - parsedAmount) } as any);
-      } else if (currency === 'coin' && user) {
+      if (user) {
         updateUser({ coins: Math.max(0, (user.coins || 0) - parsedAmount) } as any);
       }
       return true;
@@ -396,64 +394,37 @@ export const Withdraw = () => {
           </div>
         ) : (
           <div className="space-y-5">
-            {/* ── 1. Currency to Withdraw ──────────────────────────── */}
+            {/* ── 1. Currency to Withdraw (Coins Only) ─────────────── */}
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
                 1. Select Asset to Cash Out
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {/* Coins (Standard for earnings) */}
-                <button
-                  type="button"
-                  onClick={() => setCurrency('coin')}
-                  className={`relative p-3.5 rounded-2xl border-2 transition-all flex flex-col text-left ${
-                    currency === 'coin'
-                      ? 'border-amber-500 bg-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
+                <div
+                  className="relative p-3.5 rounded-2xl border-2 border-amber-500 bg-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/20 flex items-center justify-between"
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-100">
-                      <CoinIcon className="w-5 h-5 text-amber-500" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-100">
+                      <CoinIcon className="w-6 h-6 text-amber-500" />
                     </div>
-                    {currency === 'coin' && (
-                      <span className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs shadow-sm">
-                        <CheckIcon className="w-3 h-3" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm">Coins (Earnings)</span>
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                          Withdrawals are for Coins
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        Available Balance: {user?.coins?.toLocaleString() || 0} Coins
                       </span>
-                    )}
-                  </div>
-                  <span className="font-bold text-slate-900 text-sm">Coins (Earnings)</span>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Avail: {user?.coins?.toLocaleString() || 0}
-                  </span>
-                </button>
-
-                {/* Diamonds */}
-                <button
-                  type="button"
-                  onClick={() => setCurrency('diamond')}
-                  className={`relative p-3.5 rounded-2xl border-2 transition-all flex flex-col text-left ${
-                    currency === 'diamond'
-                      ? 'border-cyan-500 bg-white shadow-md shadow-cyan-500/10 ring-2 ring-cyan-500/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="w-9 h-9 rounded-xl bg-cyan-50 flex items-center justify-center border border-cyan-100">
-                      <DiamondIcon className="w-5 h-5 text-cyan-500" />
                     </div>
-                    {currency === 'diamond' && (
-                      <span className="w-5 h-5 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs shadow-sm">
-                        <CheckIcon className="w-3 h-3" />
-                      </span>
-                    )}
                   </div>
-                  <span className="font-bold text-slate-900 text-sm">Diamonds</span>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Avail: {user?.diamonds?.toLocaleString() || 0}
+                  <span className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs shadow-sm">
+                    <CheckIcon className="w-3.5 h-3.5" />
                   </span>
-                </button>
+                </div>
               </div>
             </div>
 
@@ -535,7 +506,7 @@ export const Withdraw = () => {
                   <input
                     type="number"
                     min="1"
-                    placeholder={`Enter amount of ${currency}s`}
+                    placeholder="Enter amount of coins"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900"
@@ -571,7 +542,7 @@ export const Withdraw = () => {
                     </div>
                     <div className="text-right border-l border-slate-700 pl-3">
                       <p className="text-[10px] text-slate-400">Conversion Rate</p>
-                      <p className="text-xs font-bold text-slate-200">{rate} {currency} = 1 BDT</p>
+                      <p className="text-xs font-bold text-slate-200">{rate} Coins = 1 BDT</p>
                     </div>
                   </div>
                 )}

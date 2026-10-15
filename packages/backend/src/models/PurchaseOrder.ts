@@ -2,7 +2,8 @@ import { Schema, model, Document } from 'mongoose';
 
 export interface IPurchaseOrderDocument extends Document {
   userId: Schema.Types.ObjectId;
-  agentId: Schema.Types.ObjectId;
+  agentId?: Schema.Types.ObjectId | null;
+  isOfficial?: boolean;
   paymentMethod: string;
   amountBdt: number;
   diamonds: number;
@@ -19,7 +20,8 @@ export interface IPurchaseOrderDocument extends Document {
 const purchaseOrderSchema = new Schema<IPurchaseOrderDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    agentId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    agentId: { type: Schema.Types.ObjectId, ref: 'User', required: false, index: true },
+    isOfficial: { type: Boolean, default: false, index: true },
     paymentMethod: {
       type: String,
       required: true,

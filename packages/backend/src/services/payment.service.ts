@@ -39,15 +39,14 @@ export const paymentService = {
     return info;
   },
 
-  async updateAdminPaymentInfo(body: { bybit?: { qrCode?: string; walletAddress?: string }; binance?: { qrCode?: string; walletAddress?: string } }) {
+  async updateAdminPaymentInfo(body: any) {
     const update: any = {};
-    if (body.bybit) {
-      if (body.bybit.qrCode !== undefined) update['bybit.qrCode'] = body.bybit.qrCode;
-      if (body.bybit.walletAddress !== undefined) update['bybit.walletAddress'] = body.bybit.walletAddress;
-    }
-    if (body.binance) {
-      if (body.binance.qrCode !== undefined) update['binance.qrCode'] = body.binance.qrCode;
-      if (body.binance.walletAddress !== undefined) update['binance.walletAddress'] = body.binance.walletAddress;
+    for (const key of ['bybit', 'binance', 'bkash', 'nagad', 'rocket']) {
+      if (body[key]) {
+        if (body[key].qrCode !== undefined) update[`${key}.qrCode`] = body[key].qrCode;
+        if (body[key].walletAddress !== undefined) update[`${key}.walletAddress`] = body[key].walletAddress;
+        if (body[key].number !== undefined) update[`${key}.number`] = body[key].number;
+      }
     }
     const info = await AdminPaymentInfo.findOneAndUpdate(
       {},
@@ -57,10 +56,53 @@ export const paymentService = {
     return info;
   },
 
-  // ─── User Recharge Orders (User → Agent) ─────────────────────────
+  // ─── User Recharge Orders (User → Agent / Official Admin) ─────────
 
   async getAgentsForRecharge() {
-    // Agents with payment info and bound withdraw accounts, for users to pay
+    let adminInfo = await AdminPaymentInfo.findOne().lean() as any;
+    if (!adminInfo) {
+      adminInfo = await AdminPaymentInfo.create({});
+    }
+
+    // Official Nova Platform Agent (Default)
+    const officialAgent = {
+      _id: 'official',
+      uid: 'NOVA-OFFICIAL',
+      nickname: 'Nova Agent (Official)',
+      avatar: '/logo.png',
+      phone: adminInfo?.bkash?.number || adminInfo?.nagad?.number || adminInfo?.rocket?.number || '',
+      isOfficial: true,
+      bio: 'Official Nova Live Platform Payment Gateway',
+      paymentInfo: {
+        bkash: {
+          number: adminInfo?.bkash?.number || adminInfo?.bkash?.walletAddress || '',
+          walletAddress: adminInfo?.bkash?.walletAddress || adminInfo?.bkash?.number || '',
+          qrCode: adminInfo?.bkash?.qrCode || '',
+        },
+        nagad: {
+          number: adminInfo?.nagad?.number || adminInfo?.nagad?.walletAddress || '',
+          walletAddress: adminInfo?.nagad?.walletAddress || adminInfo?.nagad?.number || '',
+          qrCode: adminInfo?.nagad?.qrCode || '',
+        },
+        rocket: {
+          number: adminInfo?.rocket?.number || adminInfo?.rocket?.walletAddress || '',
+          walletAddress: adminInfo?.rocket?.walletAddress || adminInfo?.rocket?.number || '',
+          qrCode: adminInfo?.rocket?.qrCode || '',
+        },
+        binance: {
+          number: adminInfo?.binance?.walletAddress || adminInfo?.binance?.number || '',
+          walletAddress: adminInfo?.binance?.walletAddress || adminInfo?.binance?.number || '',
+          qrCode: adminInfo?.binance?.qrCode || '',
+        },
+        bybit: {
+          number: adminInfo?.bybit?.walletAddress || adminInfo?.bybit?.number || '',
+          walletAddress: adminInfo?.bybit?.walletAddress || adminInfo?.bybit?.number || '',
+          qrCode: adminInfo?.bybit?.qrCode || '',
+        },
+      },
+    };
+
+    // Certified Agents with payment info and bound withdraw accounts
     const agents = await User.find({
       role: 'agent',
     })
@@ -77,7 +119,7 @@ export const paymentService = {
       withdrawMap[uidStr].push(wa);
     }
 
-    return agents.map((agent: any) => {
+    const mappedAgents = agents.map((agent: any) => {
       const pi = agent.paymentInfo || {};
       const userWas = withdrawMap[agent._id.toString()] || [];
 
@@ -95,7 +137,7 @@ export const paymentService = {
         }
       }
 
-      // Also fallback to agent's registered phone number for mobile banking if empty
+      // Fallback to agent's registered phone number for mobile banking if empty
       if (agent.phone) {
         for (const mb of ['bkash', 'nagad', 'rocket']) {
           if (!pi[mb] || (!pi[mb].number && !pi[mb].walletAddress && !pi[mb].phone)) {
@@ -114,6 +156,8 @@ export const paymentService = {
         paymentInfo: pi,
       };
     });
+
+    return [officialAgent, ...mappedAgents];
   },
 
   // Shared: credit a confirmed recharge to the user + commission to the agent
@@ -126,17 +170,19 @@ export const paymentService = {
     const unitCount = order.diamonds > 0 ? order.diamonds : (order.coins || 0);
     const currency = order.diamonds > 0 ? 'diamond' : 'coin';
 
-    // First, verify the payer has enough inventory BEFORE crediting anyone
+    // Verify inventory only for real agency agents (not platform official agent)
     let agent: any = null;
-    if (order.agentId) {
+    if (order.agentId && !order.isOfficial) {
       agent = await User.findById(order.agentId);
-      if (agent) {
+      if (agent && agent.role === 'agent') {
         if (currency === 'diamond' && agent.diamonds < unitCount) {
           throw new AppError('Agent has insufficient diamonds to fulfill this recharge', 400);
         }
         if (currency === 'coin' && agent.coins < unitCount) {
           throw new AppError('Agent has insufficient coins to fulfill this recharge', 400);
         }
+      } else {
+        agent = null;
       }
     }
 
@@ -195,11 +241,13 @@ export const paymentService = {
     }
 
     order.status = 'confirmed';
-    order.adminNote = creditedBy === 'agent' ? 'Confirmed by agent' : 'Confirmed by admin (override)';
+    order.adminNote = order.isOfficial
+      ? 'Confirmed by admin (Official Nova Agent)'
+      : (creditedBy === 'agent' ? 'Confirmed by agent' : 'Confirmed by admin (override)');
     await order.save();
 
     await auditService.logAudit(
-      creditedBy === 'agent' ? order.agentId.toString() : creditedBy,
+      creditedBy === 'agent' ? (order.agentId?.toString() || 'agent') : creditedBy,
       'recharge_approve',
       'PurchaseOrder',
       order._id.toString(),
@@ -234,7 +282,7 @@ export const paymentService = {
     return order;
   },
 
-  async createOrder(userId: string, body: { paymentMethod: string; amountBdt: number; screenshot: string; transactionId: string; currency?: string; agentId?: string; accountNumber?: string }) {
+  async createOrder(userId: string, body: { paymentMethod: string; amountBdt: number; screenshot: string; transactionId: string; currency?: string; agentId?: string; accountNumber?: string; isOfficial?: boolean }) {
     const config = await PaymentConfig.getConfig() as any;
     const { paymentMethod, amountBdt, screenshot, transactionId, currency = 'diamond', agentId, accountNumber = '' } = body;
 
@@ -254,29 +302,42 @@ export const paymentService = {
     const user = await User.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
-    // No auto-assignment: an agent must be explicitly chosen to pay.
-    if (!agentId) {
-      throw new AppError('No agent selected. Choose an agent to pay.', 400);
+    if (currency === 'coin') {
+      throw new AppError('Recharge is only available for diamonds', 400);
     }
 
-    const agent = await User.findById(agentId);
-    if (!agent || agent.role !== 'agent') throw new AppError('Invalid agent', 400);
+    // Determine if this is an official order or for an agency agent
+    const isOfficial = agentId === 'official' || !agentId || body.isOfficial === true;
+    let targetAgentId: any = null;
 
-    // Use rechargeRate for the units (fundamental: recharge-specific rate)
-    const rate = currency === 'coin'
-      ? (config.rechargeRate || config.coinRate)
-      : (config.rechargeRate || config.diamondRate);
+    if (isOfficial) {
+      const adminUser = await User.findOne({ $or: [{ role: 'admin' }, { isAdmin: true }] });
+      targetAgentId = adminUser?._id || null;
+    } else {
+      if (!agentId || agentId === 'official') {
+        const adminUser = await User.findOne({ $or: [{ role: 'admin' }, { isAdmin: true }] });
+        targetAgentId = adminUser?._id || null;
+      } else {
+        const agent = await User.findById(agentId);
+        if (!agent || agent.role !== 'agent') throw new AppError('Invalid agent selected', 400);
+        targetAgentId = agent._id;
+      }
+    }
+
+    // Rate for diamonds: 130 diamonds per 1 BDT (130,000 diamonds = 1,000 BDT)
+    const rate = config.diamondRate || 130;
     const units = Math.floor(amountBdt * rate);
 
     // Apply recharge bonus
     let bonus = 0;
-    if (config.bonusRate > 0 && currency === 'diamond') {
+    if (config.bonusRate > 0) {
       bonus = Math.floor(units * (config.bonusRate / 100));
     }
 
     const order = await PurchaseOrder.create({
       userId,
-      agentId,
+      agentId: targetAgentId,
+      isOfficial,
       paymentMethod,
       amountBdt,
       diamonds: currency === 'diamond' ? units + bonus : 0,
@@ -287,27 +348,57 @@ export const paymentService = {
       status: 'pending',
     });
 
-    await notificationService.createNotification(
-      agentId,
-      'recharge',
-      'New recharge request',
-      `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
-      { orderId: order._id, type: 'recharge', amountBdt, currency }
-    );
+    if (isOfficial) {
+      // Direct to admin portal: notify admins & broadcast socket event
+      const admins = await User.find({ $or: [{ role: 'admin' }, { isAdmin: true }] }).select('_id');
+      for (const a of admins) {
+        await notificationService.createNotification(
+          a._id.toString(),
+          'recharge',
+          'New Official Recharge Request',
+          `${user.nickname} submitted an official recharge request of ৳${amountBdt} via ${paymentMethod}`,
+          { orderId: order._id, type: 'recharge', amountBdt, currency, isOfficial: true }
+        );
+      }
 
-    try {
-      getIO()?.to(`user:${agentId}`).emit('agent:request:new', {
-        type: 'recharge',
-        orderId: order._id,
-        user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid },
-        amountBdt,
-        currency,
-        paymentMethod,
-        diamonds: order.diamonds,
-        coins: order.coins,
-      });
-    } catch {
-      // socket offline
+      try {
+        const { getIO } = await import('../socket');
+        getIO()?.to('admin').emit('admin:order:new', {
+          type: 'recharge',
+          orderId: order._id,
+          user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid, phone: user.phone },
+          amountBdt,
+          currency,
+          paymentMethod,
+          diamonds: order.diamonds,
+          isOfficial: true,
+        });
+      } catch {}
+    } else if (targetAgentId) {
+      // Sent to specific agency agent
+      await notificationService.createNotification(
+        targetAgentId.toString(),
+        'recharge',
+        'New recharge request',
+        `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
+        { orderId: order._id, type: 'recharge', amountBdt, currency }
+      );
+
+      try {
+        const { getIO } = await import('../socket');
+        getIO()?.to(`user:${targetAgentId}`).emit('agent:request:new', {
+          type: 'recharge',
+          orderId: order._id,
+          user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid },
+          amountBdt,
+          currency,
+          paymentMethod,
+          diamonds: order.diamonds,
+          coins: order.coins,
+        });
+      } catch {
+        // socket offline
+      }
     }
 
     return order;
@@ -323,18 +414,70 @@ export const paymentService = {
     return { data: orders, total };
   },
 
-  async getAllPurchaseOrders(query: { status?: string; page: number; limit: number }) {
+  async getAllPurchaseOrders(query: { status?: string; type?: string; search?: string; page: number; limit: number }) {
     const filter: any = {};
     if (query.status) filter.status = query.status;
 
-    const total = await PurchaseOrder.countDocuments(filter);
-    const orders = await PurchaseOrder.find(filter)
-      .populate('userId', 'uid nickname avatar')
-      .populate('agentId', 'uid nickname')
-      .sort({ createdAt: -1 })
-      .skip((query.page - 1) * query.limit)
-      .limit(query.limit);
-    return { data: orders, total };
+    if (query.type === 'official') {
+      filter.$or = [{ isOfficial: true }, { agentId: null }];
+    } else if (query.type === 'agent') {
+      filter.isOfficial = { $ne: true };
+      filter.agentId = { $ne: null };
+    }
+
+    if (query.search && query.search.trim()) {
+      const term = query.search.trim();
+      const matchingUsers = await User.find({
+        $or: [
+          { uid: { $regex: term, $options: 'i' } },
+          { nickname: { $regex: term, $options: 'i' } },
+          { phone: { $regex: term, $options: 'i' } },
+        ],
+      }).select('_id');
+
+      const userIds = matchingUsers.map((u: any) => u._id);
+
+      const searchConditions: any[] = [
+        { transactionId: { $regex: term, $options: 'i' } },
+        { accountNumber: { $regex: term, $options: 'i' } },
+      ];
+      if (userIds.length > 0) {
+        searchConditions.push({ userId: { $in: userIds } });
+        searchConditions.push({ agentId: { $in: userIds } });
+      }
+
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchConditions }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchConditions;
+      }
+    }
+
+    const [total, orders, pendingCount, officialPendingCount, confirmedSummary] = await Promise.all([
+      PurchaseOrder.countDocuments(filter),
+      PurchaseOrder.find(filter)
+        .populate('userId', 'uid nickname avatar phone')
+        .populate('agentId', 'uid nickname avatar phone')
+        .sort({ createdAt: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit),
+      PurchaseOrder.countDocuments({ status: 'pending' }),
+      PurchaseOrder.countDocuments({ status: 'pending', isOfficial: true }),
+      PurchaseOrder.aggregate([
+        { $match: { status: 'confirmed' } },
+        { $group: { _id: null, totalBdt: { $sum: '$amountBdt' }, totalDiamonds: { $sum: '$diamonds' } } },
+      ]),
+    ]);
+
+    const stats = {
+      pendingCount,
+      officialPendingCount,
+      totalConfirmedBdt: confirmedSummary[0]?.totalBdt || 0,
+      totalConfirmedDiamonds: confirmedSummary[0]?.totalDiamonds || 0,
+    };
+
+    return { data: orders, total, stats };
   },
 
   // Admin override — confirm any pending order
@@ -491,16 +634,19 @@ export const paymentService = {
     }
     if (!accountNumber) throw new AppError('Account number / address is required', 400);
 
+    if (currency === 'diamond') {
+      throw new AppError('Withdrawals are only available for coins', 400);
+    }
+
     // Verify sufficient balance
-    if (currency === 'diamond' && user.diamonds < amount) throw new AppError('Insufficient diamonds', 400);
-    if (currency === 'coin' && user.coins < amount) throw new AppError('Insufficient coins', 400);
+    if (user.coins < amount) throw new AppError('Insufficient coins', 400);
 
     const { Agency } = await import('../models');
     const agency = await Agency.findById(user.agencyId);
     if (!agency) throw new AppError('Linked agency not found', 404);
     const agentId = agency.agentId.toString();
 
-    const rate = config.withdrawalRate || (currency === 'coin' ? config.coinRate : config.diamondRate);
+    const rate = config.withdrawalRate || config.coinRate || 1;
     const amountBdt = Math.floor(amount / rate);
 
     // Apply service charge (percent of BDT value)

@@ -47,7 +47,10 @@ router.get('/agents', authenticate, requireAdmin, adminController.getAgents);
 router.post('/agents', authenticate, requireAdmin, adminController.createAgent);
 router.put('/agencies/:id', authenticate, requireAdmin, adminController.updateAgency);
 
-// Purchase order management (supervision — agent handles day-to-day)
+// Purchase order management (supervision & direct official orders)
+router.get('/orders', authenticate, requireAdmin, adminController.getPurchaseOrders);
+router.put('/orders/:id/confirm', authenticate, requireAdmin, adminController.confirmOrder);
+router.put('/orders/:id/reject', authenticate, requireAdmin, adminController.rejectOrder);
 router.get('/purchase-orders', authenticate, requireAdmin, adminController.getPurchaseOrders);
 router.put('/purchase-orders/:id/confirm', authenticate, requireAdmin, adminController.confirmOrder);
 router.put('/purchase-orders/:id/reject', authenticate, requireAdmin, adminController.rejectOrder);

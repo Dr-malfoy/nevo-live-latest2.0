@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from './stores/adminAuth';
 import { Sidebar } from './components/Sidebar';
 import { adminApi } from './api';
-import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords, HostApplications } from './pages';
+import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, Orders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords, HostApplications } from './pages';
 
 const AdminLayout = () => {
   const { logout } = useAdminAuth();
@@ -11,9 +11,13 @@ const AdminLayout = () => {
   const [pendingVerifications, setPendingVerifications] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
   const [pendingHostApplications, setPendingHostApplications] = useState(0);
+  const [pendingOrders, setPendingOrders] = useState(0);
 
   useEffect(() => {
     const load = () => {
+      adminApi.getOrders({ status: 'pending', limit: 1 }).then(({ data }) => {
+        if (data.success) setPendingOrders(data.pagination?.total || data.stats?.pendingCount || 0);
+      }).catch(() => {});
       adminApi.getModerationReports({ status: 'pending', limit: 1 }).then(({ data }) => {
         if (data.success) setComplaintsCount(data.pagination?.total || 0);
       }).catch(() => {});
@@ -40,6 +44,7 @@ const AdminLayout = () => {
         pendingVerifications={pendingVerifications}
         pendingTickets={pendingTickets}
         pendingHostApplications={pendingHostApplications}
+        pendingOrders={pendingOrders}
       />
       <main className="flex-1 p-6 overflow-y-auto">
         <Outlet />
@@ -69,7 +74,8 @@ export default function App() {
           <Route path="gifts" element={<Gifts />} />
           <Route path="badges" element={<Badges />} />
           <Route path="agents" element={<Agents />} />
-          <Route path="purchase-orders" element={<PurchaseOrders />} />
+          <Route path="orders" element={<Orders />} />
+          <Route path="purchase-orders" element={<Orders />} />
           <Route path="payment-config" element={<PaymentConfig />} />
           <Route path="reward-config" element={<RewardConfig />} />
           <Route path="payment-info" element={<AdminPaymentInfo />} />

@@ -75,6 +75,7 @@ import {
   Bag,
   AgentRequests,
   HostApplicationPage,
+  CoinValuation,
 } from './pages';
 
 import { PrivacyPolicy, Guidelines, Terms, AboutUs } from './pages/legal/LegalPage';
@@ -485,6 +486,18 @@ export default function App() {
             <Route
               path="/wallet"
               element={<ProtectedRoute><Wallet /></ProtectedRoute>}
+            />
+            <Route
+              path="/coin-valuation"
+              element={<ProtectedRoute><CoinValuation /></ProtectedRoute>}
+            />
+            <Route
+              path="/wallet/coin-valuation"
+              element={<ProtectedRoute><CoinValuation /></ProtectedRoute>}
+            />
+            <Route
+              path="/wallet/valuation"
+              element={<ProtectedRoute><CoinValuation /></ProtectedRoute>}
             />
             <Route
               path="/settings"

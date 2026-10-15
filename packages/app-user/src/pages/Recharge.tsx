@@ -13,6 +13,7 @@ import {
   PiHeadsetBold as Headset,
   PiWalletFill,
   PiQrCodeFill,
+  PiMagnifyingGlassBold,
 } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
@@ -100,18 +101,19 @@ export const Recharge = () => {
     bkashEnabled: true,
     nagadEnabled: true,
     rocketEnabled: true,
-    diamondRate: 1,
+    diamondRate: 130,
     coinRate: 1,
-    rechargeRate: 1,
+    rechargeRate: 130,
     bonusRate: 0,
   });
   const [customMethods, setCustomMethods] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>('');
+  const [selectedAgent, setSelectedAgent] = useState<string>('official');
+  const [agentSearch, setAgentSearch] = useState<string>('');
   const [isAgentDropdownOpen, setIsAgentDropdownOpen] = useState<boolean>(false);
   const [linkedAgentId, setLinkedAgentId] = useState<string>('');
   const [linkedAgentInfo, setLinkedAgentInfo] = useState<any>(null);
-  const [currency, setCurrency] = useState<'diamond' | 'coin'>('diamond');
+  const [currency] = useState<'diamond'>('diamond');
   const [paymentMethod, setPaymentMethod] = useState<string>('bkash');
   const [amountBdt, setAmountBdt] = useState('500');
   const [accountNumber, setAccountNumber] = useState('');
@@ -136,13 +138,22 @@ export const Recharge = () => {
       .then(([m, cm, a, o]: any) => {
         if (m?.data?.success) setMethods(m.data.data);
         if (cm?.data?.success) setCustomMethods(cm.data.data);
-        if (a?.data?.success) setAgents(a.data.data || []);
+        if (a?.data?.success) {
+          const list = a.data.data || [];
+          setAgents(list);
+          const official = list.find((ag: any) => ag.isOfficial || ag._id === 'official');
+          if (official) {
+            setSelectedAgent(official._id);
+          } else if (list.length > 0) {
+            setSelectedAgent(list[0]._id);
+          }
+        }
         if (o?.data?.success) setOrders(o.data.data || []);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  // Default selection to user's linked agent
+  // Fetch linked agent info for badge, but keep Nova Agent (Official) as the default selection
   useEffect(() => {
     let cancelled = false;
     agencyApi
@@ -156,7 +167,6 @@ export const Recharge = () => {
             const full = agents.find((a: any) => a._id === agentId);
             setLinkedAgentInfo(full ? full : { ...(agent || {}), _id: agentId, paymentInfo: {} });
             setLinkedAgentId(agentId);
-            setSelectedAgent(agentId);
             if (d.data._id && user?.agencyId !== d.data._id.toString()) {
               updateUser({ agencyId: d.data._id.toString() });
             }
@@ -164,7 +174,6 @@ export const Recharge = () => {
         } else if (d?.success) {
           setLinkedAgentId('');
           setLinkedAgentInfo(null);
-          setSelectedAgent('');
         }
       })
       .catch(() => {});
@@ -233,6 +242,7 @@ export const Recharge = () => {
         currency,
         agentId: selectedAgent,
         accountNumber: accountNumber || undefined,
+        isOfficial: selectedAgentInfo?.isOfficial || selectedAgent === 'official',
       });
       setSuccess(true);
       setAmountBdt('');
@@ -248,24 +258,49 @@ export const Recharge = () => {
     }
   };
 
-  // Match calculation: rechargeRate for units, bonusRate % bonus on diamonds
-  const rate =
-    currency === 'diamond'
-      ? methods.rechargeRate || methods.diamondRate || 1
-      : methods.rechargeRate || methods.coinRate || 1;
+  // Diamond recharge calculation: diamondRate (130 diamonds per 1 BDT, 130,000 for 1,000 BDT)
+  const rate = methods.diamondRate || 130;
   const parsedAmount = parseInt(amountBdt) || 0;
   const units = Math.floor(parsedAmount * rate);
   const bonus =
-    currency === 'diamond' && methods.bonusRate > 0
+    methods.bonusRate > 0
       ? Math.floor(units * (methods.bonusRate / 100))
       : 0;
   const totalUnits = units + bonus;
 
-  const payableAgents = linkedAgentInfo
-    ? [linkedAgentInfo, ...agents.filter((a: any) => a._id !== linkedAgentInfo._id)]
-    : agents;
+  // Pre-seed official agent if not loaded yet
+  const defaultOfficialAgent = {
+    _id: 'official',
+    uid: 'NOVA-OFFICIAL',
+    nickname: 'Nova Agent (Official)',
+    isOfficial: true,
+    bio: 'Official Nova Live Platform Payment Gateway',
+    paymentInfo: {},
+  };
+
+  const officialInList = agents.find((a: any) => a.isOfficial || a._id === 'official');
+  const baseOfficial = officialInList || defaultOfficialAgent;
+  const nonOfficialAgents = agents.filter((a: any) => a._id !== 'official' && !a.isOfficial);
+
+  // Payable agents order: Nova Agent (Official) ALWAYS first, then linked agent, then other agents
+  const payableAgents = [
+    baseOfficial,
+    ...(linkedAgentId && linkedAgentInfo && linkedAgentId !== 'official'
+      ? [linkedAgentInfo, ...nonOfficialAgents.filter((a: any) => a._id !== linkedAgentId)]
+      : nonOfficialAgents),
+  ];
+
   const selectedAgentInfo =
-    payableAgents.find((a: any) => a._id === selectedAgent) || linkedAgentInfo;
+    payableAgents.find((a: any) => a._id === selectedAgent) || baseOfficial;
+
+  const filteredAgents = payableAgents.filter((a: any) => {
+    if (!agentSearch.trim()) return true;
+    const q = agentSearch.toLowerCase().trim();
+    const nameMatch = a.nickname?.toLowerCase()?.includes(q);
+    const uidMatch = a.uid?.toString()?.toLowerCase()?.includes(q);
+    const phoneMatch = a.phone?.toString()?.toLowerCase()?.includes(q);
+    return nameMatch || uidMatch || phoneMatch;
+  });
 
   // Agent payment details based on method
   const agentPaymentDetails = (() => {
@@ -370,7 +405,7 @@ export const Recharge = () => {
           </div>
           <h2 className="text-2xl font-black text-slate-900 mb-2">Order Submitted!</h2>
           <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-            Your recharge order has been sent to the agent. Once verified, your {currency === 'diamond' ? 'Diamonds' : 'Coins'} will be credited immediately.
+            Your recharge order has been sent to the agent. Once verified, your Diamonds will be credited immediately.
           </p>
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm mb-6 text-left space-y-2.5">
@@ -405,67 +440,42 @@ export const Recharge = () => {
         </div>
       ) : (
         <div className="max-w-lg mx-auto p-4 space-y-5">
-          {/* ── 1. Currency Selection (Diamonds vs Coins) ──────────── */}
+          {/* ── 1. Currency (Diamonds Only) ────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 1. Select Currency
               </label>
-              {methods.bonusRate > 0 && currency === 'diamond' && (
+              {methods.bonusRate > 0 && (
                 <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <Lightning className="w-3 h-3 text-emerald-500" /> +{methods.bonusRate}% Extra Bonus
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               {/* Diamonds Card */}
-              <button
-                type="button"
-                onClick={() => setCurrency('diamond')}
-                className={`relative p-3.5 rounded-2xl border-2 transition-all flex flex-col text-left ${
-                  currency === 'diamond'
-                    ? 'border-cyan-500 bg-white shadow-md shadow-cyan-500/10 ring-2 ring-cyan-500/20'
-                    : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
+              <div
+                className="relative p-3.5 rounded-2xl border-2 border-cyan-500 bg-white shadow-md shadow-cyan-500/10 ring-2 ring-cyan-500/20 flex items-center justify-between"
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="w-9 h-9 rounded-xl bg-cyan-50 flex items-center justify-center border border-cyan-100">
-                    <DiamondIcon className="w-5 h-5 text-cyan-500" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center border border-cyan-100">
+                    <DiamondIcon className="w-6 h-6 text-cyan-500" />
                   </div>
-                  {currency === 'diamond' && (
-                    <span className="w-5 h-5 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs shadow-sm">
-                      <CheckIcon className="w-3 h-3" />
-                    </span>
-                  )}
-                </div>
-                <span className="font-bold text-slate-900 text-sm">Diamonds</span>
-                <span className="text-[11px] text-slate-500 font-medium">Gifting & VIP Features</span>
-              </button>
-
-              {/* Coins Card */}
-              <button
-                type="button"
-                onClick={() => setCurrency('coin')}
-                className={`relative p-3.5 rounded-2xl border-2 transition-all flex flex-col text-left ${
-                  currency === 'coin'
-                    ? 'border-amber-500 bg-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/20'
-                    : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-100">
-                    <CoinIcon className="w-5 h-5 text-amber-500" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">Diamonds</span>
+                      <span className="text-[10px] font-bold bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-full">
+                        Rate: 130,000 💎 = ৳1,000 BDT
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">Recharge is exclusively for Diamonds (Gifting & VIP Features)</span>
                   </div>
-                  {currency === 'coin' && (
-                    <span className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs shadow-sm">
-                      <CheckIcon className="w-3 h-3" />
-                    </span>
-                  )}
                 </div>
-                <span className="font-bold text-slate-900 text-sm">Coins</span>
-                <span className="text-[11px] text-slate-500 font-medium">Games & Trade</span>
-              </button>
+                <span className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs shadow-sm">
+                  <CheckIcon className="w-3.5 h-3.5" />
+                </span>
+              </div>
             </div>
           </div>
 
@@ -541,7 +551,7 @@ export const Recharge = () => {
                         isSelected ? 'text-slate-300' : 'text-slate-500'
                       }`}
                     >
-                      {currency === 'diamond' ? <DiamondIcon className="w-3 h-3 text-cyan-400" /> : <CoinIcon className="w-3 h-3 text-amber-400" />}
+                      <DiamondIcon className="w-3 h-3 text-cyan-400" />
                       {previewUnits.toLocaleString()}
                     </p>
                   </button>
@@ -570,9 +580,9 @@ export const Recharge = () => {
                 <div>
                   <p className="text-[11px] text-slate-300 font-medium">You will receive</p>
                   <p className="text-lg font-black flex items-center gap-1.5 text-white">
-                    {currency === 'diamond' ? <DiamondIcon className="w-5 h-5 text-cyan-400" /> : <CoinIcon className="w-5 h-5 text-amber-400" />}
+                    <DiamondIcon className="w-5 h-5 text-cyan-400" />
                     {totalUnits.toLocaleString()}{' '}
-                    <span className="text-xs font-semibold text-slate-300 capitalize">{currency}s</span>
+                    <span className="text-xs font-semibold text-slate-300">Diamonds</span>
                   </p>
                   {bonus > 0 && (
                     <p className="text-[11px] text-emerald-400 font-medium mt-0.5">
@@ -582,107 +592,196 @@ export const Recharge = () => {
                 </div>
                 <div className="text-right border-l border-slate-700/80 pl-3">
                   <p className="text-[10px] text-slate-400">Exchange Rate</p>
-                  <p className="text-xs font-bold text-slate-200">1 BDT = {rate} {currency}</p>
+                  <p className="text-xs font-bold text-slate-200">1 BDT = {rate} 💎</p>
+                  <p className="text-[10px] text-slate-400">(1,000 BDT = 130,000 💎)</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* ── 4. Agent Selector ──────────────────────────────────── */}
+          {/* ── 4. Agent Selector with Search ─────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                4. Select Official Agent
+                4. Select Agent
               </label>
-              {linkedAgentId && selectedAgent === linkedAgentId && (
+              {selectedAgentInfo?.isOfficial || selectedAgent === 'official' ? (
+                <span className="text-[11px] font-bold text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-cyan-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" /> Default Official Agent
+                </span>
+              ) : linkedAgentId && selectedAgent === linkedAgentId ? (
                 <span className="text-[11px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full flex items-center gap-1 border border-sky-200">
                   <Link2 className="w-3 h-3" /> Linked Agent
                 </span>
-              )}
+              ) : null}
             </div>
 
-            {payableAgents.length === 0 ? (
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 text-center">
-                <p className="text-sm text-slate-500 font-medium">No agents available right now. Please try again later.</p>
-              </div>
-            ) : (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsAgentDropdownOpen(!isAgentDropdownOpen)}
-                  className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-900 flex items-center justify-between shadow-sm hover:border-slate-300 transition-all focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-bold text-xs flex items-center justify-center shadow-sm">
-                      {selectedAgentInfo?.nickname?.charAt(0)?.toUpperCase() || 'A'}
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-slate-900 text-xs">
-                        {selectedAgentInfo?.nickname || 'Choose an agent'}
-                      </p>
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        UID: {selectedAgentInfo?.uid || '—'}
-                      </p>
-                    </div>
-                  </div>
-                  <CaretDown
-                    className={`w-4 h-4 text-slate-500 transition-transform ${
-                      isAgentDropdownOpen ? 'rotate-180' : ''
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsAgentDropdownOpen(!isAgentDropdownOpen)}
+                className={`w-full bg-white border rounded-2xl px-4 py-3 text-sm font-semibold text-slate-900 flex items-center justify-between shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                  selectedAgentInfo?.isOfficial || selectedAgent === 'official'
+                    ? 'border-cyan-400 ring-1 ring-cyan-400/30'
+                    : 'border-slate-200 hover:border-slate-300 focus:ring-slate-900/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-full text-white font-bold text-xs flex items-center justify-center shadow-sm ${
+                      selectedAgentInfo?.isOfficial || selectedAgent === 'official'
+                        ? 'bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600'
+                        : 'bg-gradient-to-tr from-indigo-500 to-purple-500'
                     }`}
-                  />
-                </button>
-
-                {isAgentDropdownOpen && (
-                  <div className="absolute z-20 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                    {payableAgents.map((a: any) => {
-                      const isLinked = linkedAgentId === a._id;
-                      const isCurrent = selectedAgent === a._id;
-                      return (
-                        <button
-                          key={a._id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedAgent(a._id);
-                            setIsAgentDropdownOpen(false);
-                          }}
-                          className={`w-full text-left p-3.5 flex items-center justify-between transition-colors ${
-                            isCurrent ? 'bg-slate-50 font-bold' : 'hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center">
-                              {a.nickname?.charAt(0)?.toUpperCase() || 'A'}
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-slate-900">{a.nickname}</p>
-                              <p className="text-[10px] text-slate-400">UID: {a.uid}</p>
-                            </div>
-                          </div>
-                          {isLinked && (
-                            <span className="text-[10px] font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">
-                              Linked
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                  >
+                    {selectedAgentInfo?.isOfficial || selectedAgent === 'official' ? (
+                      <ShieldCheck className="w-5 h-5" />
+                    ) : (
+                      selectedAgentInfo?.nickname?.charAt(0)?.toUpperCase() || 'A'
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-slate-900 text-xs">
+                        {selectedAgentInfo?.nickname || 'Nova Agent (Official)'}
+                      </p>
+                      {(selectedAgentInfo?.isOfficial || selectedAgent === 'official') && (
+                        <span className="text-[9px] font-black bg-cyan-100 text-cyan-800 px-1.5 py-0.5 rounded-full border border-cyan-200 uppercase">
+                          Official
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-mono">
+                      UID: {selectedAgentInfo?.uid || 'NOVA-OFFICIAL'}
+                    </p>
+                  </div>
+                </div>
+                <CaretDown
+                  className={`w-4 h-4 text-slate-500 transition-transform ${
+                    isAgentDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {isAgentDropdownOpen && (
+                <div className="absolute z-30 top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-72 flex flex-col overflow-hidden">
+                  {/* Search Input Box */}
+                  <div className="p-2.5 bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <PiMagnifyingGlassBold className="w-3.5 h-3.5" />
+                      </div>
+                      <input
+                        type="text"
+                        value={agentSearch}
+                        onChange={(e) => setAgentSearch(e.target.value)}
+                        placeholder="Search agent by name or UID..."
+                        className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                        autoFocus
+                      />
+                      {agentSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setAgentSearch('')}
+                          className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Agents Scrollable List */}
+                  <div className="overflow-y-auto divide-y divide-slate-100 flex-1">
+                    {filteredAgents.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400 font-medium">
+                        No agent found matching "{agentSearch}"
+                      </div>
+                    ) : (
+                      filteredAgents.map((a: any) => {
+                        const isOfficial = a.isOfficial || a._id === 'official';
+                        const isLinked = linkedAgentId === a._id;
+                        const isCurrent = selectedAgent === a._id;
+                        return (
+                          <button
+                            key={a._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAgent(a._id);
+                              setIsAgentDropdownOpen(false);
+                              setAgentSearch('');
+                            }}
+                            className={`w-full text-left p-3.5 flex items-center justify-between transition-colors ${
+                              isCurrent ? 'bg-cyan-50/60 font-bold' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className={`w-8 h-8 rounded-full text-white font-bold text-xs flex items-center justify-center shadow-sm ${
+                                  isOfficial
+                                    ? 'bg-gradient-to-tr from-cyan-500 to-blue-600'
+                                    : 'bg-slate-700'
+                                }`}
+                              >
+                                {isOfficial ? (
+                                  <ShieldCheck className="w-4 h-4" />
+                                ) : (
+                                  a.nickname?.charAt(0)?.toUpperCase() || 'A'
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-bold text-slate-900">{a.nickname}</p>
+                                  {isOfficial && (
+                                    <span className="text-[9px] font-extrabold bg-cyan-100 text-cyan-800 px-1.5 py-0.2 rounded-full border border-cyan-200">
+                                      Official
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-mono">UID: {a.uid}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {isLinked && (
+                                <span className="text-[10px] font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">
+                                  Linked
+                                </span>
+                              )}
+                              {isCurrent && (
+                                <span className="w-5 h-5 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xs shadow-sm">
+                                  <CheckIcon className="w-3 h-3" />
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ── 5. Agent Payment Details (QR + Account / Wallet) ─── */}
+          {/* ── 5. Payment Details (Official or Selected Agent) ─── */}
           {selectedAgentInfo && (
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
                   <PiQrCodeFill className="w-4 h-4 text-slate-600" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Pay To Agent: <span className="text-slate-900">{selectedAgentInfo.nickname}</span>
+                    Pay To:{' '}
+                    <span className="text-slate-900">{selectedAgentInfo.nickname}</span>
                   </h3>
                 </div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase">{paymentMethod}</span>
+                <div className="flex items-center gap-1.5">
+                  {(selectedAgentInfo.isOfficial || selectedAgent === 'official') && (
+                    <span className="text-[10px] font-bold bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-full border border-cyan-200">
+                      Direct to Admin
+                    </span>
+                  )}
+                  <span className="text-[11px] font-bold text-slate-500 uppercase">{paymentMethod}</span>
+                </div>
               </div>
 
               {agentQrCode && (
@@ -906,7 +1005,7 @@ export const Recharge = () => {
                         </p>
                         <p className="text-[10px] text-slate-400 capitalize mt-0.5">
                           {o.paymentMethod} •{' '}
-                          {typeof o.agentId === 'object' ? o.agentId?.nickname : 'Agent'} •{' '}
+                          {o.isOfficial || !o.agentId ? 'Nova Agent (Official)' : (typeof o.agentId === 'object' ? o.agentId?.nickname || 'Agent' : 'Agent')} •{' '}
                           {new Date(o.createdAt).toLocaleDateString()}
                         </p>
                       </div>

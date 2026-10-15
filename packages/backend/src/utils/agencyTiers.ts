@@ -173,7 +173,7 @@ export function calculateGiftCoinDistribution(
   const hostCoins = Math.floor(totalCostDiamonds * 0.70);
 
   if (!agency || agency.isBanned) {
-    const adminCoins = totalCostDiamonds - hostCoins;
+    const adminCoins = Math.max(0, totalCostDiamonds - hostCoins);
     return {
       hostCoins,
       agencyCoins: 0,
@@ -186,15 +186,27 @@ export function calculateGiftCoinDistribution(
     };
   }
 
-  // Calculate dynamic commission percentage based on agency level
+  // Calculate dynamic commission percentage based on agency level or custom commission
   const agencyLevel = agency.level || 1;
-  const agencyPercent = getAgencyCommissionByLevel(agencyLevel);
+  const agencyPercent = typeof agency.commission === 'number' && agency.commission > 0
+    ? agency.commission
+    : getAgencyCommissionByLevel(agencyLevel);
   const agencyShareRate = agencyPercent / 100;
   const adminShareRate = Math.max(0, 0.30 - agencyShareRate);
 
-  const agencyCoins = Math.floor(totalCostDiamonds * agencyShareRate);
+  const rawAgencyCoins = totalCostDiamonds * agencyShareRate;
+  let agencyCoins = Math.round(rawAgencyCoins);
+  // Ensure at least 1 coin if gift has diamond cost and agency rate > 0
+  if (agencyCoins === 0 && rawAgencyCoins > 0) {
+    agencyCoins = 1;
+  }
+  // Host + agency cannot exceed totalCostDiamonds
+  if (hostCoins + agencyCoins > totalCostDiamonds) {
+    agencyCoins = Math.max(0, totalCostDiamonds - hostCoins);
+  }
+
   // Admin receives exact remaining balance to prevent rounding leak
-  const adminCoins = totalCostDiamonds - hostCoins - agencyCoins;
+  const adminCoins = Math.max(0, totalCostDiamonds - hostCoins - agencyCoins);
 
   const tierConfig = resolveAgencyTier(agency);
 

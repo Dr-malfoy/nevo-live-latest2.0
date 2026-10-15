@@ -53,10 +53,30 @@ export const giftService = {
     // Resolve agency & agent if receiver is associated with an agency
     let agency: any = null;
     let agentUser: any = null;
+
     if (receiver.agencyId) {
-      agency = await Agency.findById(receiver.agencyId);
-      if (agency && !agency.isBanned && agency.agentId) {
-        agentUser = await User.findById(agency.agentId);
+      agency = await Agency.findOne({ _id: receiver.agencyId, isBanned: { $ne: true } });
+    }
+    if (!agency) {
+      agency = await Agency.findOne({ hosts: receiver._id, isBanned: { $ne: true } });
+    }
+    if (!agency) {
+      agency = await Agency.findOne({ agentId: receiver._id, isBanned: { $ne: true } });
+    }
+
+    if (agency && agency.agentId) {
+      agentUser = await User.findById(agency.agentId);
+      // Auto-link agencyId on receiver and ensure receiver._id is in agency.hosts
+      if (!receiver.agencyId) {
+        await User.updateOne({ _id: receiver._id }, { $set: { agencyId: agency._id } });
+        receiver.agencyId = agency._id;
+      }
+      if (agency.hosts && !agency.hosts.some((h: any) => h.toString() === receiver._id.toString())) {
+        await Agency.updateOne({ _id: agency._id }, { $addToSet: { hosts: receiver._id } });
+      }
+      if (agentUser && !agentUser.isAgent) {
+        await User.updateOne({ _id: agentUser._id }, { $set: { isAgent: true, role: 'agent' } });
+        agentUser.isAgent = true;
       }
     }
 
@@ -95,6 +115,9 @@ export const giftService = {
       if (updatedAgent) {
         updatedAgentCoins = updatedAgent.coins;
         agentUser.coins = updatedAgent.coins;
+        if (receiverId.toString() === agentUser._id.toString()) {
+          receiver.coins = updatedAgent.coins;
+        }
       }
     }
 
@@ -184,13 +207,15 @@ export const giftService = {
     // Push real-time balance updates to parties (per-user socket rooms)
     try {
       const io = getIO();
+      const isSelfAgent = agentUser && receiverId.toString() === agentUser._id.toString();
+
       // Receiver (Host) balance update
       io.to(`user:${receiverId}`).emit('balance:update', {
         coins: receiver.coins,
         diamonds: receiver.diamonds,
         wealthExp: receiver.wealthExp,
         wealthLevel: receiver.wealthLevel,
-        deltaCoins: hostCoins,
+        deltaCoins: isSelfAgent ? hostCoins + agencyCoins : hostCoins,
       });
 
       // Sender balance update
@@ -201,8 +226,8 @@ export const giftService = {
         wealthLevel: sender.wealthLevel,
       });
 
-      // Agency Agent balance update
-      if (agentUser && agencyCoins > 0) {
+      // Agency Agent balance update (when distinct from host)
+      if (agentUser && agencyCoins > 0 && !isSelfAgent) {
         io.to(`user:${agentUser._id}`).emit('balance:update', {
           coins: updatedAgentCoins,
           diamonds: agentUser.diamonds,
@@ -224,11 +249,14 @@ export const giftService = {
       );
 
       if (agentUser && agencyCoins > 0) {
+        const isSelfAgent = receiverId.toString() === agentUser._id.toString();
         await notificationService.createNotification(
           agentUser._id.toString(),
           'system',
           'Agency Commission Received',
-          `Your agency earned ${agencyCoins} coins (${(agencyShareRate * 100).toFixed(0)}% tier commission) from ${receiver.nickname}'s gift`,
+          isSelfAgent
+            ? `You earned ${agencyCoins} Coins (${(agencyShareRate * 100).toFixed(0)}% agency commission) from your stream gift!`
+            : `Your agency earned ${agencyCoins} Coins (${(agencyShareRate * 100).toFixed(0)}% commission) from ${sender.nickname}'s gift to host ${receiver.nickname}`,
           { giftId: gift._id, quantity, agencyCoins, hostId: receiverId }
         );
       }

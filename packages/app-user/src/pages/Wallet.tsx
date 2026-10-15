@@ -193,20 +193,30 @@ export const Wallet = () => {
           </div>
 
           {/* Coins Balance Card */}
-          <div className="relative overflow-hidden bg-white border border-amber-200/80 rounded-2xl p-4 shadow-sm">
-            <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-amber-100/40 rounded-full blur-xl pointer-events-none" />
+          <div
+            onClick={() => navigate('/coin-valuation')}
+            className="relative overflow-hidden bg-white border border-amber-200/80 hover:border-amber-400 rounded-2xl p-4 shadow-sm cursor-pointer active:scale-[0.98] transition-all group"
+            title="Click to view Coins Valuation (130 Coins = 1 BDT)"
+          >
+            <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-amber-100/40 rounded-full blur-xl pointer-events-none group-hover:scale-110 transition-transform" />
             <div className="flex items-center justify-between mb-2">
               <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shadow-xs">
                 <CoinIcon className="w-5 h-5 text-amber-500" />
               </div>
-              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 group-hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-0.5 transition-colors">
                 Earnings
+                <ChevronRight className="w-2.5 h-2.5 inline" />
               </span>
             </div>
             <p className="text-2xl font-black text-slate-900 tabular-nums tracking-tight">
               {user?.coins?.toLocaleString() || 0}
             </p>
-            <p className="text-xs font-semibold text-slate-500 mt-0.5">Coins Balance</p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-xs font-semibold text-slate-500">Coins Balance</p>
+              <span className="text-[11px] font-bold text-amber-600 group-hover:translate-x-0.5 transition-transform flex items-center">
+                Valuation →
+              </span>
+            </div>
           </div>
         </div>
 

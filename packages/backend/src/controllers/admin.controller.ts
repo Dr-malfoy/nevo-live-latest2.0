@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage } from '../models';
+import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage, PurchaseOrder } from '../models';
 
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
@@ -21,6 +21,8 @@ export const adminController = {
         wallet,
         pendingWithdrawals,
         pendingAgentOrders,
+        pendingOrders,
+        pendingOfficialOrders,
         pendingTickets,
         recentTickets,
       ] = await Promise.all([
@@ -32,6 +34,8 @@ export const adminController = {
         PlatformWallet.getWallet(),
         WithdrawalRequest.countDocuments({ status: 'pending' }),
         AgentPurchaseOrder.countDocuments({ status: 'pending' }),
+        PurchaseOrder.countDocuments({ status: 'pending' }),
+        PurchaseOrder.countDocuments({ status: 'pending', isOfficial: true }),
         ContactMessage.countDocuments({ status: { $in: ['pending', 'in_progress'] } }),
         ContactMessage.find()
           .populate('userId', 'uid nickname avatar phone')
@@ -48,6 +52,8 @@ export const adminController = {
         pendingTransactions,
         pendingWithdrawals,
         pendingAgentOrders,
+        pendingOrders,
+        pendingOfficialOrders,
         pendingTickets,
         recentTickets,
         diamondInventory: wallet?.diamonds || 0,
@@ -400,8 +406,10 @@ export const adminController = {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const status = req.query.status as string;
-      const { data, total } = await paymentService.getAllPurchaseOrders({ status, page, limit });
-      sendPaginated(res, data, total, page, limit);
+      const type = req.query.type as string;
+      const search = req.query.search as string;
+      const { data, total, stats } = await paymentService.getAllPurchaseOrders({ status, type, search, page, limit });
+      sendPaginated(res, data, total, page, limit, { stats });
     } catch (error) {
       next(error);
     }
@@ -490,8 +498,7 @@ export const adminController = {
 
   async updateAdminPaymentInfo(req: Request, res: Response, next: NextFunction) {
     try {
-      const { bybit, binance } = req.body;
-      const info = await paymentService.updateAdminPaymentInfo({ bybit, binance });
+      const info = await paymentService.updateAdminPaymentInfo(req.body);
       sendSuccess(res, info, 'Admin payment info updated');
     } catch (error) {
       next(error);

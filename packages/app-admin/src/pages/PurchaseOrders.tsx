@@ -55,8 +55,19 @@ export const PurchaseOrders = () => {
       },
     },
     {
-      key: 'agentId', label: 'Agent',
-      render: (r: any) => r.agentId ? (typeof r.agentId === 'object' ? r.agentId?.nickname || '—' : '—') : '—',
+      key: 'agentId', label: 'Agent / Destination',
+      render: (r: any) =>
+        r.isOfficial || !r.agentId ? (
+          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 inline-flex items-center gap-1">
+            Nova Agent (Official)
+          </span>
+        ) : typeof r.agentId === 'object' ? (
+          <span className="text-xs font-medium text-slate-200">
+            {r.agentId?.nickname || r.agentId?.uid || '—'}
+          </span>
+        ) : (
+          '—'
+        ),
     },
     {
       key: '_id', label: 'Actions',

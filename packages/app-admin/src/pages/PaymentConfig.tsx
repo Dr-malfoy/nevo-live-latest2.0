@@ -6,7 +6,7 @@ import { PiUploadSimpleBold as Upload, PiTrashBold as Trash, PiCheckCircleFill a
 export const PaymentConfig = () => {
   const [form, setForm] = useState({
     bybitEnabled: true, binanceEnabled: true, bkashEnabled: true, nagadEnabled: true, rocketEnabled: true,
-    diamondRate: 1, coinRate: 1, withdrawalRate: 1, rechargeRate: 1, bonusRate: 0, serviceCharge: 0,
+    diamondRate: 130, coinRate: 1, withdrawalRate: 1, rechargeRate: 130, bonusRate: 0, serviceCharge: 0,
     agentProfitPercent: 5,
   });
   const [customMethods, setCustomMethods] = useState<any[]>([]);
@@ -31,10 +31,10 @@ export const PaymentConfig = () => {
           bkashEnabled: data.data.bkashEnabled ?? true,
           nagadEnabled: data.data.nagadEnabled ?? true,
           rocketEnabled: data.data.rocketEnabled ?? true,
-          diamondRate: data.data.diamondRate ?? 1,
+          diamondRate: data.data.diamondRate ?? 130,
           coinRate: data.data.coinRate || 1,
           withdrawalRate: data.data.withdrawalRate || 1,
-          rechargeRate: data.data.rechargeRate || 1,
+          rechargeRate: data.data.rechargeRate ?? 130,
           bonusRate: data.data.bonusRate || 0,
           serviceCharge: data.data.serviceCharge || 0,
           agentProfitPercent: data.data.agentProfitPercent ?? 5,
@@ -186,10 +186,10 @@ export const PaymentConfig = () => {
         {/* Conversion rates */}
         <div>
           <h3 className="text-sm font-medium text-dark-400 mb-3">Conversion Rates</h3>
-          <RateRow label="1 BDT =" value={form.diamondRate} onChange={(v: number) => setForm({ ...form, diamondRate: v })} suffix={<span className="text-cyan-400">Diamonds</span>} />
+          <RateRow label="1 BDT =" value={form.diamondRate} onChange={(v: number) => setForm({ ...form, diamondRate: v, rechargeRate: v })} suffix={<span className="text-cyan-400">Diamonds (130,000 Diamonds = 1,000 BDT)</span>} />
           <RateRow label="1 BDT =" value={form.coinRate} onChange={(v: number) => setForm({ ...form, coinRate: v })} suffix={<span className="text-yellow-400">Coins</span>} />
           <RateRow label="Withdrawal 1 unit =" value={form.withdrawalRate} onChange={(v: number) => setForm({ ...form, withdrawalRate: v })} suffix={<span className="text-dark-400">BDT</span>} />
-          <RateRow label="Recharge 1 BDT =" value={form.rechargeRate} onChange={(v: number) => setForm({ ...form, rechargeRate: v })} suffix={<span className="text-dark-400">units</span>} />
+          <RateRow label="Recharge 1 BDT =" value={form.rechargeRate} onChange={(v: number) => setForm({ ...form, rechargeRate: v })} suffix={<span className="text-dark-400">Diamonds</span>} />
         </div>
 
         {/* Bonus & charges */}

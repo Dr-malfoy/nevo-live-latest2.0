@@ -63,3 +63,4 @@ export { HelpCenter } from './HelpCenter';
 export { Bag } from './Bag';
 export { AgentRequests } from './AgentRequests';
 export { HostApplicationPage } from './HostApplicationPage';
+export { CoinValuation } from './CoinValuation';

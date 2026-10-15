@@ -78,6 +78,9 @@ export const requireFaceVerified = async (req: Request, res: Response, next: Nex
 export const requireNidVerified = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const user = await User.findById(req.user?.userId).lean();
+    if (user && (user.role === 'admin' || user.isAdmin)) {
+      return next();
+    }
     if (!user || !isNidVerified(user)) {
       sendError(
         res,

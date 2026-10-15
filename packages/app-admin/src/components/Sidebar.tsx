@@ -3,6 +3,7 @@ import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, 
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/orders', icon: ShoppingCart, label: 'All Orders' },
   { to: '/users', icon: Users, label: 'Users' },
   { to: '/hosts', icon: Award, label: 'Host Management' },
   { to: '/host-applications', icon: Crown, label: 'Host Applications' },
@@ -11,7 +12,6 @@ const links = [
   { to: '/gifts', icon: Gift, label: 'Gifts' },
   { to: '/badges', icon: Award, label: 'Badge Store' },
   { to: '/agents', icon: Building2, label: 'Agents' },
-  { to: '/purchase-orders', icon: ShoppingCart, label: 'Purchase Orders' },
   { to: '/agent-orders', icon: ShoppingBag, label: 'Agent Orders' },
   { to: '/withdrawal-requests', icon: Handshake, label: 'Withdrawals' },
   { to: '/wallet', icon: Wallet, label: 'Platform Wallet' },
@@ -33,12 +33,14 @@ export const Sidebar = ({
   pendingVerifications,
   pendingTickets,
   pendingHostApplications,
+  pendingOrders,
 }: {
   onLogout: () => void;
   complaintsCount?: number;
   pendingVerifications?: number;
   pendingTickets?: number;
   pendingHostApplications?: number;
+  pendingOrders?: number;
 }) => (
   <aside className="w-60 min-h-screen bg-dark-900 border-r border-dark-800 flex flex-col">
     <div className="p-4 border-b border-dark-800">
@@ -55,6 +57,11 @@ export const Sidebar = ({
         >
           <Icon className="w-4 h-4" />
           <span className="flex-1">{label}</span>
+          {to === '/orders' && pendingOrders ? (
+            <span className="min-w-[18px] h-[18px] px-1 bg-cyan-500 text-dark-950 text-[10px] font-black rounded-full flex items-center justify-center animate-pulse">
+              {pendingOrders > 99 ? '99+' : pendingOrders}
+            </span>
+          ) : null}
           {to === '/host-applications' && pendingHostApplications ? (
             <span className="min-w-[18px] h-[18px] px-1 bg-amber-500 text-dark-950 text-[10px] font-black rounded-full flex items-center justify-center animate-pulse">
               {pendingHostApplications > 99 ? '99+' : pendingHostApplications}

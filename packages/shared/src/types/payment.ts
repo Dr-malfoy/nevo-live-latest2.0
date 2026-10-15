@@ -1,7 +1,10 @@
 export interface IAdminPaymentInfo {
   _id?: string;
-  bybit: { qrCode: string; walletAddress: string };
-  binance: { qrCode: string; walletAddress: string };
+  bybit: { qrCode: string; walletAddress: string; number?: string };
+  binance: { qrCode: string; walletAddress: string; number?: string };
+  bkash?: { qrCode?: string; walletAddress?: string; number?: string };
+  nagad?: { qrCode?: string; walletAddress?: string; number?: string };
+  rocket?: { qrCode?: string; walletAddress?: string; number?: string };
 }
 
 export interface IUserPaymentInfo {
@@ -28,7 +31,8 @@ export interface IPaymentMethods {
 export interface IPurchaseOrder {
   _id: string;
   userId: string;
-  agentId: string;
+  agentId?: string;
+  isOfficial?: boolean;
   paymentMethod: PaymentMethod;
   amountBdt: number;
   diamonds: number;

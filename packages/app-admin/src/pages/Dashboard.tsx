@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Radio, ArrowLeftRight, Building2, UserPlus, Handshake, ShoppingBag, Plane, Dices, CircleDot, Headphones, ArrowRight, MessageSquare, CheckCircle, Send, X } from 'lucide-react';
+import { Users, Radio, ArrowLeftRight, Building2, UserPlus, Handshake, ShoppingBag, ShoppingCart, Plane, Dices, CircleDot, Headphones, ArrowRight, MessageSquare, CheckCircle, Send, X } from 'lucide-react';
 import { adminApi } from '../api';
 import { StatsCard } from '../components/StatsCard';
 import { DiamondIcon, CoinIcon } from '../components/CurrencyIcon';
@@ -93,6 +93,9 @@ export const Dashboard = () => {
         <StatsCard label="Coin Inventory" value={stats?.coinInventory?.toLocaleString() ?? '...'} icon={<CoinIcon className="w-5 h-5" />} color="text-yellow-400" />
         <StatsCard label="Pending Transactions" value={stats?.pendingTransactions ?? '...'} icon={<ArrowLeftRight className="w-5 h-5" />} color="text-orange-400" />
         <StatsCard label="Pending Withdrawals" value={stats?.pendingWithdrawals ?? '...'} icon={<Handshake className="w-5 h-5" />} color="text-pink-400" />
+        <div onClick={() => navigate('/orders')} className="cursor-pointer transition-transform hover:scale-[1.02]">
+          <StatsCard label="Pending Customer Orders" value={stats?.pendingOrders ?? 0} icon={<ShoppingCart className="w-5 h-5" />} color="text-cyan-400" />
+        </div>
         <StatsCard label="Pending Agent Orders" value={stats?.pendingAgentOrders ?? '...'} icon={<ShoppingBag className="w-5 h-5" />} color="text-teal-400" />
         <StatsCard label="TP Bets" value={teenPattiStats?.totalBets ?? '...'} icon={<Dices className="w-5 h-5" />} color="text-amber-400" />
         <StatsCard label="TP Wins" value={teenPattiStats?.totalWins ?? '...'} icon={<Dices className="w-5 h-5" />} color="text-lime-400" />

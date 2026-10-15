@@ -267,7 +267,7 @@ export const agentController = {
       else { start = new Date(now); start.setHours(0, 0, 0, 0); }
       const txns = await Transaction.find({
         userId: new mongoose.Types.ObjectId(userId),
-        type: 'credit',
+        type: { $in: ['commission', 'credit'] },
         createdAt: { $gte: start },
       }).lean();
       const total = txns.reduce((s: number, t: any) => s + (t.amount || 0), 0);
