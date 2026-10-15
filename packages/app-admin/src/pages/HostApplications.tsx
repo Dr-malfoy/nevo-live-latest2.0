@@ -479,7 +479,7 @@ export const HostApplications = () => {
                       <div className="p-3.5 rounded-xl bg-dark-800 border border-dark-700 space-y-1.5">
                         <div className="flex items-center justify-between text-xs text-dark-400">
                           <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-blue-400" /> সময় (Live Time)
+                            <Clock className="w-3.5 h-3.5 text-blue-400" /> Live Time
                           </span>
                           <span className={appDetail.application?.statsAtApplication?.meetsLiveTime ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
                             {appDetail.application?.statsAtApplication?.meetsLiveTime ? '✓ Passed' : '✗ Failed'}
@@ -495,7 +495,7 @@ export const HostApplications = () => {
                       <div className="p-3.5 rounded-xl bg-dark-800 border border-dark-700 space-y-1.5">
                         <div className="flex items-center justify-between text-xs text-dark-400">
                           <span className="flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-purple-400" /> ডেইলি রুলস (Days)
+                            <Calendar className="w-3.5 h-3.5 text-purple-400" /> Daily Rules (Days)
                           </span>
                           <span className={appDetail.application?.statsAtApplication?.meetsDailyRules ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
                             {appDetail.application?.statsAtApplication?.meetsDailyRules ? '✓ Passed' : '✗ Failed'}
@@ -511,7 +511,7 @@ export const HostApplications = () => {
                       <div className="p-3.5 rounded-xl bg-dark-800 border border-dark-700 space-y-1.5">
                         <div className="flex items-center justify-between text-xs text-dark-400">
                           <span className="flex items-center gap-1">
-                            <Gift className="w-3.5 h-3.5 text-amber-400" /> গিফট (Gift Coins)
+                            <Gift className="w-3.5 h-3.5 text-amber-400" /> Gift Coins
                           </span>
                           <span className={appDetail.application?.statsAtApplication?.meetsGiftCoins ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
                             {appDetail.application?.statsAtApplication?.meetsGiftCoins ? '✓ Passed' : '✗ Failed'}

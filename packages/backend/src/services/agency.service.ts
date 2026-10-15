@@ -5,6 +5,8 @@ import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
 import { getIO } from '../socket';
 import { calculateWealthLevel } from '../utils/userLevels';
+import { resolveAgencyTier, AGENCY_TIERS, AgencyTier, getAgencyCommissionByLevel } from '../utils/agencyTiers';
+export { getAgencyCommissionByLevel };
 
 export function calculateAgencyLevel(totalContribution: number, totalLiveHours: number = 0) {
   const score = (totalContribution || 0) + Math.floor((totalLiveHours || 0) * 1000);
@@ -45,6 +47,7 @@ export function calculateAgencyLevel(totalContribution: number, totalLiveHours: 
     currentMin,
     nextThreshold,
     progress,
+    commission: getAgencyCommissionByLevel(currentLevel),
   };
 }
 
@@ -173,9 +176,12 @@ export const agencyService = {
     }
 
     const agencyType = data.type === 'private' ? 'private' : 'public';
+    const tier: AgencyTier = (data as any).tier && AGENCY_TIERS[(data as any).tier as AgencyTier]
+      ? (data as any).tier
+      : 'starter';
     const commission = typeof data.commission === 'number' && data.commission >= 0 && data.commission <= 100
       ? data.commission
-      : 10;
+      : AGENCY_TIERS[tier].agencyPercent;
 
     const agency = await Agency.create({
       agentId: user._id,
@@ -186,6 +192,7 @@ export const agencyService = {
       description: data.description?.trim() || '',
       type: agencyType,
       commission,
+      tier,
       level: 1,
       hosts: [],
       totalContribution: 0,
@@ -287,6 +294,7 @@ export const agencyService = {
       const agent = a.agentId || {};
       const memberCount = (a.hosts && Array.isArray(a.hosts)) ? a.hosts.length : 0;
       const levelInfo = calculateAgencyLevel(a.totalContribution || 0, a.totalLiveHours || 0);
+      const tierConfig = resolveAgencyTier(a);
 
       return {
         _id: a._id.toString(),
@@ -300,7 +308,9 @@ export const agencyService = {
         levelProgress: levelInfo.progress,
         nextThreshold: levelInfo.nextThreshold,
         memberCount,
-        commission: a.commission ?? 10,
+        tier: a.tier || tierConfig.tier,
+        tierInfo: tierConfig,
+        commission: getAgencyCommissionByLevel(Math.max(a.level || 1, levelInfo.level)),
         totalContribution: a.totalContribution || 0,
         totalLiveHours: Math.round((a.totalLiveHours || 0) * 10) / 10,
         agent: {
@@ -424,6 +434,7 @@ export const agencyService = {
     const totalContribution = Math.max(agency.totalContribution || 0, calculatedContribution);
     const totalLiveHours = Math.max(agency.totalLiveHours || 0, Math.round(calculatedLiveHours * 10) / 10);
     const levelInfo = calculateAgencyLevel(totalContribution, totalLiveHours);
+    const tierConfig = resolveAgencyTier(agency);
 
     // Check relationship and admin role for the requesting user
     let userRelationship = {
@@ -497,7 +508,12 @@ export const agencyService = {
       levelProgress: levelInfo.progress,
       nextThreshold: levelInfo.nextThreshold,
       score: levelInfo.score,
-      commission: agency.commission ?? 10,
+      tier: agency.tier || tierConfig.tier,
+      tierInfo: tierConfig,
+      allTiers: AGENCY_TIERS,
+      commission: (userRelationship.isAdmin || userRelationship.isOwner)
+        ? getAgencyCommissionByLevel(Math.max(agency.level || 1, levelInfo.level))
+        : undefined,
       memberCount: hosts.length,
       totalContribution,
       totalLiveHours,
@@ -785,6 +801,7 @@ export const agencyService = {
       cover?: string;
       type?: 'public' | 'private';
       commission?: number;
+      tier?: AgencyTier;
       welcomeBanner?: {
         enabled?: boolean;
         title?: string;
@@ -814,8 +831,12 @@ export const agencyService = {
     if (data.type === 'public' || data.type === 'private') {
       agency.type = data.type;
     }
-    if (typeof data.commission === 'number' && data.commission >= 0 && data.commission <= 100) {
+    if (data.tier && AGENCY_TIERS[data.tier]) {
+      agency.tier = data.tier;
+      agency.commission = AGENCY_TIERS[data.tier].agencyPercent;
+    } else if (typeof data.commission === 'number' && data.commission >= 0 && data.commission <= 100) {
       agency.commission = data.commission;
+      agency.tier = resolveAgencyTier({ commission: data.commission }).tier;
     }
     if (data.welcomeBanner && typeof data.welcomeBanner === 'object') {
       const current = agency.welcomeBanner || {};
@@ -1500,13 +1521,15 @@ export const agencyService = {
 
     const memberCount = agency.hosts?.length || 0;
     const levelInfo = calculateAgencyLevel(agency.totalContribution || 0, agency.totalLiveHours || 0);
+    const currentLevel = Math.max(agency.level || 1, levelInfo.level);
 
     return {
       ...agency,
       memberCount,
-      level: Math.max(agency.level || 1, levelInfo.level),
+      level: currentLevel,
       levelProgress: levelInfo.progress,
       nextThreshold: levelInfo.nextThreshold,
+      commission: getAgencyCommissionByLevel(currentLevel),
       welcomeBanner: {
         enabled: agency.welcomeBanner?.enabled !== false,
         title: agency.welcomeBanner?.title || `Welcome to ${agency.name}! 🎉`,
@@ -1595,7 +1618,7 @@ export const agencyService = {
         description: populated.description,
         type: populated.type || 'public',
         level: Math.max(populated.level || 1, levelInfo.level),
-        commission: populated.commission,
+        commission: getAgencyCommissionByLevel(Math.max(populated.level || 1, levelInfo.level)),
         memberCount: populated.hosts?.length || 0,
         totalContribution: populated.totalContribution || 0,
         agent: agent

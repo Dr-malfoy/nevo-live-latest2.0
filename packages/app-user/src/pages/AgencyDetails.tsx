@@ -28,6 +28,7 @@ import {
 import { agencyApi, chatApi, callApi, type AgencyItem } from '../api';
 import { useAuthStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
+import { getAgencyCommissionByLevel } from './AgentDashboard';
 import { Loading } from '../components/ui';
 import { CallScreen } from '../components/call/CallScreen';
 import { AgencyWelcomeBanner } from '../components/agency';
@@ -261,6 +262,7 @@ export const AgencyDetails = () => {
   const canViewFullDetails =
     relationship.canViewFullDetails ??
     (isUserAdmin || isUserOwner || isUserMember);
+  const canSeeCommission = isUserAdmin || isUserOwner;
 
   const isPrivate = agency.type === 'private';
   const members = agency.members || [];
@@ -357,31 +359,40 @@ export const AgencyDetails = () => {
           </div>
 
           {/* Profile Header & Info */}
-          <div className="px-4 pb-4 pt-0 relative">
-            <div className="flex items-end justify-between -mt-10 mb-3">
-              <div className="relative">
-                {agency.avatar ? (
-                  <img
-                    src={getMediaUrl(agency.avatar)}
-                    alt={agency.name}
-                    className="w-20 h-20 rounded-2xl object-cover ring-4 ring-white shadow-md bg-white"
-                    crossOrigin="anonymous"
-                  />
-                ) : (
-                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-700 to-purple-700 flex items-center justify-center text-white font-black text-2xl shadow-md ring-4 ring-white">
-                    {agency.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="absolute -bottom-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 text-[10px] font-black border-2 border-white flex items-center gap-0.5 shadow-sm">
-                  <PiCrownFill className="w-3 h-3 text-amber-400" />
-                  <span>Lv.{agency.level}</span>
+          <div className="px-4 pb-4 pt-0 relative flex flex-col items-center text-center">
+            {/* Centered Profile Picture */}
+            <div className="relative -mt-9 mb-2.5">
+              {agency.avatar ? (
+                <img
+                  src={getMediaUrl(agency.avatar)}
+                  alt={agency.name}
+                  className="w-16 h-16 rounded-full object-cover ring-4 ring-white shadow-md bg-white"
+                  crossOrigin="anonymous"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-600 via-indigo-700 to-purple-700 flex items-center justify-center text-white font-black text-xl shadow-md ring-4 ring-white">
+                  {agency.name.slice(0, 2).toUpperCase()}
                 </div>
+              )}
+              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-2 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[9px] font-black border-2 border-white flex items-center gap-0.5 shadow-sm whitespace-nowrap">
+                <PiCrownFill className="w-2.5 h-2.5 text-amber-400" />
+                <span>Lv.{agency.level}</span>
+              </div>
+            </div>
+
+            {/* Name, Verified Badge & Code */}
+            <div className="w-full flex flex-col items-center">
+              <div className="flex items-center justify-center gap-2">
+                <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                  {agency.name}
+                </h1>
+                <PiShieldCheckFill className="w-5 h-5 text-indigo-600 shrink-0" title="Verified Agency" />
               </div>
 
               {/* Code Pill with One-Tap Copy */}
               <button
                 onClick={() => handleCopyCode(agency.code)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 active:scale-95 border border-indigo-200/80 text-xs font-mono font-bold text-indigo-700 transition-all shadow-xs"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100/80 active:scale-95 border border-indigo-200/80 text-xs font-mono font-bold text-indigo-700 transition-all shadow-xs"
               >
                 <span>Code: <strong>{agency.code}</strong></span>
                 {copiedCode ? (
@@ -390,24 +401,14 @@ export const AgencyDetails = () => {
                   <PiCopyFill className="w-3.5 h-3.5 text-indigo-500" />
                 )}
               </button>
-            </div>
 
-            {/* Name and description */}
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-black text-slate-900 tracking-tight">
-                  {agency.name}
-                </h1>
-                <PiShieldCheckFill className="w-5 h-5 text-indigo-600 shrink-0" title="Verified Agency" />
-              </div>
-
-              <p className="text-xs text-slate-600 mt-1.5 leading-relaxed font-medium">
+              <p className="text-xs text-slate-600 mt-2.5 leading-relaxed font-medium max-w-sm">
                 {agency.description || 'Welcome to our agency! We support live streamers with traffic growth, technical assistance, and exclusive reward incentives.'}
               </p>
             </div>
 
             {/* Level Progress Bar */}
-            <div className="mt-4 pt-3.5 border-t border-slate-100">
+            <div className="w-full mt-4 pt-3.5 border-t border-slate-100">
               <div className="flex items-center justify-between text-[11px] mb-1.5 font-bold">
                 <span className="text-slate-600 flex items-center gap-1.5">
                   <PiCrownFill className="w-3.5 h-3.5 text-amber-500" />
@@ -448,8 +449,28 @@ export const AgencyDetails = () => {
             </div>
           </div>
 
-          {/* Contribution */}
+          {/* Live Hours */}
           <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between transition-all hover:shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                Live Hours
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-emerald-50 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0">
+                <PiClockFill className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div>
+              <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                {agency.totalLiveHours || 0}h
+              </p>
+              <p className="text-[11px] text-slate-400 font-medium mt-1">
+                Stream time
+              </p>
+            </div>
+          </div>
+
+          {/* Contribution */}
+          <div className={`bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between transition-all hover:shadow-sm ${canSeeCommission ? '' : 'col-span-2'}`}>
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Contribution
@@ -488,45 +509,27 @@ export const AgencyDetails = () => {
             </div>
           </div>
 
-          {/* Live Time */}
-          <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between transition-all hover:shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                Live Hours
-              </span>
-              <div className="w-7 h-7 rounded-xl bg-emerald-50 border border-emerald-100/80 text-emerald-600 flex items-center justify-center shrink-0">
-                <PiClockFill className="w-3.5 h-3.5" />
+          {/* Commission (Visible ONLY to Admin & Agency Owner) */}
+          {canSeeCommission && (
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between transition-all hover:shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Commission
+                </span>
+                <div className="w-7 h-7 rounded-xl bg-purple-50 border border-purple-100/80 text-purple-600 flex items-center justify-center shrink-0">
+                  <PiPercentFill className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div>
+                <p className="text-xl font-black text-purple-700 tracking-tight leading-none">
+                  {agency.commission ?? getAgencyCommissionByLevel(agency.level || 1)}%
+                </p>
+                <p className="text-[11px] text-slate-400 font-medium mt-1">
+                  Host benefit share
+                </p>
               </div>
             </div>
-            <div>
-              <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
-                {agency.totalLiveHours || 0}h
-              </p>
-              <p className="text-[11px] text-slate-400 font-medium mt-1">
-                Stream time
-              </p>
-            </div>
-          </div>
-
-          {/* Commission */}
-          <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs flex flex-col justify-between transition-all hover:shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                Commission
-              </span>
-              <div className="w-7 h-7 rounded-xl bg-purple-50 border border-purple-100/80 text-purple-600 flex items-center justify-center shrink-0">
-                <PiPercentFill className="w-3.5 h-3.5" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xl font-black text-purple-700 tracking-tight leading-none">
-                {agency.commission ?? 10}%
-              </p>
-              <p className="text-[11px] text-slate-400 font-medium mt-1">
-                Host benefit share
-              </p>
-            </div>
-          </div>
+          )}
         </section>
 
         {/* ── Agency Owner / Leader Profile Card ── */}

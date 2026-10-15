@@ -51,9 +51,9 @@ export interface EligibilityResult {
 export const hostApplicationService = {
   /**
    * Calculate 7-day qualification for Alpha / Aurora Host:
-   * 1. সময়: ৭ দিনে ১৪ ঘন্টা লাইভ (>= 14 hours total live time)
-   * 2. ডেইলি রুলস: কমপক্ষে ৫ দিন লাইভ করতে হবে, প্রতিদিন ১.৫ ঘন্টা minimum (>= 5 days with >= 1.5 hrs/day)
-   * 3. গিফট: ৭ দিনে ৮০,০০০ কয়েন রিসিভ করতে হবে (>= 80,000 gift coins)
+   * 1. Live Time: 14 hours live in 7 days (>= 14 hours total live time)
+   * 2. Daily Rules: Live at least 5 days, minimum 1.5 hours/day (>= 5 days with >= 1.5 hrs/day)
+   * 3. Gifts: Receive 80,000 coins in 7 days (>= 80,000 gift coins)
    */
   async getEligibility(userId: string): Promise<EligibilityResult> {
     const user = await User.findById(userId).select(

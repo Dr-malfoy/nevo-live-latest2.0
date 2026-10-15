@@ -42,7 +42,7 @@ export const CreateAgency = () => {
   const [avatar, setAvatar] = useState(user?.avatar || PRESET_AVATARS[0]);
   const [cover, setCover] = useState(PRESET_COVERS[0]);
   const [type, setType] = useState<'public' | 'private'>('public');
-  const [commission, setCommission] = useState(10);
+  const [commission, setCommission] = useState(4);
   const [customCode, setCustomCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -110,7 +110,7 @@ export const CreateAgency = () => {
         avatar: avatar || undefined,
         cover: cover || undefined,
         type,
-        commission: Number(commission) || 10,
+        commission: Number(commission) || 4,
         customCode: customCode.trim() ? customCode.trim().toUpperCase() : undefined,
       });
 
@@ -437,27 +437,23 @@ export const CreateAgency = () => {
             />
           </div>
 
-          {/* Commission rate */}
+          {/* Starting Commission rate */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-800">
-                Commission Rate
-              </label>
-              <span className="text-xs font-extrabold text-indigo-600">{commission}%</span>
+              <div>
+                <label className="text-xs font-bold text-slate-800">
+                  Starting Commission Rate
+                </label>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Level 1 starting commission (scales automatically up to 20% with agency level)
+                </p>
+              </div>
+              <span className="text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">{commission}%</span>
             </div>
-            <input
-              type="range"
-              min="0"
-              max="50"
-              step="1"
-              value={commission}
-              onChange={(e) => setCommission(Number(e.target.value))}
-              className="w-full accent-indigo-600"
-            />
-            <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-semibold">
-              <span>0% (Minimum)</span>
-              <span>10% (Recommended)</span>
-              <span>50% (Max)</span>
+            <div className="flex justify-between text-[10px] text-slate-400 mt-2 font-semibold">
+              <span>Lv.1 (4%)</span>
+              <span>Lv.5 (12%)</span>
+              <span>Lv.10+ (20%)</span>
             </div>
           </div>
 

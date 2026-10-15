@@ -1,8 +1,10 @@
-import { Gift, User, Transaction, PlatformWallet } from '../models';
+import { Gift, User, Transaction, PlatformWallet, Agency } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { notificationService } from './notification.service';
 import { calculateWealthLevel } from '../utils/userLevels';
+import { calculateGiftCoinDistribution, getAgencyCommissionByLevel } from '../utils/agencyTiers';
+import { calculateAgencyLevel } from './agency.service';
 
 export const giftService = {
   async listActiveGifts() {
@@ -48,33 +50,72 @@ export const giftService = {
     sender.coins = updatedSender.coins;
     sender.diamonds = updatedSender.diamonds;
 
-    // Add Diamonds to receiver (standard host takes 70%, Alpha/Aurora premium host takes 75% with +5% bonus, remainder to admin)
-    const isPremiumBadge = receiver.hostBadge === 'alpha' || receiver.hostBadge === 'aurora';
-    const hostShareRate = isPremiumBadge ? 0.75 : 0.70;
-    const adminShareRate = isPremiumBadge ? 0.25 : 0.30;
-    const hostDiamonds = Math.floor(totalCost * hostShareRate);
-    const adminDiamonds = Math.floor(totalCost * adminShareRate);
+    // Resolve agency & agent if receiver is associated with an agency
+    let agency: any = null;
+    let agentUser: any = null;
+    if (receiver.agencyId) {
+      agency = await Agency.findById(receiver.agencyId);
+      if (agency && !agency.isBanned && agency.agentId) {
+        agentUser = await User.findById(agency.agentId);
+      }
+    }
 
-    // Receiver earned income -> increments diamonds AND cumulative wealthExp
-    const receiverNewWealthExp = (receiver.wealthExp || 0) + hostDiamonds;
+    // Calculate coin distribution based on agency tier (1 diamond = 1 coin)
+    // Host: 70% in coins
+    // Agency (Agent): 4% to 20% tier-wise directly to agent account
+    // Admin: Remainder (10% to 26% tier-wise, or 30% if no agency)
+    const distribution = calculateGiftCoinDistribution(totalCost, agency);
+    const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
+
+    // 1. Host receives coins (1 diamond = 1 coin, 70% share)
+    const receiverNewWealthExp = (receiver.wealthExp || 0) + hostCoins;
     const receiverWealthInfo = calculateWealthLevel(receiverNewWealthExp, receiver.wealthLevel);
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiverId },
       {
-        $inc: { diamonds: hostDiamonds, wealthExp: hostDiamonds },
+        $inc: { coins: hostCoins, wealthExp: hostCoins },
         $set: { wealthLevel: Math.max(receiver.wealthLevel || 1, receiverWealthInfo.level) },
       },
       { new: true }
     );
     if (updatedReceiver) {
-      receiver.diamonds = updatedReceiver.diamonds;
+      receiver.coins = updatedReceiver.coins;
       receiver.wealthExp = updatedReceiver.wealthExp;
       receiver.wealthLevel = updatedReceiver.wealthLevel;
     }
 
-    // Credit the platform's diamond inventory with the admin share
+    // 2. Agency's coin share flows directly into the Agent's account
+    let updatedAgentCoins = agentUser?.coins || 0;
+    if (agentUser && agencyCoins > 0) {
+      const updatedAgent = await User.findOneAndUpdate(
+        { _id: agentUser._id },
+        { $inc: { coins: agencyCoins } },
+        { new: true }
+      );
+      if (updatedAgent) {
+        updatedAgentCoins = updatedAgent.coins;
+        agentUser.coins = updatedAgent.coins;
+      }
+    }
+
+    // Increment agency total contribution and sync dynamic level & commission
+    if (agency) {
+      const newContrib = (agency.totalContribution || 0) + totalCost;
+      const levelInfo = calculateAgencyLevel(newContrib, agency.totalLiveHours || 0);
+      const newLevel = Math.max(agency.level || 1, levelInfo.level);
+      const newCommission = getAgencyCommissionByLevel(newLevel);
+      await Agency.updateOne(
+        { _id: agency._id },
+        {
+          $inc: { totalContribution: totalCost },
+          $set: { level: newLevel, commission: newCommission }
+        }
+      );
+    }
+
+    // 3. Platform wallet receives admin cut in coins
     const platform = await PlatformWallet.getWallet();
-    await PlatformWallet.updateOne({ _id: platform._id }, { $inc: { diamonds: adminDiamonds } });
+    await PlatformWallet.updateOne({ _id: platform._id }, { $inc: { coins: adminCoins } });
 
     let adminUserId = platform.adminId;
     if (!adminUserId) {
@@ -82,13 +123,8 @@ export const giftService = {
       if (adminUser) adminUserId = adminUser._id as any;
     }
 
-    const hostShareLabel = isPremiumBadge
-      ? `75% share incl. +5% ${receiver.hostBadge === 'alpha' ? 'ALPHA' : 'AURORA'} HOST bonus`
-      : '70% share';
-    const adminShareLabel = isPremiumBadge ? '25% share' : '30% share';
-
-    // Create transactions (send in coin/diamond + receive diamonds + admin cut in diamonds)
-    await Transaction.create([
+    // Build transactions
+    const transactionsToCreate: any[] = [
       {
         userId: senderId,
         type: 'gift_send',
@@ -103,56 +139,99 @@ export const giftService = {
       {
         userId: receiverId,
         type: 'gift_receive',
-        amount: hostDiamonds,
-        currency: 'diamond',
+        amount: hostCoins,
+        currency: 'coin',
         sourceType,
         targetId: senderId,
         targetModel: 'User',
         giftId: gift._id,
         status: 'completed',
-        description: `Received ${quantity}x ${gift.name} from ${sender.nickname} (${hostShareLabel}: ${hostDiamonds} diamonds)`,
+        description: `Received ${quantity}x ${gift.name} from ${sender.nickname} (70% host share: ${hostCoins} coins)`,
       },
-      {
-        userId: adminUserId || receiverId,
-        type: 'gift_cut',
-        amount: adminDiamonds,
-        currency: 'diamond',
-        targetId: senderId,
+    ];
+
+    if (agentUser && agencyCoins > 0) {
+      const tierLabel = tierConfig?.label || (agencyTier ? String(agencyTier).toUpperCase() : 'Agency');
+      transactionsToCreate.push({
+        userId: agentUser._id,
+        type: 'commission',
+        amount: agencyCoins,
+        currency: 'coin',
+        sourceType,
+        targetId: receiverId,
         targetModel: 'User',
         giftId: gift._id,
         status: 'completed',
-        description: `Admin cut (${adminShareLabel}: ${adminDiamonds} diamonds) from ${quantity}x ${gift.name}`,
-      },
-    ]);
+        description: `Agency commission (${tierLabel} ${(agencyShareRate * 100).toFixed(0)}%): ${agencyCoins} coins from ${sender.nickname}'s gift to ${receiver.nickname}`,
+      });
+    }
 
-    // Push real-time balance updates to both parties (per-user socket rooms)
+    transactionsToCreate.push({
+      userId: adminUserId || receiverId,
+      type: 'gift_cut',
+      amount: adminCoins,
+      currency: 'coin',
+      sourceType,
+      targetId: senderId,
+      targetModel: 'User',
+      giftId: gift._id,
+      status: 'completed',
+      description: `Admin cut (${(adminShareRate * 100).toFixed(0)}% share: ${adminCoins} coins) from ${quantity}x ${gift.name}`,
+    });
+
+    await Transaction.create(transactionsToCreate);
+
+    // Push real-time balance updates to parties (per-user socket rooms)
     try {
-      getIO().to(`user:${receiverId}`).emit('balance:update', {
+      const io = getIO();
+      // Receiver (Host) balance update
+      io.to(`user:${receiverId}`).emit('balance:update', {
         coins: receiver.coins,
         diamonds: receiver.diamonds,
         wealthExp: receiver.wealthExp,
         wealthLevel: receiver.wealthLevel,
-        deltaDiamonds: hostDiamonds,
+        deltaCoins: hostCoins,
       });
-      getIO().to(`user:${senderId}`).emit('balance:update', {
+
+      // Sender balance update
+      io.to(`user:${senderId}`).emit('balance:update', {
         coins: sender.coins,
         diamonds: sender.diamonds,
         wealthExp: sender.wealthExp,
         wealthLevel: sender.wealthLevel,
       });
+
+      // Agency Agent balance update
+      if (agentUser && agencyCoins > 0) {
+        io.to(`user:${agentUser._id}`).emit('balance:update', {
+          coins: updatedAgentCoins,
+          diamonds: agentUser.diamonds,
+          deltaCoins: agencyCoins,
+        });
+      }
     } catch {
       // Socket not initialized — balances already persisted
     }
 
-    // Notify the receiver in real time (persisted + socket push to user room)
+    // Real-time notifications
     try {
       await notificationService.createNotification(
         receiverId,
         'gift',
         'New Gift Received!',
-        `${sender.nickname} sent you ${quantity}x ${gift.name}`,
-        { giftId: gift._id, quantity, diamondsEarned: hostDiamonds }
+        `${sender.nickname} sent you ${quantity}x ${gift.name} (+${hostCoins} Coins)`,
+        { giftId: gift._id, quantity, coinsEarned: hostCoins }
       );
+
+      if (agentUser && agencyCoins > 0) {
+        await notificationService.createNotification(
+          agentUser._id.toString(),
+          'system',
+          'Agency Commission Received',
+          `Your agency earned ${agencyCoins} coins (${(agencyShareRate * 100).toFixed(0)}% tier commission) from ${receiver.nickname}'s gift`,
+          { giftId: gift._id, quantity, agencyCoins, hostId: receiverId }
+        );
+      }
     } catch {
       // Notification failure must not block the gift
     }
@@ -165,9 +244,15 @@ export const giftService = {
       senderCoins: sender.coins,
       senderDiamonds: sender.diamonds,
       senderBalance: sender.coins, // backwards compatible
-      receiverEarned: hostDiamonds,
-      receiverDiamonds: receiver.diamonds,
+      receiverEarned: hostCoins,
       receiverCoins: receiver.coins,
+      receiverDiamonds: receiver.diamonds,
+      agencyEarned: agencyCoins,
+      adminEarned: adminCoins,
+      agencyTier,
+      agencyPercent: Math.round(agencyShareRate * 100),
+      adminPercent: Math.round(adminShareRate * 100),
+      hostPercent: 70,
     };
   },
 };

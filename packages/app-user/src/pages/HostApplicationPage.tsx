@@ -169,7 +169,7 @@ export const HostApplicationPage = () => {
                   </span>
                 </div>
                 <p className="text-xs font-bold text-white mt-2">Alpha Host</p>
-                <p className="text-[10px] text-white/60">ছেলেদের জন্য নির্ধারিত</p>
+                <p className="text-[10px] text-white/60">For Male Hosts</p>
               </div>
 
               {/* Aurora Host (Female) */}
@@ -188,7 +188,7 @@ export const HostApplicationPage = () => {
                   </span>
                 </div>
                 <p className="text-xs font-bold text-white mt-2">Aurora Host</p>
-                <p className="text-[10px] text-white/60">মেয়েদের জন্য নির্ধারিত</p>
+                <p className="text-[10px] text-white/60">For Female Hosts</p>
               </div>
             </div>
           </div>
@@ -238,7 +238,7 @@ export const HostApplicationPage = () => {
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2">
               <ShieldIcon className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-extrabold text-sm text-ink">যোগ্যতার শর্তাবলী (7-Day Rules)</h3>
+              <h3 className="font-extrabold text-sm text-ink">Eligibility Requirements (7-Day Rules)</h3>
             </div>
             {isEligible ? (
               <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
@@ -252,10 +252,10 @@ export const HostApplicationPage = () => {
           </div>
 
           <p className="text-xs text-ink-muted">
-            হোস্ট আবেদনের জন্য বিগত ৭ দিনে নিচের তিনটি শর্ত একসাথে পূরণ করতে হবে:
+            To apply for official host status, you must meet all three requirements within the last 7 days:
           </p>
 
-          {/* Condition 1: সময়: ৭ দিনে ১৪ ঘন্টা লাইভ */}
+          {/* Condition 1: Live Time: 14 hours in 7 days */}
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -265,8 +265,8 @@ export const HostApplicationPage = () => {
                   <ClockIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-ink">সময়: ৭ দিনে ১৪ ঘন্টা লাইভ</h4>
-                  <p className="text-[11px] text-ink-muted">কমপক্ষে ১৪ ঘন্টা লাইভ স্ট্রিম সম্পন্ন করতে হবে</p>
+                  <h4 className="text-xs font-bold text-ink">Live Time: 14 Hours in 7 Days</h4>
+                  <p className="text-[11px] text-ink-muted">Stream for at least 14 total hours</p>
                 </div>
               </div>
               <div className="text-right">
@@ -288,12 +288,12 @@ export const HostApplicationPage = () => {
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-ink-muted">
-              <span>অগ্রগতি: {criteria?.liveTime?.percent ?? 0}%</span>
-              <span>{criteria?.liveTime?.passed ? '✓ শর্ত পূরণ হয়েছে' : 'বাকি আছে'}</span>
+              <span>Progress: {criteria?.liveTime?.percent ?? 0}%</span>
+              <span>{criteria?.liveTime?.passed ? '✓ Completed' : 'Pending'}</span>
             </div>
           </div>
 
-          {/* Condition 2: ডেইলি রুলস: কমপক্ষে ৫ দিন লাইভ করতে হবে, প্রতিদিন ১.৫ ঘন্টা minimum */}
+          {/* Condition 2: Daily Rules: Live at least 5 days, minimum 1.5 hours per day */}
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -303,8 +303,8 @@ export const HostApplicationPage = () => {
                   <CalendarIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-ink">ডেইলি রুলস: কমপক্ষে ৫ দিন লাইভ</h4>
-                  <p className="text-[11px] text-ink-muted">প্রতিদিন কমপক্ষে ১.৫ ঘন্টা (৯০ মিনিট) স্ট্রিম</p>
+                  <h4 className="text-xs font-bold text-ink">Daily Rules: Live at Least 5 Days</h4>
+                  <p className="text-[11px] text-ink-muted">Stream at least 1.5 hours (90 minutes) per day</p>
                 </div>
               </div>
               <div className="text-right">
@@ -329,7 +329,7 @@ export const HostApplicationPage = () => {
             {/* Day by Day breakdown chips */}
             {criteria?.dailyRules?.dailyBreakdown && (
               <div className="pt-1">
-                <p className="text-[10px] font-bold text-ink-muted mb-1.5">বিগত ৭ দিনের লাইভ রেকর্ড:</p>
+                <p className="text-[10px] font-bold text-ink-muted mb-1.5">Past 7 Days Live Records:</p>
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
                   {criteria.dailyRules.dailyBreakdown.map((d: any) => (
                     <div
@@ -348,12 +348,12 @@ export const HostApplicationPage = () => {
               </div>
             )}
             <div className="flex items-center justify-between text-[10px] text-ink-muted">
-              <span>অগ্রগতি: {criteria?.dailyRules?.percent ?? 0}%</span>
-              <span>{criteria?.dailyRules?.passed ? '✓ শর্ত পূরণ হয়েছে' : 'বাকি আছে'}</span>
+              <span>Progress: {criteria?.dailyRules?.percent ?? 0}%</span>
+              <span>{criteria?.dailyRules?.passed ? '✓ Completed' : 'Pending'}</span>
             </div>
           </div>
 
-          {/* Condition 3: গিফট: ৭ দিনে ৮০,০০০ কয়েন রিসিভ করতে হবে */}
+          {/* Condition 3: Gifts: Receive 80,000 coins in 7 days */}
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -363,8 +363,8 @@ export const HostApplicationPage = () => {
                   <GiftIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-ink">গিফট: ৭ দিনে ৮০,০০০ কয়েন</h4>
-                  <p className="text-[11px] text-ink-muted">স্ট্রিম ও পার্টি থেকে ৮০k কয়েন গিফট অর্জন</p>
+                  <h4 className="text-xs font-bold text-ink">Gifts: 80,000 Coins in 7 Days</h4>
+                  <p className="text-[11px] text-ink-muted">Earn at least 80k gift coins from streams and party rooms</p>
                 </div>
               </div>
               <div className="text-right">
@@ -386,8 +386,8 @@ export const HostApplicationPage = () => {
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-ink-muted">
-              <span>অগ্রগতি: {criteria?.giftCoins?.percent ?? 0}%</span>
-              <span>{criteria?.giftCoins?.passed ? '✓ শর্ত পূরণ হয়েছে' : 'বাকি আছে'}</span>
+              <span>Progress: {criteria?.giftCoins?.percent ?? 0}%</span>
+              <span>{criteria?.giftCoins?.passed ? '✓ Completed' : 'Pending'}</span>
             </div>
           </div>
         </div>
@@ -402,11 +402,11 @@ export const HostApplicationPage = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <SparkleIcon className="w-5 h-5 text-amber-500" />
-                <h3 className="font-extrabold text-sm text-ink">আবেদন ফর্ম (Host Form)</h3>
+                <h3 className="font-extrabold text-sm text-ink">Host Application Form</h3>
               </div>
               {!isEligible && (
                 <span className="text-[11px] font-bold text-rose-500 flex items-center gap-1">
-                  <LockIcon className="w-3.5 h-3.5" /> শর্ত পূরণ হলে আনলক হবে
+                  <LockIcon className="w-3.5 h-3.5" /> Unlocks when requirements are met
                 </span>
               )}
             </div>
@@ -415,7 +415,7 @@ export const HostApplicationPage = () => {
               {/* Host Type Selection */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1.5">
-                  আবেদনের ধরণ (Host Type)
+                  Host Type
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   <button
@@ -431,7 +431,7 @@ export const HostApplicationPage = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black">Alpha Host</span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-                        ছেলেদের ♂️
+                        Male ♂️
                       </span>
                     </div>
                     <p className="text-[10px] text-gray-500 mt-1">Royal Blue Crown Badge</p>
@@ -450,7 +450,7 @@ export const HostApplicationPage = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black">Aurora Host</span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">
-                        মেয়েদের ♀️
+                        Female ♀️
                       </span>
                     </div>
                     <p className="text-[10px] text-gray-500 mt-1">Radiant Pink Diamond Badge</p>
@@ -461,14 +461,14 @@ export const HostApplicationPage = () => {
               {/* Real Name */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">
-                  আসল নাম (Real Name) <span className="text-rose-500">*</span>
+                  Real Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   disabled={!isEligible}
                   value={realName}
                   onChange={(e) => setRealName(e.target.value)}
-                  placeholder="আপনার এনআইডি/আসল নাম লিখুন"
+                  placeholder="Enter your real/official name"
                   className="w-full h-11 px-3.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-xs font-medium text-ink focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                   required
                 />
@@ -477,7 +477,7 @@ export const HostApplicationPage = () => {
               {/* Phone / Contact */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">
-                  মোবাইল নম্বর (Phone Number) <span className="text-rose-500">*</span>
+                  Phone Number <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="tel"
@@ -493,14 +493,14 @@ export const HostApplicationPage = () => {
               {/* WhatsApp */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">
-                  হোয়াটসঅ্যাপ নম্বর (WhatsApp - ঐচ্ছিক)
+                  WhatsApp Number (Optional)
                 </label>
                 <input
                   type="tel"
                   disabled={!isEligible}
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="WhatsApp নম্বর (জরুরি যোগাযোগের জন্য)"
+                  placeholder="WhatsApp number (for direct contact)"
                   className="w-full h-11 px-3.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-xs font-medium text-ink focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 />
               </div>
@@ -508,14 +508,14 @@ export const HostApplicationPage = () => {
               {/* Bio / Talents */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">
-                  আপনার সম্পর্কে / প্রতিভা (Bio & Streaming Experience)
+                  Bio & Streaming Experience
                 </label>
                 <textarea
                   rows={2}
                   disabled={!isEligible}
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="গান, আড্ডা, কমেডি ইত্যাদি আপনার স্ট্রিমিং অভিজ্ঞতা সংক্ষেপে লিখুন..."
+                  placeholder="Briefly describe your talents (singing, chatting, comedy) and streaming experience..."
                   className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-xs font-medium text-ink focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 resize-none"
                 />
               </div>
@@ -523,7 +523,7 @@ export const HostApplicationPage = () => {
               {/* Social Media Link */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1">
-                  সোশ্যাল মিডিয়া প্রোফাইল লিংক (Facebook/Instagram/TikTok)
+                  Social Media Profile Link (Facebook / Instagram / TikTok)
                 </label>
                 <input
                   type="url"
@@ -550,12 +550,12 @@ export const HostApplicationPage = () => {
                 ) : isEligible ? (
                   <>
                     <SendIcon className="w-4 h-4" />
-                    <span>আবেদন জমা দিন (Submit Application)</span>
+                    <span>Submit Application</span>
                   </>
                 ) : (
                   <>
                     <LockIcon className="w-4 h-4" />
-                    <span>শর্ত পূরণ করে আনলক করুন</span>
+                    <span>Complete Requirements to Unlock</span>
                   </>
                 )}
               </button>

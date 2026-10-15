@@ -3,8 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   PiArrowsLeftRightFill as ExchangeIcon,
   PiCreditCardFill as CardIcon,
-  PiCoinsFill as CoinIcon,
-  PiDiamondFill as DiamondIcon,
   PiCheckCircleFill as CheckCircle,
   PiXCircleFill as XCircle,
   PiClockFill as Clock,
@@ -18,6 +16,7 @@ import {
   PiPaperPlaneRightFill as SendIcon,
   PiXBold as XIcon,
 } from 'react-icons/pi';
+import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import {
   agentApi,
   type AgentRechargeRequest,

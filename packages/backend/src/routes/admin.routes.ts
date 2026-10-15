@@ -45,6 +45,7 @@ router.delete('/badges/:id', authenticate, requireAdmin, adminController.deleteB
 // Agent management
 router.get('/agents', authenticate, requireAdmin, adminController.getAgents);
 router.post('/agents', authenticate, requireAdmin, adminController.createAgent);
+router.put('/agencies/:id', authenticate, requireAdmin, adminController.updateAgency);
 
 // Purchase order management (supervision — agent handles day-to-day)
 router.get('/purchase-orders', authenticate, requireAdmin, adminController.getPurchaseOrders);

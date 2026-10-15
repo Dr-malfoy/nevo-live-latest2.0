@@ -37,8 +37,10 @@ export const adminApi = {
   // Daily reward config (tiers + gift split)
   getRewardConfig: () => client.get('/admin/reward-config'),
   updateRewardConfig: (data: any) => client.put('/admin/reward-config', data),
-  createAgent: (data: { phone: string; password: string; nickname: string; name?: string }) =>
+  createAgent: (data: { phone: string; password: string; nickname: string; name?: string; tier?: string; commission?: number }) =>
     client.post('/admin/agents', data),
+  updateAgency: (id: string, data: { tier?: string; commission?: number; isBanned?: boolean; name?: string }) =>
+    client.put(`/admin/agencies/${id}`, data),
 
   // Admin payment info (QR/wallet)
   getAdminPaymentInfo: () => client.get('/admin/payment-info'),

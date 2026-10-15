@@ -7,6 +7,7 @@ import { hostBadgeService } from '../services/hostBadge.service';
 import { securityService } from '../services/security.service';
 import { hashPassword } from '../utils/hash';
 import { sendSuccess, sendPaginated } from '../utils/response';
+import { AGENCY_TIERS, resolveAgencyTier, AgencyTier } from '../utils/agencyTiers';
 
 export const adminController = {
   async getDashboard(_req: Request, res: Response, next: NextFunction) {
@@ -191,8 +192,8 @@ export const adminController = {
       const agents = await User.find({ role: 'agent' }).select('uid nickname phone avatar level diamonds coins createdAt');
       const agencies = await Agency.find()
         .populate('agentId', 'uid nickname')
-        .select('agentId name code commission hosts isBanned');
-      sendSuccess(res, { agents, agencies });
+        .select('agentId name code commission tier hosts isBanned createdAt');
+      sendSuccess(res, { agents, agencies, allTiers: AGENCY_TIERS });
     } catch (error) {
       next(error);
     }
@@ -200,7 +201,7 @@ export const adminController = {
 
   async createAgent(req: Request, res: Response, next: NextFunction) {
     try {
-      const { phone, password, nickname, name } = req.body;
+      const { phone, password, nickname, name, tier, commission } = req.body;
       if (!phone || !password || !nickname) {
         res.status(400).json({ success: false, error: 'Phone, password, and nickname are required' });
         return;
@@ -222,25 +223,62 @@ export const adminController = {
         password: hashed,
         nickname,
         role: 'agent',
+        isAgent: true,
         avatar: '',
       });
 
       // Create the agency with a unique join code
       let code = agencyService.generateCode();
-      // Ensure uniqueness
       for (let i = 0; i < 10; i++) {
         const exists = await Agency.exists({ code });
         if (!exists) break;
         code = agencyService.generateCode();
       }
+
+      const assignedTier: AgencyTier = tier && AGENCY_TIERS[tier as AgencyTier] ? tier : 'starter';
+      const assignedCommission = typeof commission === 'number'
+        ? commission
+        : AGENCY_TIERS[assignedTier].agencyPercent;
+
       const agency = await Agency.create({
         agentId: user._id,
         name: name || `${nickname}'s Agency`,
         code,
-        commission: 10,
+        tier: assignedTier,
+        commission: assignedCommission,
       });
 
-      sendSuccess(res, { user: { uid: user.uid, phone: user.phone, nickname: user.nickname, _id: user._id }, agency: { _id: agency._id, name: agency.name, code: agency.code } }, 'Agent created', 201);
+      user.agencyId = agency._id as any;
+      await user.save();
+
+      sendSuccess(res, { user: { uid: user.uid, phone: user.phone, nickname: user.nickname, _id: user._id }, agency: { _id: agency._id, name: agency.name, code: agency.code, tier: agency.tier, commission: agency.commission } }, 'Agent created', 201);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAgency(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { tier, commission, isBanned, name } = req.body;
+      const agency = await Agency.findById(id);
+      if (!agency) {
+        res.status(404).json({ success: false, error: 'Agency not found' });
+        return;
+      }
+
+      if (name && typeof name === 'string') agency.name = name.trim();
+      if (typeof isBanned === 'boolean') agency.isBanned = isBanned;
+      if (tier && AGENCY_TIERS[tier as AgencyTier]) {
+        agency.tier = tier as AgencyTier;
+        agency.commission = AGENCY_TIERS[tier as AgencyTier].agencyPercent;
+      } else if (typeof commission === 'number' && commission >= 0 && commission <= 100) {
+        agency.commission = commission;
+        agency.tier = resolveAgencyTier({ commission }).tier;
+      }
+
+      await agency.save();
+      sendSuccess(res, agency, 'Agency updated successfully');
     } catch (error) {
       next(error);
     }

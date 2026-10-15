@@ -15,7 +15,6 @@ import {
   PiChatCircleDotsFill as ChatDots,
   PiImagesFill as Images,
   PiCoinsFill as Coins,
-  PiDiamondFill as Diamond,
   PiArrowsLeftRightFill as ArrowsLeftRight,
   PiArrowClockwiseBold as RefreshCw,
   PiSparkleFill as Sparkle,
@@ -24,6 +23,7 @@ import {
   PiWarningCircleFill as AlertCircle,
   PiScanFill as ScanIcon,
 } from 'react-icons/pi';
+import { DiamondIcon as Diamond } from '../components/ui/CurrencyIcon';
 import { useAuthStore } from '../stores';
 import { verificationApi, uploadApi, usersApi } from '../api';
 import { getMediaUrl } from '../lib/media';

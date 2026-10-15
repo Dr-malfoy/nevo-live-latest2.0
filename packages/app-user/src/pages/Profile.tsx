@@ -81,11 +81,11 @@ const getAgentActions = (isAgent: boolean, pendingRequestsCount: number = 0) => 
 ];
 
 const getBalanceFontSize = (len: number) => {
-  if (len >= 16) return 'text-[11px] sm:text-xs leading-tight';
-  if (len >= 13) return 'text-xs sm:text-sm leading-tight';
-  if (len >= 10) return 'text-sm sm:text-base leading-snug';
-  if (len >= 8) return 'text-base sm:text-lg leading-snug';
-  return 'text-lg sm:text-xl leading-normal';
+  if (len >= 16) return 'text-xs sm:text-sm leading-tight';
+  if (len >= 13) return 'text-sm sm:text-base leading-tight';
+  if (len >= 10) return 'text-base sm:text-lg leading-snug';
+  if (len >= 8) return 'text-lg sm:text-xl leading-snug';
+  return 'text-xl sm:text-2xl leading-normal';
 };
 
 export const Profile = () => {
@@ -464,15 +464,15 @@ export const Profile = () => {
             {/* Diamonds — Recharged/Purchased for games and store */}
             <button
               onClick={() => navigate('/top-up')}
-              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#E8F4FF] border border-cyan-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between"
+              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#E8F4FF] border border-cyan-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between min-h-[76px] sm:min-h-[82px]"
             >
-              <div className="flex items-center justify-between gap-1 w-full min-w-0">
+              <div className="flex items-center justify-between gap-1 w-full min-w-0 relative z-10">
                 <p className="text-xs font-semibold text-cyan-900/80 truncate">Diamonds</p>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-700 shrink-0 whitespace-nowrap">
                   Top-Up
                 </span>
               </div>
-              <div className="mt-1.5 w-full min-w-0 relative z-10">
+              <div className="mt-1.5 w-full min-w-0 relative z-10 pr-6">
                 <p
                   className={`${getBalanceFontSize(diamondsStr.length)} font-extrabold text-ink tabular-nums tracking-tight truncate`}
                   title={diamondsStr}
@@ -480,21 +480,21 @@ export const Profile = () => {
                   {diamondsStr}
                 </p>
               </div>
-              <DiamondIcon className="w-10 h-10 sm:w-12 sm:h-12 text-cyan-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <DiamondIcon className="w-12 h-12 sm:w-14 sm:h-14 text-cyan-500/20 absolute right-1 -bottom-1 pointer-events-none" />
             </button>
 
             {/* Coins — Earned from Live, Party, Games, and Gifts */}
             <button
               onClick={() => navigate('/income')}
-              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#FFF8E5] border border-amber-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between"
+              className="relative overflow-hidden rounded-card p-3 sm:p-3.5 text-left bg-[#FFF8E5] border border-amber-100 shadow-sm active:scale-[0.98] transition-transform min-w-0 flex flex-col justify-between min-h-[76px] sm:min-h-[82px]"
             >
-              <div className="flex items-center justify-between gap-1 w-full min-w-0">
+              <div className="flex items-center justify-between gap-1 w-full min-w-0 relative z-10">
                 <p className="text-xs font-semibold text-amber-900/80 truncate">Income (Coins)</p>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 shrink-0 whitespace-nowrap">
                   Agency Trade
                 </span>
               </div>
-              <div className="mt-1.5 w-full min-w-0 relative z-10">
+              <div className="mt-1.5 w-full min-w-0 relative z-10 pr-6">
                 <p
                   className={`${getBalanceFontSize(coinsStr.length)} font-extrabold text-ink tabular-nums tracking-tight truncate`}
                   title={coinsStr}
@@ -502,7 +502,7 @@ export const Profile = () => {
                   {coinsStr}
                 </p>
               </div>
-              <CoinIcon className="w-10 h-10 sm:w-12 sm:h-12 text-amber-500/20 absolute -right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <CoinIcon className="w-12 h-12 sm:w-14 sm:h-14 text-amber-500/20 absolute right-1 -bottom-1 pointer-events-none" />
             </button>
           </div>
         );

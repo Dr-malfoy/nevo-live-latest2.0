@@ -2,12 +2,21 @@ import { useEffect, useState } from 'react';
 import { UserPlus, Users, Copy, Check } from 'lucide-react';
 import { adminApi } from '../api';
 
+const TIER_OPTIONS = [
+  { tier: 'starter', label: 'Starter (4%)', agencyPercent: 4, adminPercent: 26, color: 'bg-slate-700 text-slate-200' },
+  { tier: 'bronze', label: 'Bronze (8%)', agencyPercent: 8, adminPercent: 22, color: 'bg-amber-800/80 text-amber-200' },
+  { tier: 'silver', label: 'Silver (12%)', agencyPercent: 12, adminPercent: 18, color: 'bg-slate-500/80 text-white' },
+  { tier: 'gold', label: 'Gold (16%)', agencyPercent: 16, adminPercent: 14, color: 'bg-yellow-600/80 text-yellow-100' },
+  { tier: 'platinum', label: 'Platinum (18%)', agencyPercent: 18, adminPercent: 12, color: 'bg-cyan-700/80 text-cyan-100' },
+  { tier: 'diamond', label: 'Diamond (20%)', agencyPercent: 20, adminPercent: 10, color: 'bg-blue-600/80 text-blue-100' },
+];
+
 export const Agents = () => {
   const [agents, setAgents] = useState<any[]>([]);
   const [agencies, setAgencies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ phone: '', password: '', nickname: '', name: '' });
+  const [form, setForm] = useState({ phone: '', password: '', nickname: '', name: '', tier: 'starter' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
@@ -34,7 +43,7 @@ export const Agents = () => {
     try {
       await adminApi.createAgent(form);
       setShowForm(false);
-      setForm({ phone: '', password: '', nickname: '', name: '' });
+      setForm({ phone: '', password: '', nickname: '', name: '', tier: 'starter' });
       load();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create agent');
@@ -47,10 +56,22 @@ export const Agents = () => {
     setTimeout(() => setCopied(''), 1500);
   };
 
+  const handleTierChange = async (agencyId: string, newTier: string) => {
+    try {
+      await adminApi.updateAgency(agencyId, { tier: newTier });
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update agency tier');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Agents</h2>
+        <div>
+          <h2 className="text-2xl font-bold">Agents & Agencies</h2>
+          <p className="text-xs text-dark-400 mt-1">Tier-based coin sharing: Host gets 70% in coins, Agency gets 4% - 20%, Admin gets remainder</p>
+        </div>
         <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-2 px-3 py-2 bg-primary-600 rounded-lg text-sm">
           <UserPlus className="w-4 h-4" /> Create Agent
         </button>
@@ -58,7 +79,7 @@ export const Agents = () => {
 
       {showForm && (
         <div className="bg-dark-800 rounded-xl p-6 space-y-4">
-          <h3 className="font-bold flex items-center gap-2"><UserPlus className="w-4 h-4" /> New Agent</h3>
+          <h3 className="font-bold flex items-center gap-2"><UserPlus className="w-4 h-4" /> New Agent & Agency</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-dark-400 mb-1 block">Phone *</label>
@@ -75,6 +96,20 @@ export const Agents = () => {
             <div>
               <label className="text-xs text-dark-400 mb-1 block">Agency Name</label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Alpha Agency (auto-generates join code)" className="w-full bg-dark-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-dark-400 mb-1 block">Agency Tier & Commission Split</label>
+              <select
+                value={form.tier}
+                onChange={(e) => setForm({ ...form, tier: e.target.value })}
+                className="w-full bg-dark-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 text-white"
+              >
+                {TIER_OPTIONS.map((t) => (
+                  <option key={t.tier} value={t.tier}>
+                    {t.label} — Host: 70% | Agency: {t.agencyPercent}% | Admin: {t.adminPercent}%
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           {error && <div className="bg-red-600/20 border border-red-600/50 text-red-400 text-sm p-3 rounded-lg">{error}</div>}
@@ -98,10 +133,10 @@ export const Agents = () => {
         </div>
       )}
 
-      {/* Agencies with join codes */}
+      {/* Agencies with join codes & tier management */}
       <div>
         <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-          <Users className="w-5 h-5" /> Agencies
+          <Users className="w-5 h-5" /> Agencies & Tiers
         </h3>
         {loading ? null : agencies.length === 0 ? (
           <p className="text-dark-400 text-sm">No agencies yet</p>
@@ -114,30 +149,53 @@ export const Agents = () => {
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Agent</th>
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Join Code</th>
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Members</th>
-                  <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Commission</th>
+                  <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Tier</th>
+                  <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Agency Cut</th>
+                  <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Admin Cut</th>
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {agencies.map((a: any) => (
-                  <tr key={a._id} className="border-b border-dark-700/50">
-                    <td className="px-4 py-3 text-sm">{a.name}</td>
-                    <td className="px-4 py-3 text-sm">{a.agentId?.nickname || '—'}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold tracking-widest text-primary-400">{a.code}</span>
-                        <button onClick={() => copyCode(a.code)} className="text-dark-400 hover:text-white transition-colors" title="Copy code">
-                          {copied === a.code ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{a.hosts?.length || 0}</td>
-                    <td className="px-4 py-3 text-sm">{a.commission}%</td>
-                    <td className="px-4 py-3 text-sm">
-                      {a.isBanned ? <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white">Banned</span> : <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Active</span>}
-                    </td>
-                  </tr>
-                ))}
+                {agencies.map((a: any) => {
+                  const currentTier = a.tier || 'starter';
+                  const tierOption = TIER_OPTIONS.find((t) => t.tier === currentTier) || TIER_OPTIONS[0];
+                  const agencyCut = a.commission ?? tierOption.agencyPercent;
+                  const adminCut = Math.max(0, 30 - agencyCut);
+
+                  return (
+                    <tr key={a._id} className="border-b border-dark-700/50">
+                      <td className="px-4 py-3 text-sm font-semibold">{a.name}</td>
+                      <td className="px-4 py-3 text-sm">{a.agentId?.nickname || '—'}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold tracking-widest text-primary-400">{a.code}</span>
+                          <button onClick={() => copyCode(a.code)} className="text-dark-400 hover:text-white transition-colors" title="Copy code">
+                            {copied === a.code ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{a.hosts?.length || 0}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <select
+                          value={currentTier}
+                          onChange={(e) => handleTierChange(a._id, e.target.value)}
+                          className="text-xs font-bold uppercase rounded px-2 py-1 bg-dark-700 border border-dark-600 text-white cursor-pointer hover:border-primary-500 focus:outline-none"
+                        >
+                          {TIER_OPTIONS.map((opt) => (
+                            <option key={opt.tier} value={opt.tier}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-bold text-emerald-400">{agencyCut}%</td>
+                      <td className="px-4 py-3 text-sm font-bold text-amber-400">{adminCut}%</td>
+                      <td className="px-4 py-3 text-sm">
+                        {a.isBanned ? <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white">Banned</span> : <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Active</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -146,3 +204,4 @@ export const Agents = () => {
     </div>
   );
 };
+

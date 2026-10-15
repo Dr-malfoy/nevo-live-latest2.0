@@ -19,10 +19,9 @@ import {
   PiGenderMaleBold as MaleIcon,
   PiGenderFemaleBold as FemaleIcon,
   PiBroadcastFill as BroadcastIcon,
-  PiDiamondFill as DiamondIcon,
   PiShieldCheckFill as ShieldCheck,
 } from 'react-icons/pi';
-import { CoinIcon } from '../components/ui/CurrencyIcon';
+import { CoinIcon, DiamondIcon } from '../components/ui/CurrencyIcon';
 import { chatApi, usersApi, callApi } from '../api';
 import {
   Avatar,

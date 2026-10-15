@@ -20,6 +20,7 @@ export interface IAgencyDocument extends Document {
   type: 'public' | 'private';
   level: number;
   commission: number;
+  tier: 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
   hosts: Schema.Types.ObjectId[];
   totalContribution: number;
   totalLiveHours: number;
@@ -50,7 +51,13 @@ const agencySchema = new Schema<IAgencyDocument>(
       index: true,
     },
     level: { type: Number, default: 1, min: 1, index: true },
-    commission: { type: Number, required: true, min: 0, max: 100, default: 10 },
+    commission: { type: Number, required: true, min: 0, max: 100, default: 4 },
+    tier: {
+      type: String,
+      enum: ['starter', 'bronze', 'silver', 'gold', 'platinum', 'diamond'],
+      default: 'starter',
+      index: true,
+    },
     hosts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     totalContribution: { type: Number, default: 0, min: 0, index: true },
     totalLiveHours: { type: Number, default: 0, min: 0 },

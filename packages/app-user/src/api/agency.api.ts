@@ -59,6 +59,9 @@ export interface AgencyItem {
   score?: number;
   memberCount: number;
   commission: number;
+  tier?: 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
+  tierInfo?: any;
+  allTiers?: any;
   totalContribution: number;
   totalLiveHours: number;
   agent: AgencyAgentInfo;
@@ -128,6 +131,7 @@ export const agencyApi = {
     cover?: string;
     type?: 'public' | 'private';
     commission?: number;
+    tier?: string;
     welcomeBanner?: AgencyWelcomeBanner;
   }) =>
     client.put<ApiResponse<any>>('/agency/settings', data),

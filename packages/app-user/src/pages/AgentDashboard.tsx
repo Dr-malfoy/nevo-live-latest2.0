@@ -78,6 +78,47 @@ import { requestMediaPermissions } from '../lib/permissions';
 type Tab = 'make_money' | 'users' | 'manage' | 'wallet' | 'data';
 type DataTab = 'overview' | 'host' | 'invite';
 
+export const AGENCY_TIER_LIST = [
+  { tier: 'starter', label: 'Starter', percent: 4, adminPercent: 26, badge: '🌟 Starter (4%)', desc: 'Agency opening with 2+ hosts' },
+  { tier: 'bronze', label: 'Bronze', percent: 8, adminPercent: 22, badge: '🥉 Bronze (8%)', desc: '5 active hosts + 7-day milestone' },
+  { tier: 'silver', label: 'Silver', percent: 12, adminPercent: 18, badge: '🥈 Silver (12%)', desc: '20 active hosts + 30-day milestone + retention' },
+  { tier: 'gold', label: 'Gold', percent: 16, adminPercent: 14, badge: '🥇 Gold (16%)', desc: '50 active hosts + 30+90 day milestone + quality' },
+  { tier: 'platinum', label: 'Platinum', percent: 18, adminPercent: 12, badge: '💠 Platinum (18%)', desc: '100 active hosts + eligible revenue + leaderboard' },
+  { tier: 'diamond', label: 'Diamond', percent: 20, adminPercent: 10, badge: '💎 Diamond (20%)', desc: '100+ active hosts + top leaderboard + elite rank' },
+];
+
+const LEVEL_COMMISSIONS: Record<number, number> = {
+  1: 4,
+  2: 6,
+  3: 8,
+  4: 10,
+  5: 12,
+  6: 14,
+  7: 16,
+  8: 18,
+  9: 19,
+  10: 20,
+};
+
+export function getAgencyCommissionByLevel(level: number = 1): number {
+  const lvl = Math.max(1, Math.floor(level || 1));
+  if (lvl >= 10) return 20;
+  return LEVEL_COMMISSIONS[lvl] ?? 4;
+}
+
+export const AGENCY_LEVEL_COMMISSION_LIST = [
+  { level: 1, percent: 4, label: 'Level 1', desc: '0 - 10K score' },
+  { level: 2, percent: 6, label: 'Level 2', desc: '10K - 50K score' },
+  { level: 3, percent: 8, label: 'Level 3', desc: '50K - 150K score' },
+  { level: 4, percent: 10, label: 'Level 4', desc: '150K - 500K score' },
+  { level: 5, percent: 12, label: 'Level 5', desc: '500K - 1.5M score' },
+  { level: 6, percent: 14, label: 'Level 6', desc: '1.5M - 5M score' },
+  { level: 7, percent: 16, label: 'Level 7', desc: '5M - 15M score' },
+  { level: 8, percent: 18, label: 'Level 8', desc: '15M - 50M score' },
+  { level: 9, percent: 19, label: 'Level 9', desc: '50M - 150M score' },
+  { level: 10, percent: 20, label: 'Level 10+', desc: '150M+ score (Max Elite)' },
+];
+
 export const AgentDashboard = () => {
   const navigate = useNavigate();
   const { user, updateUser } = useAuthStore();
@@ -111,7 +152,8 @@ export const AgentDashboard = () => {
   const [agencyAvatar, setAgencyAvatar] = useState('');
   const [agencyCover, setAgencyCover] = useState('');
   const [agencyType, setAgencyType] = useState<'public' | 'private'>('public');
-  const [agencyCommission, setAgencyCommission] = useState(10);
+  const [agencyTier, setAgencyTier] = useState<string>('starter');
+  const [agencyCommission, setAgencyCommission] = useState(4);
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -181,7 +223,8 @@ export const AgentDashboard = () => {
         setAgencyAvatar(ag.avatar || '');
         setAgencyCover(ag.cover || '');
         setAgencyType(ag.type || 'public');
-        setAgencyCommission(ag.commission ?? 10);
+        setAgencyTier(ag.tier || 'starter');
+        setAgencyCommission(ag.commission ?? getAgencyCommissionByLevel(ag.level || 1));
 
         // Initialize welcome banner customizer
         const wb = ag.welcomeBanner || {};
@@ -475,6 +518,7 @@ export const AgentDashboard = () => {
         avatar: agencyAvatar.trim() || undefined,
         cover: agencyCover.trim() || undefined,
         type: agencyType,
+        tier: agencyTier,
         commission: Number(agencyCommission),
         welcomeBanner: {
           enabled: welcomeEnabled,
@@ -832,10 +876,16 @@ export const AgentDashboard = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
+              <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Level</p>
                   <p className="text-sm font-extrabold text-indigo-600 mt-0.5">Lv.{myAgency.level || 1}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">Tier</p>
+                  <p className="text-xs font-black text-purple-700 mt-1 uppercase bg-purple-50 px-1.5 py-0.5 rounded-md inline-block">
+                    {myAgency.tier || 'STARTER'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Members</p>
@@ -843,7 +893,7 @@ export const AgentDashboard = () => {
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Commission</p>
-                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">{myAgency.commission ?? 10}%</p>
+                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">{getAgencyCommissionByLevel(myAgency.level || 1)}%</p>
                 </div>
               </div>
 
@@ -1211,20 +1261,20 @@ export const AgentDashboard = () => {
                       <p className="text-[10px] text-slate-400 font-medium mt-1">Active streamers joined</p>
                     </div>
 
-                    {/* Agency Commission */}
+                    {/* Agency Level & Commission */}
                     <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                       <div className="flex items-center justify-between gap-1 mb-2">
                         <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                          Commission
+                          Agency Level
                         </span>
                         <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
                           <Crown className="w-3.5 h-3.5 text-purple-600" />
                         </div>
                       </div>
-                      <p className="text-xl font-black text-purple-700 tracking-tight leading-none">
-                        {myAgency?.commission ?? 10}%
+                      <p className="text-lg font-black text-purple-700 tracking-tight leading-none uppercase">
+                        Lv.{myAgency?.level || 1} ({getAgencyCommissionByLevel(myAgency?.level || 1)}%)
                       </p>
-                      <p className="text-[10px] text-slate-400 font-medium mt-1">Host earnings share</p>
+                      <p className="text-[10px] text-emerald-600 font-semibold mt-1">Dynamic Level Commission</p>
                     </div>
 
                     {/* Members Total Coins Circulation */}
@@ -1307,6 +1357,62 @@ export const AgentDashboard = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Agency Level & Coin Flow Ladder */}
+                <SectionCard
+                  title="Agency Levels & Dynamic Commission"
+                  subtitle="Dynamic Level-based Agency Commissions (4% - 20%)"
+                >
+                  <div className="space-y-3">
+                    <div className="bg-gradient-to-r from-purple-900/10 via-indigo-900/10 to-pink-900/10 p-3 rounded-2xl border border-purple-200/80">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-5 h-5 text-purple-600" />
+                          <div>
+                            <p className="text-xs font-black text-slate-900">
+                              Current Agency Level: <span className="text-purple-700 font-extrabold">Lv.{myAgency?.level || 1}</span>
+                            </p>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              Your agency receives <strong className="text-emerald-600">{getAgencyCommissionByLevel(myAgency?.level || 1)}%</strong> coins directly into your wallet from every host gift.
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-xl bg-purple-600 text-white font-black text-xs shadow-2xs">
+                          {getAgencyCommissionByLevel(myAgency?.level || 1)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {AGENCY_LEVEL_COMMISSION_LIST.map((lvl) => {
+                        const currentLvl = myAgency?.level || 1;
+                        const isCurrent = currentLvl === lvl.level;
+                        return (
+                          <div
+                            key={lvl.level}
+                            className={`p-2.5 rounded-xl border transition-all ${
+                              isCurrent
+                                ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-500/20'
+                                : 'bg-white border-slate-200/80'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold text-slate-900">
+                                {lvl.label} {isCurrent && <span className="text-purple-600 text-[10px] font-bold">(Current)</span>}
+                              </span>
+                              <span className="text-[10px] font-extrabold text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md">
+                                {lvl.percent}% Commission
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">
+                              {lvl.desc}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </SectionCard>
 
                 {/* Top Agency Streamers Leaderboard Preview */}
                 <SectionCard
@@ -2209,19 +2315,6 @@ export const AgentDashboard = () => {
                         Private
                       </button>
                     </div>
-                  </div>
-
-                  {/* Commission */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Commission ({agencyCommission}%)</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      value={agencyCommission}
-                      onChange={(e) => setAgencyCommission(Number(e.target.value))}
-                      className="w-full accent-indigo-600"
-                    />
                   </div>
 
                   {/* Description */}

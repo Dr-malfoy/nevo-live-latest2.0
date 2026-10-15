@@ -1,8 +1,9 @@
-import { PiDiamondFill as Gem, PiCoinsFill as Coins } from 'react-icons/pi';
+import { IoDiamond } from 'react-icons/io5';
+import { PiCoinsFill as Coins } from 'react-icons/pi';
 
-// Diamond / Coin currency icons (lucide — fa-gem / fa-coins style)
+// Diamond / Coin currency icons
 export const DiamondIcon = ({ className }: { className?: string }) => (
-  <Gem className={className || 'w-4 h-4 inline-block text-cyan-400'} />
+  <IoDiamond className={className || 'w-4 h-4 inline-block text-cyan-400'} />
 );
 
 export const CoinIcon = ({ className }: { className?: string }) => (
