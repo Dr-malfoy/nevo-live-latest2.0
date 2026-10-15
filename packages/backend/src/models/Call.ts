@@ -17,6 +17,9 @@ export interface ICallDocument extends Document {
   coinsPerMinute: number;
   minutesBilled: number;
   totalCoins: number;
+  /** 1:1 Subscription benefit: first minute is free */
+  isFreeMinuteApplied?: boolean;
+  freeMinuteUsed?: boolean;
   /** 60% of totalCoins credited to host. */
   hostEarning: number;
   /** 40% of totalCoins credited to company. */
@@ -50,6 +53,8 @@ const callSchema = new Schema<ICallDocument>(
     coinsPerMinute: { type: Number, default: 0 },
     minutesBilled: { type: Number, default: 0 },
     totalCoins: { type: Number, default: 0 },
+    isFreeMinuteApplied: { type: Boolean, default: false },
+    freeMinuteUsed: { type: Boolean, default: false },
     hostEarning: { type: Number, default: 0 },
     companyCommission: { type: Number, default: 0 },
     finalized: { type: Boolean, default: false, index: true },

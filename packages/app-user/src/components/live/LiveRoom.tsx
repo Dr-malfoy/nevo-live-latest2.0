@@ -8,12 +8,10 @@ import { GiftOverlay } from './GiftOverlay';
 import { ReactionOverlay, useReactions } from './ReactionOverlay';
 import { FloatingHearts, useFloatingHearts } from './FloatingHearts';
 import { NotificationOverlay } from './NotificationOverlay';
-import { PKPanel } from './PKPanel';
 import { AudienceList, type Viewer } from './AudienceList';
 import { LiveSkeleton } from './LiveSkeleton';
 import { HostCameraPreview } from './HostCameraPreview';
 import { FilterPicker } from './FilterPicker';
-import { StickerPicker, StickerOverlay } from './StickerPicker';
 import { LiveToolsSheet } from './LiveToolsSheet';
 import type { LiveRoomProps } from './types';
 
@@ -50,11 +48,8 @@ export const LiveRoom = ({
   filterCss,
   activeFilterId,
   onSelectFilter,
-  stickerState,
   showFilters,
-  showStickers,
   onToggleFilters,
-  onToggleStickers,
 }: LiveRoomProps) => {
   const [showAudience, setShowAudience] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -211,13 +206,6 @@ export const LiveRoom = ({
       {/* Host camera state pill (video rooms only) */}
       {joined && isHost && videoEnabled && <HostCameraPreview cameraOn={cameraOn} />}
 
-      {/* Host sticker overlay — above video, below controls */}
-      {isHost && stickerState && (
-        <div id="sticker-overlay-area" className="absolute inset-0 z-20 pointer-events-none">
-          <StickerOverlay {...stickerState} />
-        </div>
-      )}
-
       <TopToolbar
         host={host}
         title={streamTitle}
@@ -252,7 +240,6 @@ export const LiveRoom = ({
         onToggleMic={onToggleMic}
         onSwitchCamera={onSwitchCamera}
         onToggleFilters={onToggleFilters}
-        onToggleStickers={onToggleStickers}
         onLeave={onLeave}
         onEnd={onEnd}
         onChatSend={onChatSend}
@@ -261,10 +248,7 @@ export const LiveRoom = ({
 
       {/* Camera enhancement pickers (host only) */}
       {isHost && (
-        <>
-          <FilterPicker open={showFilters} activeId={activeFilterId || 'natural'} onSelect={onSelectFilter || (() => {})} onClose={onToggleFilters || (() => {})} />
-          <StickerPicker open={showStickers} onAdd={stickerState?.addSticker || (() => {})} onClose={onToggleStickers || (() => {})} />
-        </>
+        <FilterPicker open={showFilters} activeId={activeFilterId || 'natural'} onSelect={onSelectFilter || (() => {})} onClose={onToggleFilters || (() => {})} />
       )}
 
       {/* Live tools and features menu sheet */}
@@ -279,13 +263,10 @@ export const LiveRoom = ({
         onToggleMic={onToggleMic}
         onSwitchCamera={onSwitchCamera}
         onToggleFilters={onToggleFilters}
-        onToggleStickers={onToggleStickers}
         onOpenGift={onOpenGift}
         onShare={handleShare}
         onReport={onReport}
       />
-
-      <PKPanel data={null} />
 
       <AudienceList open={showAudience} streamId={stream?._id} viewers={viewers} onClose={() => setShowAudience(false)} />
 
@@ -297,7 +278,7 @@ export const LiveRoom = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             role="status"
-            className="absolute bottom-40 left-1/2 -translate-x-1/2 z-40 glass-card flex items-center gap-2 px-4 py-2.5"
+            className="absolute bottom-40 left-1/2 -translate-x-1/2 z-40 bg-[#181926]/95 border border-white/20 rounded-2xl shadow-xl flex items-center gap-2 px-4 py-2.5 text-white"
           >
             <Check className="w-4 h-4 text-emerald-400" />
             <span className="text-sm font-semibold">Link copied!</span>

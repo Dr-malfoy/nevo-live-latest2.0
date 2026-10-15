@@ -21,6 +21,26 @@ export const storeService = {
       filter.category = params.category;
     }
 
+    // Ensure 1:1 Subscription Card exists in catalogue
+    try {
+      const existingSub = await StoreItem.findOne({ category: 'subscription' });
+      if (!existingSub) {
+        await StoreItem.create({
+          category: 'subscription',
+          name: '1:1 Subscription Card',
+          description: '1 Week Validity • 100 Filter Matches • 5 Free 1-Min Calls',
+          image: '🎴',
+          preview: '',
+          priceCoins: 10000,
+          priceDiamonds: 100,
+          durationDays: 7,
+          badge: 'VIP',
+          isActive: true,
+          order: 1,
+        });
+      }
+    } catch {}
+
     let sortOption: any = { order: 1, createdAt: -1 };
     if (params.sort === 'hot') {
       sortOption = { soldToday: -1, order: 1 };
@@ -172,9 +192,44 @@ export const storeService = {
       { $inc: { soldToday: 1, soldThisMonth: 1 } }
     );
 
-    // 6. Calculate expiration date
+    // 6. Calculate expiration date & activate subscription if applicable
     let expiresAt: Date | null = null;
-    if (item.durationDays && item.durationDays > 0) {
+    const durationDays = item.durationDays && item.durationDays > 0 ? item.durationDays : 7;
+
+    if (item.category === 'subscription') {
+      const now = new Date();
+      const currentExpiry = recipient.matchSubscription?.expiresAt ? new Date(recipient.matchSubscription.expiresAt) : null;
+      const isStillActive = Boolean(recipient.matchSubscription?.active && currentExpiry && currentExpiry > now);
+
+      expiresAt = isStillActive && currentExpiry
+        ? new Date(currentExpiry.getTime() + durationDays * 24 * 60 * 60 * 1000)
+        : new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+      const newFilterMatches = isStillActive
+        ? (recipient.matchSubscription?.filterMatchesRemaining || 0) + 100
+        : 100;
+      const newFreeCalls = isStillActive
+        ? (recipient.matchSubscription?.freeCallsRemaining || 0) + 5
+        : 5;
+
+      recipient.matchSubscription = {
+        active: true,
+        startDate: now,
+        expiresAt,
+        filterMatchesRemaining: newFilterMatches,
+        totalFilterMatches: newFilterMatches,
+        freeCallsRemaining: newFreeCalls,
+        totalFreeCalls: newFreeCalls,
+      };
+      recipient.markModified('matchSubscription');
+      await recipient.save();
+
+      try {
+        getIO().to(`user:${recipient._id}`).emit('user:update', {
+          matchSubscription: recipient.matchSubscription,
+        });
+      } catch {}
+    } else if (item.durationDays && item.durationDays > 0) {
       expiresAt = new Date(Date.now() + item.durationDays * 24 * 60 * 60 * 1000);
     }
 
@@ -210,6 +265,7 @@ export const storeService = {
         diamonds: updatedBuyer.diamonds,
         tickets: updatedBuyer.tickets,
       },
+      matchSubscription: recipient.matchSubscription,
     };
   },
 

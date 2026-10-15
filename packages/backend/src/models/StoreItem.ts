@@ -14,7 +14,8 @@ export type StoreCategory =
   | 'profile_card'
   | 'rare_id'
   | 'honor'
-  | 'badge';
+  | 'badge'
+  | 'subscription';
 
 export interface IStoreItemDocument extends Document {
   category: StoreCategory;
@@ -54,7 +55,7 @@ const storeItemSchema = new Schema<IStoreItemDocument>(
   {
     category: {
       type: String,
-      enum: ['avatar_frame', 'ride', 'chat_bubble', 'party_theme', 'profile_card', 'rare_id', 'honor', 'badge'],
+      enum: ['avatar_frame', 'ride', 'chat_bubble', 'party_theme', 'profile_card', 'rare_id', 'honor', 'badge', 'subscription'],
       required: true,
       index: true,
     },

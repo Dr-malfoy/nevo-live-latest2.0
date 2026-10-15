@@ -139,6 +139,15 @@ export interface IUserDocument extends Document {
     rocket?: { qrCode?: string; walletAddress?: string; number?: string; phone?: string };
     [key: string]: any;
   };
+  matchSubscription?: {
+    active: boolean;
+    startDate?: Date;
+    expiresAt?: Date;
+    filterMatchesRemaining: number;
+    totalFilterMatches: number;
+    freeCallsRemaining: number;
+    totalFreeCalls: number;
+  };
   following: Schema.Types.ObjectId[];
   followers: Schema.Types.ObjectId[];
   createdAt: Date;
@@ -317,6 +326,15 @@ const userSchema = new Schema<IUserDocument>(
         number: { type: String, default: '' },
         phone: { type: String, default: '' },
       },
+    },
+    matchSubscription: {
+      active: { type: Boolean, default: false },
+      startDate: { type: Date },
+      expiresAt: { type: Date },
+      filterMatchesRemaining: { type: Number, default: 0 },
+      totalFilterMatches: { type: Number, default: 100 },
+      freeCallsRemaining: { type: Number, default: 0 },
+      totalFreeCalls: { type: Number, default: 5 },
     },
     following: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     followers: [{ type: Schema.Types.ObjectId, ref: 'User' }],

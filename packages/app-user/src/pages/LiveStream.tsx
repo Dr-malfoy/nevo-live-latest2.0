@@ -12,7 +12,6 @@ import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGif
 import { useAgora } from '../hooks/useAgora';
 import { useFollow } from '../hooks/useFollow';
 import { useVideoFilters } from '../hooks/useVideoFilters';
-import { useStickers } from '../hooks/useStickers';
 import { registerLiveSession, endLiveSession } from '../services/liveSession';
 import type { LiveStream, Gift as GiftType } from '../types';
 
@@ -488,11 +487,9 @@ export const LiveStreamPage = () => {
     targetUserId: hostTargetId,
   });
 
-  // Host camera enhancements — filters (local preview) + stickers (local overlay)
+  // Host camera enhancements — filters (local preview)
   const { activeFilter, applyFilter } = useVideoFilters();
-  const sticker = useStickers();
   const [showFilters, setShowFilters] = useState(false);
-  const [showStickers, setShowStickers] = useState(false);
 
   const handleSelectFilter = (id: string) => {
     applyFilter(id);
@@ -537,21 +534,8 @@ export const LiveStreamPage = () => {
         filterCss={activeFilter.css !== 'none' ? activeFilter.css : undefined}
         activeFilterId={activeFilter.id}
         onSelectFilter={handleSelectFilter}
-        stickerState={{
-          stickers: sticker.stickers,
-          selectedId: sticker.selectedId,
-          selectSticker: sticker.selectSticker,
-          addSticker: sticker.addSticker,
-          moveSticker: sticker.moveSticker,
-          resizeSticker: sticker.resizeSticker,
-          rotateSticker: sticker.rotateSticker,
-          removeSticker: sticker.removeSticker,
-          bringToFront: sticker.bringToFront,
-        }}
         showFilters={showFilters}
-        showStickers={showStickers}
         onToggleFilters={() => setShowFilters((v) => !v)}
-        onToggleStickers={() => setShowStickers((v) => !v)}
       />
 
       {/* Gift Modal */}

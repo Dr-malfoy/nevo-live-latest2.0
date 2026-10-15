@@ -49,11 +49,18 @@ export const callService = {
     const host = await User.findById(hostId).select('callPricePerMinute nickname avatar');
     if (!host) throw new AppError('User not found', 404);
 
-    const caller = await User.findById(callerId).select('coins');
+    const caller = await User.findById(callerId).select('coins matchSubscription');
     const coinsPerMinute = typeof host.callPricePerMinute === 'number' ? host.callPricePerMinute : 1000;
     const balance = caller?.coins || 0;
 
-    const hasMinuteBalance = coinsPerMinute <= 0 || balance >= coinsPerMinute;
+    const isSubActive = Boolean(
+      caller?.matchSubscription?.active &&
+      caller?.matchSubscription?.expiresAt &&
+      new Date(caller.matchSubscription.expiresAt) > new Date()
+    );
+    const hasFreeCall = isSubActive && (caller?.matchSubscription?.freeCallsRemaining || 0) > 0;
+
+    const hasMinuteBalance = hasFreeCall || coinsPerMinute <= 0 || balance >= coinsPerMinute;
     const canCall = hasMinuteBalance;
 
     let reason: string | undefined;
@@ -66,7 +73,9 @@ export const callService = {
       balance,
       canCall,
       reason,
-      minBalance: coinsPerMinute,
+      minBalance: hasFreeCall ? 0 : coinsPerMinute,
+      hasFreeCall,
+      freeCallsRemaining: caller?.matchSubscription?.freeCallsRemaining || 0,
       hostNickname: host.nickname,
       hostAvatar: host.avatar,
     };
@@ -96,10 +105,11 @@ export const callService = {
     let hostId: string | undefined;
     let audienceId: string | undefined;
     let coinsPerMinute = 0;
+    let isFreeMinuteApplied = false;
 
     if (recipients.length === 1) {
       const recipient = found[0] as any;
-      const initiator = (await User.findById(initiatorId).select('role coins').lean()) as any;
+      const initiator = (await User.findById(initiatorId).select('role coins matchSubscription').lean()) as any;
 
       const rate = typeof recipient.callPricePerMinute === 'number' ? recipient.callPricePerMinute : 1000;
       if (rate > 0) {
@@ -107,9 +117,25 @@ export const callService = {
         audienceId = initiatorId;
         coinsPerMinute = rate;
 
-        const audienceCoins = initiator?.coins || 0;
-        if (audienceCoins < coinsPerMinute) {
-          throw new AppError(`Insufficient Coins for 1 minute at ${coinsPerMinute.toLocaleString()} Coins/min`, 402);
+        const isSubActive = Boolean(
+          initiator?.matchSubscription?.active &&
+          initiator?.matchSubscription?.expiresAt &&
+          new Date(initiator.matchSubscription.expiresAt) > new Date()
+        );
+        const freeCalls = initiator?.matchSubscription?.freeCallsRemaining || 0;
+
+        if (isSubActive && freeCalls > 0) {
+          isFreeMinuteApplied = true;
+          // Deduct 1 free call from allowance
+          await User.updateOne(
+            { _id: initiatorId },
+            { $inc: { 'matchSubscription.freeCallsRemaining': -1 } }
+          );
+        } else {
+          const audienceCoins = initiator?.coins || 0;
+          if (audienceCoins < coinsPerMinute) {
+            throw new AppError(`Insufficient Coins for 1 minute at ${coinsPerMinute.toLocaleString()} Coins/min`, 402);
+          }
         }
       }
     }
@@ -137,6 +163,8 @@ export const callService = {
       callSource: source,
       status: 'ringing',
       maxParticipants: MAX_CALL_PARTICIPANTS,
+      isFreeMinuteApplied,
+      freeMinuteUsed: false,
       ...(hostId && { hostId, audienceId, coinsPerMinute }),
     });
 
@@ -155,6 +183,7 @@ export const callService = {
       participantCount: participants.length,
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,
+      isFreeMinuteApplied,
     };
     let recipientOnline = false;
     try {
@@ -352,6 +381,37 @@ export const callService = {
       }
 
       const audienceId = call.audienceId.toString();
+
+      // Free 1st minute under 1:1 Subscription Card
+      if (call.isFreeMinuteApplied && !call.freeMinuteUsed) {
+        call.freeMinuteUsed = true;
+        call.minutesBilled += 1;
+        // 0 coins charged for minute 1!
+        await call.save();
+
+        const audience = await User.findById(audienceId).select('coins');
+        const audienceCoins = audience?.coins || 0;
+        const minutesRemaining = Math.floor(audienceCoins / call.coinsPerMinute);
+
+        emitSafe('balance:update', `user:${audienceId}`, {
+          coins: audienceCoins,
+          minutesBilled: call.minutesBilled,
+          totalCoins: call.totalCoins,
+          isLowBalance: minutesRemaining <= 1,
+          minutesRemaining,
+          isFreeMinute: true,
+        });
+
+        return {
+          coinsFinished: false,
+          audienceCoins,
+          minutesBilled: call.minutesBilled,
+          totalCoins: call.totalCoins,
+          isLowBalance: minutesRemaining <= 1,
+          minutesRemaining,
+          isFreeMinute: true,
+        };
+      }
 
       // Atomic deduction — only deduct if the audience has enough coins
       const audience = await User.findOneAndUpdate(

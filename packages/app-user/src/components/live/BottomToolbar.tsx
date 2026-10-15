@@ -17,7 +17,7 @@ interface BottomToolbarProps {
   onToggleMic: () => void;
   onSwitchCamera: () => void;
   onToggleFilters: () => void;
-  onToggleStickers: () => void;
+  onToggleStickers?: () => void;
   onLeave: () => void;
   onEnd: () => void;
   onChatSend: (message: string) => void;
@@ -59,7 +59,6 @@ export const BottomToolbar = ({
   onToggleMic,
   onSwitchCamera,
   onToggleFilters,
-  onToggleStickers,
   onLeave,
   onEnd,
   onChatSend,
@@ -82,7 +81,7 @@ export const BottomToolbar = ({
         <RoundBtn label="Menu" onClick={onOpenMenu || (() => {})}>
           <Grid className="w-5 h-5 text-white/90" />
         </RoundBtn>
-        <RoundBtn label={micOn ? 'Mute' : 'Unmute'} onClick={onToggleMic} active={!micOn} activeClass="text-red-400">
+        <RoundBtn label={micOn ? 'Mute' : 'Unmute'} onClick={() => onToggleMic()} active={!micOn} activeClass="text-red-400">
           {micOn ? <Mic className="w-5 h-5 text-white/90" /> : <MicOff className="w-5 h-5 text-white/90" />}
         </RoundBtn>
         {isHost && videoEnabled && (

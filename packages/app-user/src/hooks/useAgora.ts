@@ -511,7 +511,7 @@ export const useAgora = () => {
     togglingMicRef.current = true;
 
     try {
-      const next = desiredState !== undefined ? desiredState : !micOnRef.current;
+      const next = typeof desiredState === 'boolean' ? desiredState : !micOnRef.current;
 
       if (next) {
         // Turning mic ON
@@ -532,12 +532,18 @@ export const useAgora = () => {
             localAudioRef.current = audioTrack;
             await clientRef.current.publish([audioTrack]);
             await audioTrack.setEnabled(true);
+            if (typeof (audioTrack as any).setMuted === 'function') {
+              await (audioTrack as any).setMuted(false);
+            }
           } else {
             const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
             if (!isPublished) {
               await clientRef.current.publish([localAudioRef.current]);
             }
             await localAudioRef.current.setEnabled(true);
+            if (typeof (localAudioRef.current as any).setMuted === 'function') {
+              await (localAudioRef.current as any).setMuted(false);
+            }
           }
         }
 
@@ -556,6 +562,13 @@ export const useAgora = () => {
               });
             }
           }
+        } else if (!clientRef.current && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            fallbackStreamRef.current = micStream;
+          } catch (e) {
+            console.warn('[useAgora] Failed to get user media for mic:', e);
+          }
         }
 
         micOnRef.current = true;
@@ -567,6 +580,9 @@ export const useAgora = () => {
         if (localAudioRef.current) {
           try {
             await localAudioRef.current.setEnabled(false);
+            if (typeof (localAudioRef.current as any).setMuted === 'function') {
+              await (localAudioRef.current as any).setMuted(true);
+            }
           } catch (e) {
             console.warn('live mic disable error:', e);
           }
@@ -591,7 +607,7 @@ export const useAgora = () => {
         ? 'Microphone permission denied. Please allow microphone access in your browser settings.'
         : 'Failed to access microphone. Please check your audio device.';
       setError(errMsg);
-      throw new Error(errMsg);
+      return false;
     } finally {
       togglingMicRef.current = false;
     }
