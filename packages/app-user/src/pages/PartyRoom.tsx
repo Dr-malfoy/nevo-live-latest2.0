@@ -70,7 +70,22 @@ export const PartyRoom = () => {
   const [verifyingPassword, setVerifyingPassword] = useState(false);
   const [privateRoomInfo, setPrivateRoomInfo] = useState<{ name?: string; owner?: any } | null>(null);
 
+  const [noiseReduction, setNoiseReduction] = useState(true);
+  const [roomAudioMuted, setRoomAudioMuted] = useState(false);
+
   const isHost = !!room && !!user && room.ownerId?._id === user._id;
+
+  const areSeatsLocked = useMemo(() => {
+    if (!room?.seats) return false;
+    const guestSeats = room.seats.filter((s) => s.index > 1);
+    return guestSeats.length > 0 && guestSeats.every((s) => s.isLocked);
+  }, [room?.seats]);
+
+  const areSeatsMuted = useMemo(() => {
+    if (!room?.seats) return false;
+    const guestSeats = room.seats.filter((s) => s.index > 1);
+    return guestSeats.length > 0 && guestSeats.every((s) => s.isMuted);
+  }, [room?.seats]);
 
   const joinRoom = useSocketStore((s) => s.joinRoom);
   const leaveRoom = useSocketStore((s) => s.leaveRoom);
@@ -305,33 +320,62 @@ export const PartyRoom = () => {
     }
   };
 
-  const handleTool = (key: string, label: string) => {
-    setToolsOpen(false);
-    if (key === 'pk') {
-      setPkOpen(true);
-      return;
+  const handleShare = async () => {
+    const url = window.location.href;
+    const title = room?.name || 'Party Room';
+    const text = `Join my Voice Party Room "${title}" on Nevo Live!`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text, url });
+        return;
+      } catch {
+        // Fallback to clipboard
+      }
     }
-    if (key === 'store') {
-      navigate('/store');
-      return;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Party room link copied to clipboard!', 'success');
+    } catch {
+      showToast('Party room link: ' + url, 'info');
     }
-    if (key === 'rewards') {
-      navigate('/rewards');
-      return;
+  };
+
+  const handleToggleLockAllSeats = async () => {
+    if (!id || !isHost) return;
+    const nextLocked = !areSeatsLocked;
+    try {
+      const res = await partyApi.lockAllSeats(id, nextLocked);
+      if (res.data?.success && res.data.data?.seats) {
+        setRoom((prev) => (prev ? { ...prev, seats: res.data.data.seats } : prev));
+        showToast(nextLocked ? 'All guest seats locked' : 'All guest seats unlocked', 'info');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to update seats lock', 'error');
     }
-    if (key === 'rank') {
-      navigate('/rankings?board=gift');
-      return;
+  };
+
+  const handleToggleMuteAllSeats = async () => {
+    if (!id || !isHost) return;
+    const nextMuted = !areSeatsMuted;
+    try {
+      const res = await partyApi.muteAllSeats(id, nextMuted);
+      if (res.data?.success && res.data.data?.seats) {
+        setRoom((prev) => (prev ? { ...prev, seats: res.data.data.seats } : prev));
+        showToast(nextMuted ? 'All guest seats muted' : 'All guest seats unmuted', 'info');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to update seats mute', 'error');
     }
-    if (key === 'fan_club') {
-      navigate('/fan-club');
-      return;
-    }
-    if (key === 'gift' || key === 'gift_center') {
-      setGiftPanelOpen(true);
-      return;
-    }
-    showToast(`${label} is not connected yet`, 'info');
+  };
+
+  const handleToggleRoomAudio = () => {
+    const next = !roomAudioMuted;
+    setRoomAudioMuted(next);
+    const audioEls = document.querySelectorAll('audio');
+    audioEls.forEach((el) => {
+      el.muted = next;
+    });
+    showToast(next ? 'Room audio muted' : 'Room audio unmuted', 'info');
   };
 
   const handleCloseParty = async () => {
@@ -350,6 +394,77 @@ export const PartyRoom = () => {
       await partyApi.leaveRoom(id).catch(() => {});
       navigate('/party', { replace: true });
     }
+  };
+
+  const handleTool = (key: string, label: string) => {
+    if (key === 'pk') {
+      setToolsOpen(false);
+      setPkOpen(true);
+      return;
+    }
+    if (key === 'gift' || key === 'gift_center') {
+      setToolsOpen(false);
+      setGiftPanelOpen(true);
+      return;
+    }
+    if (key === 'game') {
+      setToolsOpen(false);
+      navigate('/games');
+      return;
+    }
+    if (key === 'rank') {
+      setToolsOpen(false);
+      navigate('/rankings?board=gift');
+      return;
+    }
+    if (key === 'store') {
+      setToolsOpen(false);
+      navigate('/store');
+      return;
+    }
+    if (key === 'rewards') {
+      setToolsOpen(false);
+      navigate('/rewards');
+      return;
+    }
+    if (key === 'fan_club') {
+      setToolsOpen(false);
+      navigate('/fan-club');
+      return;
+    }
+    if (key === 'share') {
+      handleShare();
+      return;
+    }
+    if (key === 'lock_all') {
+      handleToggleLockAllSeats();
+      return;
+    }
+    if (key === 'mute_all') {
+      handleToggleMuteAllSeats();
+      return;
+    }
+    if (key === 'close_party') {
+      setToolsOpen(false);
+      handleCloseParty();
+      return;
+    }
+    if (key === 'mic') {
+      handleToggleMic();
+      return;
+    }
+    if (key === 'noise_reduction') {
+      const next = !noiseReduction;
+      setNoiseReduction(next);
+      showToast(`Noise reduction ${next ? 'enabled' : 'disabled'}`, 'info');
+      return;
+    }
+    if (key === 'mute_room') {
+      handleToggleRoomAudio();
+      return;
+    }
+    setToolsOpen(false);
+    showToast(`${label} is not available`, 'info');
   };
 
   const handleToggleMic = async () => {
@@ -697,6 +812,12 @@ export const PartyRoom = () => {
         onClose={() => setToolsOpen(false)}
         isHost={isHost}
         onAction={handleTool}
+        room={room}
+        micOn={micOn}
+        areSeatsLocked={areSeatsLocked}
+        areSeatsMuted={areSeatsMuted}
+        noiseReduction={noiseReduction}
+        roomAudioMuted={roomAudioMuted}
       />
       <PkTypesSheet isOpen={pkOpen} onClose={() => setPkOpen(false)} roomId={id} />
 

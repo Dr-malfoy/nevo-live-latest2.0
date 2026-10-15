@@ -273,17 +273,31 @@ export const registerStreamHandlers = (socket: Socket): void => {
   });
 
   // Host responds to the mic request (accept or decline)
-  socket.on('stream:mic:respond', async ({ streamId, requesterUserId, approved }) => {
+  socket.on('stream:mic:respond', async (payload: any) => {
     try {
+      const streamId = payload?.streamId;
+      const requesterUserId = payload?.requesterUserId || payload?.requesterId;
+      const isApproved = payload?.approved === true || payload?.approve === true || payload?.action === 'accept';
       const hostUserId = socket.data.user?.userId;
-      if (!hostUserId || !streamId || !requesterUserId) return;
 
-      const stream = await LiveStream.findById(streamId).select('hostId').lean();
-      if (!stream || stream.hostId.toString() !== hostUserId) {
-        return; // Only stream host can approve or decline
+      if (!hostUserId || !streamId || !requesterUserId) {
+        console.warn('[streamHandlers] stream:mic:respond missing parameters:', { hostUserId, streamId, requesterUserId });
+        return;
       }
 
-      if (approved) {
+      const stream = await LiveStream.findById(streamId).select('hostId').lean();
+      if (!stream) return;
+
+      const streamHostId = typeof stream.hostId === 'object' && stream.hostId !== null
+        ? ((stream.hostId as any)._id?.toString() || stream.hostId.toString())
+        : String(stream.hostId);
+
+      if (streamHostId !== String(hostUserId)) {
+        console.warn('[streamHandlers] stream:mic:respond unauthorized:', { streamHostId, hostUserId });
+        return;
+      }
+
+      if (isApproved) {
         if (!streamSpeakersMap.has(streamId)) {
           streamSpeakersMap.set(streamId, new Map());
         }
@@ -301,6 +315,14 @@ export const registerStreamHandlers = (socket: Socket): void => {
         // Notify the viewer directly and the room
         getIO().to(`user:${requesterUserId}`).emit('stream:mic:response', {
           streamId,
+          requesterUserId,
+          approved: true,
+          message: 'The host accepted your speak request!',
+        });
+
+        getIO().to(`stream:${streamId}`).emit('stream:mic:response', {
+          streamId,
+          requesterUserId,
           approved: true,
           message: 'The host accepted your speak request!',
         });
@@ -321,6 +343,14 @@ export const registerStreamHandlers = (socket: Socket): void => {
         // Declined
         getIO().to(`user:${requesterUserId}`).emit('stream:mic:response', {
           streamId,
+          requesterUserId,
+          approved: false,
+          message: 'The host declined your speak request.',
+        });
+
+        getIO().to(`stream:${streamId}`).emit('stream:mic:response', {
+          streamId,
+          requesterUserId,
           approved: false,
           message: 'The host declined your speak request.',
         });

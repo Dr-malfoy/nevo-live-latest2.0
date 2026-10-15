@@ -19,6 +19,8 @@ router.post('/:id/seats/:index/stand', authenticate, roomController.stand);
 router.post('/:id/seats/:index/kick', authenticate, roomController.kickMember);
 router.post('/:id/seats/:index/lock', authenticate, roomController.lockSeat);
 router.post('/:id/seats/:index/mute', authenticate, roomController.muteSeat);
+router.post('/:id/seats/lock-all', authenticate, roomController.lockAllSeats);
+router.post('/:id/seats/mute-all', authenticate, roomController.muteAllSeats);
 router.post('/:id/admins', authenticate, roomController.setAdmin);
 
 export default router;

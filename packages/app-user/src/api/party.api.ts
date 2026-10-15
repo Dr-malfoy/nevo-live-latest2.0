@@ -111,6 +111,10 @@ export const partyApi = {
     client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/lock`, { locked }),
   muteSeat: (roomId: string, index: number, muted: boolean) =>
     client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/mute`, { muted }),
+  lockAllSeats: (roomId: string, locked: boolean) =>
+    client.post<ApiResponse>(`/rooms/${roomId}/seats/lock-all`, { locked }),
+  muteAllSeats: (roomId: string, muted: boolean) =>
+    client.post<ApiResponse>(`/rooms/${roomId}/seats/mute-all`, { muted }),
   kickSeat: (roomId: string, index: number) =>
     client.post<ApiResponse>(`/rooms/${roomId}/seats/${index}/kick`),
   setAdmin: (roomId: string, userId: string, action: 'add' | 'remove') =>

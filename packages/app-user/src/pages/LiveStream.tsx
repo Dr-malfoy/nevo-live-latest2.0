@@ -73,6 +73,11 @@ export const LiveStreamPage = () => {
     leaveChannel,
   } = useAgora();
 
+  const micOnRef = useRef(micOn);
+  useEffect(() => {
+    micOnRef.current = micOn;
+  }, [micOn]);
+
   // Null-safe: hostId can be null (orphaned user ref), a string, or a populated object.
   // Prefer the server-reported isHost (from joinStream); fall back to client-side derivation.
   const isHost = serverIsHost || !!(stream && user && stream.hostId && typeof stream.hostId === 'object' && stream.hostId._id === user._id);
@@ -363,6 +368,10 @@ export const LiveStreamPage = () => {
         if (meAsSpeaker) {
           setIsSpeaker(true);
           setMicRequestPending(false);
+          // If approved as speaker and mic is not unmuted yet, turn it on
+          if (!micOnRef.current && !isHostRef.current) {
+            toggleMic(true).catch(() => {});
+          }
         } else if (!isHostRef.current) {
           setIsSpeaker(false);
         }
@@ -374,11 +383,17 @@ export const LiveStreamPage = () => {
       }
     };
     const onMicResponse = (data: any) => {
+      // If scoped to a specific user, ensure it is meant for this user
+      if (data?.requesterUserId && userRef.current && data.requesterUserId !== userRef.current._id) {
+        return;
+      }
       setMicRequestPending(false);
       if (data?.approved) {
         setIsSpeaker(true);
         showToast(data.message || 'The host accepted your speak request!', 'success');
-        toggleMic(true).catch(() => {});
+        toggleMic(true).catch((err) => {
+          console.warn('[LiveStream] toggleMic error on accept:', err);
+        });
       } else {
         setIsSpeaker(false);
         showToast(data.message || 'The host declined your speak request.', 'info');
@@ -453,6 +468,8 @@ export const LiveStreamPage = () => {
     socket.emit('stream:mic:respond', {
       streamId: id,
       requesterUserId: requester.userId,
+      requesterId: requester.userId,
+      approved: true,
       approve: true,
     });
     setPendingMicRequester(null);
@@ -464,6 +481,8 @@ export const LiveStreamPage = () => {
     socket.emit('stream:mic:respond', {
       streamId: id,
       requesterUserId: requester.userId,
+      requesterId: requester.userId,
+      approved: false,
       approve: false,
     });
     setPendingMicRequester(null);

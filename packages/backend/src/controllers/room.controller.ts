@@ -696,6 +696,75 @@ export const roomController = {
     }
   },
 
+  async lockAllSeats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const room = await Room.findById(req.params.id);
+      if (!room) {
+        sendError(res, 'Room not found', 404);
+        return;
+      }
+      const isOwner = room.ownerId.toString() === req.user!.userId;
+      const isAdmin = room.admins?.some((a) => a.toString() === req.user!.userId);
+      if (!isOwner && !isAdmin && !req.user?.isAdmin) {
+        sendError(res, 'Only host or room admins can lock seats', 403);
+        return;
+      }
+
+      const locked = req.body.locked ?? true;
+      room.seats.forEach((s) => {
+        // Seat 1 is host seat, only lock/unlock guest seats
+        if (s.index > 1) {
+          s.isLocked = locked;
+        }
+      });
+      await room.save();
+
+      const populated = await room.populate('seats.userId', 'uid nickname avatar');
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`room:${room._id}`).emit('room:seat:update', { roomId: room._id, seats: populated.seats });
+      }
+
+      sendSuccess(res, populated, locked ? 'All guest seats locked' : 'All guest seats unlocked');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async muteAllSeats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const room = await Room.findById(req.params.id);
+      if (!room) {
+        sendError(res, 'Room not found', 404);
+        return;
+      }
+      const isOwner = room.ownerId.toString() === req.user!.userId;
+      const isAdmin = room.admins?.some((a) => a.toString() === req.user!.userId);
+      if (!isOwner && !isAdmin && !req.user?.isAdmin) {
+        sendError(res, 'Only host or room admins can mute seats', 403);
+        return;
+      }
+
+      const muted = req.body.muted ?? true;
+      room.seats.forEach((s) => {
+        if (s.index > 1) {
+          (s as any).isMuted = muted;
+        }
+      });
+      await room.save();
+
+      const populated = await room.populate('seats.userId', 'uid nickname avatar');
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`room:${room._id}`).emit('room:seat:update', { roomId: room._id, seats: populated.seats });
+      }
+
+      sendSuccess(res, populated, muted ? 'All members muted' : 'All members unmuted');
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async setAdmin(req: Request, res: Response, next: NextFunction) {
     try {
       const room = await Room.findById(req.params.id);

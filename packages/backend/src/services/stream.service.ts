@@ -480,12 +480,11 @@ export const streamService = {
       ).catch(() => {});
     }
 
-    // Host needs publisher token to publish video/audio; viewers get subscriber token.
     // uid 0 = wildcard token: valid for any client uid (a uid-bound token would be
     // rejected by Agora whenever the client joins with a different uid).
+    // Using publisher role ensures that any viewer approved to speak on mic can publish immediately.
     const uid = Math.floor(Math.random() * 0xfffffffe) + 1; // 1..4294967294
-    const role = isHost ? 'publisher' : 'subscriber';
-    const token = generateAgoraToken(stream.agoraChannel, 0, role);
+    const token = generateAgoraToken(stream.agoraChannel, 0, 'publisher');
     const updated = await LiveStream.findById(streamId).select('viewerCount');
     const viewerCount = Math.max(0, updated?.viewerCount ?? 0);
 
