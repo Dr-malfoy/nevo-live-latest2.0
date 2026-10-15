@@ -262,6 +262,18 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     };
   }, [socket]);
 
+  // Real-time visitor cleared sync across sockets
+  useEffect(() => {
+    if (!socket) return;
+    const onVisitorsCleared = () => {
+      window.dispatchEvent(new CustomEvent('visitors:cleared'));
+    };
+    socket.on('stats:visitors-cleared', onVisitorsCleared);
+    return () => {
+      socket.off('stats:visitors-cleared', onVisitorsCleared);
+    };
+  }, [socket]);
+
   // Global incoming call listener (so calls are answered even outside chat screen)
   useEffect(() => {
     if (!socket) return;

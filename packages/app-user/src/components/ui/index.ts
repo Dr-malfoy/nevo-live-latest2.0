@@ -6,4 +6,5 @@ export { Loading } from './Loading';
 export { VerificationGateModal } from './VerificationGateModal';
 export { ToastContainer } from './Toast';
 export { PhoneInputWithCountry, formatFullPhoneNumber } from './PhoneInputWithCountry';
+export { ImageLightboxModal } from './ImageLightboxModal';
 

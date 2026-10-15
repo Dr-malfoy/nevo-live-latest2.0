@@ -41,6 +41,14 @@ const decorateMoment = (m: any) => {
       return c;
     });
   }
+  if (Array.isArray(obj.likes)) {
+    obj.likes = obj.likes.map((u: any) => {
+      if (u && typeof u === 'object' && u._id) {
+        return decorateUser(u);
+      }
+      return u;
+    });
+  }
   return obj;
 };
 
@@ -77,6 +85,7 @@ export const momentController = {
       const moments = await Moment.find(query)
         .populate('userId', USER_FIELDS)
         .populate('comments.userId', USER_FIELDS)
+        .populate('likes', USER_FIELDS)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit);
@@ -327,6 +336,21 @@ export const momentController = {
       }
 
       sendSuccess(res, { viewCount: moment.viewCount });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getLikes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const moment = await Moment.findById(req.params.id)
+        .populate('likes', USER_FIELDS);
+      if (!moment) {
+        sendError(res, 'Moment not found', 404);
+        return;
+      }
+      const users = (moment.likes || []).map(decorateUser);
+      sendSuccess(res, users);
     } catch (error) {
       next(error);
     }

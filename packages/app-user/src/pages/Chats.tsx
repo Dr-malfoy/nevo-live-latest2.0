@@ -21,16 +21,19 @@ import {
   PiProhibitFill as Prohibit,
 } from 'react-icons/pi';
 import { chatApi, callApi, usersApi, reportApi, storyApi, noteApi } from '../api';
+import { securityApi } from '../api/economy.api';
 import type { UserStoryGroup } from '../api/story.api';
 import type { NoteItem } from '../api/note.api';
 import { optional } from '../api/pending';
 import { useSocketStore, useAuthStore, useUIStore } from '../stores';
+import { CoinIcon } from '../components/ui/CurrencyIcon';
 import {
   ActiveUserStrip,
   ChatListRow,
   StoryViewerModal,
   CreateStoryModal,
   CreateNoteModal,
+  CreateGroupModal,
   type ChatRow,
 } from '../components/chat';
 import { Avatar } from '../components/user';
@@ -105,6 +108,7 @@ export const Chats = () => {
   const navigate = useNavigate();
   const socket = useSocketStore((s) => s.socket);
   const currentUser = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const showToast = useUIStore((s) => s.showToast);
 
   const [chats, setChats] = useState<ChatRow[]>([]);
@@ -112,6 +116,13 @@ export const Chats = () => {
   const [storyGroups, setStoryGroups] = useState<UserStoryGroup[]>([]);
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Dynamic Call Rate Setter Modal state
+  const [showCallPriceModal, setShowCallPriceModal] = useState(false);
+  const [callPriceInput, setCallPriceInput] = useState<number>(
+    (currentUser as any)?.callPricePerMinute ?? 1000
+  );
+  const [savingCallPrice, setSavingCallPrice] = useState(false);
 
   // 6 Tabs & Filter State
   const [currentTab, setCurrentTab] = useState<MessageTab>('all');
@@ -255,15 +266,54 @@ export const Chats = () => {
     socket.on('chat:read', refresh);
     socket.on('chat:seen', refresh);
     socket.on('chat:delivered', refresh);
+    socket.on('chat:group-created', refresh);
+    socket.on('chat:member-added', refresh);
+    socket.on('chat:group-updated', refresh);
 
     return () => {
       socket.off('chat:message', refresh);
       socket.off('chat:read', refresh);
       socket.off('chat:seen', refresh);
       socket.off('chat:delivered', refresh);
+      socket.off('chat:group-created', refresh);
+      socket.off('chat:member-added', refresh);
+      socket.off('chat:group-updated', refresh);
       if (debounce.current) clearTimeout(debounce.current);
     };
   }, [socket, load]);
+
+  const suggestedMembers = useMemo(() => {
+    const list: any[] = [];
+    const seen = new Set<string>();
+    if (currentUser?._id) seen.add(currentUser._id);
+
+    // 1. From recent chats
+    for (const c of chats) {
+      if (c.other?._id && !c.other.isGroup && !c.other.isOfficial && !seen.has(c.other._id)) {
+        seen.add(c.other._id);
+        list.push({
+          _id: c.other._id,
+          nickname: c.other.nickname || 'User',
+          avatar: c.other.avatar,
+          level: c.other.level,
+        });
+      }
+    }
+
+    // 2. From active users
+    for (const u of activeUsers) {
+      if (u._id && !seen.has(u._id)) {
+        seen.add(u._id);
+        list.push({
+          _id: u._id,
+          nickname: u.nickname || 'User',
+          avatar: u.avatar,
+        });
+      }
+    }
+
+    return list;
+  }, [chats, activeUsers, currentUser?._id]);
 
   const loadActiveCalls = () => {
     callApi
@@ -607,6 +657,24 @@ export const Chats = () => {
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Dynamic 1:1 Call Price Setting Button in Header */}
+            <button
+              onClick={() => {
+                setCallPriceInput((currentUser as any)?.callPricePerMinute ?? 1000);
+                setShowCallPriceModal(true);
+              }}
+              title="Set your dynamic 1:1 Call Rate in Coins (e.g. 2000 coins/min)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/15 via-amber-400/20 to-amber-500/15 hover:from-amber-500/25 hover:to-amber-500/25 border border-amber-500/35 hover:border-amber-500/60 text-amber-700 active:scale-95 transition-all shadow-xs group"
+            >
+              <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:rotate-12 transition-transform" />
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-[11px] font-black text-amber-800 dark:text-amber-300">
+                  {((currentUser as any)?.callPricePerMinute ?? 1000).toLocaleString()}
+                </span>
+                <span className="text-[9px] font-bold text-amber-600/80 -ml-0.5">/m</span>
+              </div>
+            </button>
+
             <button
               onClick={() => setIsSearching(!isSearching)}
               aria-label="Search"
@@ -667,6 +735,38 @@ export const Chats = () => {
               onOpenStoryViewer={handleOpenStoryByIndex}
               onUserSelect={(user) => handleStartChatWithUser(user._id)}
             />
+          )}
+
+          {/* ── Dynamic 1:1 Call Rate Card ── */}
+          {!searchQuery.trim() && (
+            <div className="px-3.5 pt-2 pb-1">
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent border border-amber-500/20 shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center shrink-0">
+                    <CoinIcon className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-slate-800">My 1:1 Call Rate:</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 text-xs font-black">
+                        <CoinIcon className="w-3 h-3 text-amber-500" />
+                        {((currentUser as any)?.callPricePerMinute ?? 1000).toLocaleString()} Coins / min
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-500 truncate">Prepaid per minute directly to you when others call</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setCallPriceInput((currentUser as any)?.callPricePerMinute ?? 1000);
+                    setShowCallPriceModal(true);
+                  }}
+                  className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs shadow-sm active:scale-95 transition-all"
+                >
+                  Set Rate
+                </button>
+              </div>
+            </div>
           )}
 
           {/* ── 6 Message Tabs & Filter System Bar ─────────────────── */}
@@ -1251,10 +1351,118 @@ export const Chats = () => {
         </div>
       </Modal>
 
-      {/* Member Picker Modal */}
-      <Modal isOpen={showPicker} onClose={() => setShowPicker(false)} title="New Conversation or Call">
-        <MemberPicker onConfirm={startGroupCall} onClose={() => setShowPicker(false)} />
+      {/* ── Dynamic Call Rate Setting Modal ──────────────────────────── */}
+      <Modal
+        isOpen={showCallPriceModal}
+        onClose={() => setShowCallPriceModal(false)}
+        title="Set 1:1 Call Rate"
+      >
+        <div className="space-y-4 pt-1">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Set your dynamic Coin rate per minute for 1:1 Audio &amp; Video calls (e.g. 2,000 Coins / min). When other users call you, they will pay this amount in Coins upfront (prepaid) per minute, and you receive these coins directly!
+          </p>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
+              Quick Presets (Coins / Min)
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[500, 1000, 2000, 5000, 10000, 20000].map((preset) => {
+                const selected = callPriceInput === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setCallPriceInput(preset)}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      selected
+                        ? 'border-amber-500 bg-amber-500/15 text-amber-700 shadow-sm ring-1 ring-amber-500/30'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-800 bg-slate-50'
+                    }`}
+                  >
+                    <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{preset.toLocaleString()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Or Custom Rate (Coins / Minute)
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                step={100}
+                value={callPriceInput}
+                onChange={(e) => setCallPriceInput(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                placeholder="Enter coins e.g. 2000"
+                className="w-full pl-9 pr-14 py-2.5 text-sm font-black rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-amber-500 text-slate-900"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <CoinIcon className="w-4 h-4 text-amber-500" />
+              </div>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                / min
+              </span>
+            </div>
+          </div>
+
+          {/* Earnings calculator preview */}
+          <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs flex items-center justify-between">
+            <span className="text-slate-700 font-medium">Estimated 10m Call Earning:</span>
+            <span className="font-black text-amber-600 flex items-center gap-1 text-sm">
+              <CoinIcon className="w-4 h-4 text-amber-500" />
+              {(callPriceInput * 10).toLocaleString()} Coins
+            </span>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowCallPriceModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 active:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={savingCallPrice}
+              onClick={async () => {
+                setSavingCallPrice(true);
+                try {
+                  const res = await securityApi.setCallPrice(callPriceInput);
+                  if (res.data?.success) {
+                    updateUser({ callPricePerMinute: callPriceInput } as any);
+                    showToast(`Call price updated to ${callPriceInput.toLocaleString()} coins/min`, 'success');
+                    setShowCallPriceModal(false);
+                  } else {
+                    showToast(res.data?.error || 'Could not update call price', 'error');
+                  }
+                } catch (err: any) {
+                  showToast(err.response?.data?.error || 'Failed to update rate', 'error');
+                } finally {
+                  setSavingCallPrice(false);
+                }
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-xs font-black text-white shadow-md active:scale-95 transition-all disabled:opacity-50"
+            >
+              {savingCallPrice ? 'Saving…' : 'Save Rate'}
+            </button>
+          </div>
+        </div>
       </Modal>
+
+      {/* Create Group Modal */}
+      <CreateGroupModal
+        isOpen={showPicker}
+        onClose={() => setShowPicker(false)}
+        initialSuggestedUsers={suggestedMembers}
+        onStartCall={startGroupCall}
+      />
 
       <CallInviteBanner invite={invite} onAccept={acceptInvite} onDecline={declineInvite} />
 
@@ -1263,6 +1471,8 @@ export const Chats = () => {
           incoming={call.incoming as any}
           outgoing={call.outgoing as any}
           accepted={callAccepted}
+          coinsPerMinute={(call.outgoing as any)?.coinsPerMinute || (call.incoming as any)?.coinsPerMinute || 0}
+          isAudience={!!call.outgoing}
           onClose={() => {
             setCall(null);
             setCallAccepted(false);

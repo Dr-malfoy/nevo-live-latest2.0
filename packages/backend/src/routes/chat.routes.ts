@@ -16,8 +16,12 @@ router.get('/official', chatController.getOfficialChats);
 router.get('/official/:key', chatController.getOfficialMessages);
 router.post('/official/:key/read', chatController.markOfficialRead);
 
+router.post('/group', chatController.createGroupChat);
 router.post('/', chatController.getOrCreateChat);
 router.get('/:chatId', chatController.getChat);
+router.patch('/:chatId/group', chatController.updateGroupChat);
+router.put('/:chatId/group', chatController.updateGroupChat);
+router.post('/:chatId/members', chatController.addGroupMembers);
 router.post('/:chatId/read', chatController.markChatRead);
 router.get('/:chatId/messages', chatController.getMessages);
 router.post('/:chatId/messages', chatController.sendMessage);

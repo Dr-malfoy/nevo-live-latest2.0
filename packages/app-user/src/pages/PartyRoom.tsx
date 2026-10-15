@@ -433,8 +433,8 @@ export const PartyRoom = () => {
       triggerGifts(gift.icon || gift.animation || '🎁', gift.name, Math.min(quantity, 6));
 
       setGiftPanelOpen(false);
-      const costCoins = (gift.priceDiamonds || 0) * quantity;
-      showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
+      const costDiamonds = (gift.priceDiamonds || 0) * quantity;
+      showToast(`Sent ${quantity}x ${gift.name}! (-${costDiamonds.toLocaleString()} Diamonds)`, 'success');
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to send gift', 'error');
       throw err;

@@ -30,6 +30,7 @@ import { useAuthStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { Loading } from '../components/ui';
 import { CallScreen } from '../components/call/CallScreen';
+import { AgencyWelcomeBanner } from '../components/agency';
 import { requestMediaPermissions } from '../lib/permissions';
 import { getMediaUrl } from '../lib/media';
 
@@ -42,6 +43,7 @@ export const AgencyDetails = () => {
   const [agency, setAgency] = useState<AgencyItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [joinMessage, setJoinMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -64,7 +66,15 @@ export const AgencyDetails = () => {
     try {
       const res = await agencyApi.getAgencyDetails(id);
       if (res.data?.success && res.data.data) {
-        setAgency(res.data.data);
+        const agencyData = res.data.data;
+        setAgency(agencyData);
+        if (
+          agencyData.userRelationship?.isMember &&
+          user?._id &&
+          localStorage.getItem(`hasSeenWelcome_${user._id}_${agencyData._id}`) !== 'true'
+        ) {
+          setShowWelcomeModal(true);
+        }
       } else {
         setAgency(null);
       }
@@ -78,7 +88,7 @@ export const AgencyDetails = () => {
 
   useEffect(() => {
     loadDetails();
-  }, [id]);
+  }, [id, user?._id]);
 
   const handleCopyCode = async (code: string) => {
     try {
@@ -128,6 +138,7 @@ export const AgencyDetails = () => {
       const res = await agencyApi.joinAgency(agency._id);
       if (res.data?.success) {
         showToast(`Successfully joined ${agency.name}!`, 'success');
+        setShowWelcomeModal(true);
         loadDetails();
       } else {
         showToast(res.data?.error || 'Could not join agency', 'error');
@@ -285,6 +296,20 @@ export const AgencyDetails = () => {
       </header>
 
       <main className="max-w-md mx-auto px-3.5 pt-3.5 space-y-3.5">
+        {/* ── Welcome Banner Card (for Members) ── */}
+        {relationship.isMember && agency.welcomeBanner?.enabled !== false && (
+          <AgencyWelcomeBanner
+            mode="card"
+            banner={agency.welcomeBanner}
+            agencyName={agency.name}
+            agencyCode={agency.code}
+            agent={agency.agent}
+            userName={user?.nickname}
+            onGoLive={() => navigate('/live')}
+            onOpenChat={handleOpenChat}
+          />
+        )}
+
         {/* ── Agency Hero Card ── */}
         <section className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden transition-all">
           {/* Cover Banner */}
@@ -643,7 +668,9 @@ export const AgencyDetails = () => {
               </h2>
             </div>
             {canViewFullDetails ? (
-              <span className="text-[11px] font-medium text-slate-400">Live Hours & Earnings</span>
+              <span className="text-[11px] font-medium text-slate-400">
+                {isUserOwner || isUserAdmin ? 'Coins, Diamonds & Live Hours' : 'Live Stream Hours'}
+              </span>
             ) : (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                 <PiLockKeyFill className="w-3 h-3 text-amber-500" />
@@ -747,12 +774,30 @@ export const AgencyDetails = () => {
                     </div>
 
                     <div className="text-right shrink-0 pl-2">
-                      <p className="text-xs font-black text-amber-600 tabular-nums">
-                        {(member.contribution || 0).toLocaleString()} <span className="text-[10px] font-medium text-amber-500">coins</span>
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-medium">
-                        {member.liveHours || 0}h live
-                      </p>
+                      {isUserOwner || isUserAdmin ? (
+                        <>
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200/80">
+                              🪙 {(member.coins ?? member.contribution ?? 0).toLocaleString()}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded-md border border-sky-200/80">
+                              💎 {(member.diamonds ?? 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            {member.liveHours || 0}h live
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                            Host
+                          </span>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            {member.liveHours || 0}h live
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -872,6 +917,37 @@ export const AgencyDetails = () => {
           </div>
         </div>
       )}
+
+      {/* Welcome Banner Modal for New Joiners */}
+      <AgencyWelcomeBanner
+        mode="modal"
+        isOpen={showWelcomeModal}
+        banner={agency.welcomeBanner}
+        agencyName={agency.name}
+        agencyCode={agency.code}
+        agent={agency.agent}
+        userName={user?.nickname}
+        onClose={() => {
+          if (user?._id && agency?._id) {
+            localStorage.setItem(`hasSeenWelcome_${user._id}_${agency._id}`, 'true');
+          }
+          setShowWelcomeModal(false);
+        }}
+        onGoLive={() => {
+          if (user?._id && agency?._id) {
+            localStorage.setItem(`hasSeenWelcome_${user._id}_${agency._id}`, 'true');
+          }
+          setShowWelcomeModal(false);
+          navigate('/live');
+        }}
+        onOpenChat={() => {
+          if (user?._id && agency?._id) {
+            localStorage.setItem(`hasSeenWelcome_${user._id}_${agency._id}`, 'true');
+          }
+          setShowWelcomeModal(false);
+          handleOpenChat();
+        }}
+      />
 
       {/* Call Screen Modal */}
       {call && (

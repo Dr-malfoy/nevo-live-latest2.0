@@ -1,5 +1,15 @@
 import { Schema, model, Document } from 'mongoose';
 
+export interface IAgencyWelcomeBanner {
+  enabled?: boolean;
+  title?: string;
+  message?: string;
+  imageUrl?: string;
+  theme?: string;
+  badgeText?: string;
+  floatAnimation?: boolean;
+}
+
 export interface IAgencyDocument extends Document {
   agentId: Schema.Types.ObjectId;
   name: string;
@@ -13,6 +23,7 @@ export interface IAgencyDocument extends Document {
   hosts: Schema.Types.ObjectId[];
   totalContribution: number;
   totalLiveHours: number;
+  welcomeBanner?: IAgencyWelcomeBanner;
   isBanned: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -43,6 +54,15 @@ const agencySchema = new Schema<IAgencyDocument>(
     hosts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     totalContribution: { type: Number, default: 0, min: 0, index: true },
     totalLiveHours: { type: Number, default: 0, min: 0 },
+    welcomeBanner: {
+      enabled: { type: Boolean, default: true },
+      title: { type: String, default: '' },
+      message: { type: String, default: '' },
+      imageUrl: { type: String, default: '' },
+      theme: { type: String, default: 'purple' },
+      badgeText: { type: String, default: 'OFFICIAL HOST' },
+      floatAnimation: { type: Boolean, default: true },
+    },
     isBanned: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }

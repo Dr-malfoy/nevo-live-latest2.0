@@ -43,8 +43,9 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
   }, []);
 
   const coins = user?.coins ?? 0;
+  const diamonds = user?.diamonds ?? 0;
   const totalCost = selected ? selected.priceDiamonds * quantity : 0;
-  const canAfford = selected ? totalCost <= coins : false;
+  const canAfford = selected ? (diamonds >= totalCost || coins >= totalCost) : false;
   const needsConfirm = totalCost >= CONFIRM_THRESHOLD;
   const canSend = !!receiverId && !!selected && canAfford && !sending;
 
@@ -109,7 +110,7 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
               )}
             </span>
             <span className="text-[10px] truncate w-full text-center">{gift.name}</span>
-            <span className="text-[10px] text-yellow-400 inline-flex items-center gap-0.5"><CoinIcon className="w-3 h-3 text-yellow-400" />{gift.priceDiamonds}</span>
+            <span className="text-[10px] text-cyan-400 inline-flex items-center gap-0.5"><DiamondIcon className="w-3 h-3 text-cyan-400" />{gift.priceDiamonds}</span>
           </button>
         ))}
       </div>
@@ -133,7 +134,7 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
               </button>
             ))}
           </div>
-          <span className="text-sm text-yellow-400 font-bold inline-flex items-center gap-1"><CoinIcon className="w-4 h-4" /> {totalCost.toLocaleString()} Coins</span>
+          <span className="text-sm text-cyan-400 font-bold inline-flex items-center gap-1"><DiamondIcon className="w-4 h-4" /> {totalCost.toLocaleString()} Diamonds</span>
         </div>
       )}
 
@@ -141,7 +142,7 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
         <p className="text-xs text-yellow-400 mb-2 text-center">Host unavailable — cannot send gifts right now</p>
       )}
       {selected && !canAfford && (
-        <p className="text-xs text-red-400 mb-2 text-center">Insufficient coins — top up your wallet</p>
+        <p className="text-xs text-red-400 mb-2 text-center">Insufficient balance — recharge your diamonds</p>
       )}
       {error && (
         <p className="text-xs text-red-400 mb-2 text-center">{error}</p>
@@ -164,9 +165,9 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
             Sending...
           </>
         ) : confirming ? (
-          <>Confirm send <span className="inline-flex items-center gap-1 text-yellow-400"><CoinIcon className="w-4 h-4" />{totalCost.toLocaleString()}</span></>
+          <>Confirm send <span className="inline-flex items-center gap-1 text-cyan-400"><DiamondIcon className="w-4 h-4" />{totalCost.toLocaleString()}</span></>
         ) : (
-          <>Send Gift {selected ? <span className="inline-flex items-center gap-1 text-yellow-400"><CoinIcon className="w-4 h-4" />{totalCost.toLocaleString()}</span> : ''}</>
+          <>Send Gift {selected ? <span className="inline-flex items-center gap-1 text-cyan-400"><DiamondIcon className="w-4 h-4" />{totalCost.toLocaleString()}</span> : ''}</>
         )}
       </button>
     </div>

@@ -62,7 +62,7 @@ export const paymentApi = {
     binance?: { qrCode?: string; walletAddress?: string };
   }) => client.put('/payment/user-info', data),
 
-  createWithdrawal: (data: { currency: string; amount: number; method: string; accountNumber: string }) =>
+  createWithdrawal: (data: { currency: string; amount: number; method: string; accountNumber: string; assetPassword?: string }) =>
     client.post('/payment/withdraw', data),
   getWithdrawals: (params?: any) => client.get('/payment/withdrawals', { params }),
 

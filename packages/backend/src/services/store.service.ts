@@ -178,40 +178,17 @@ export const storeService = {
       expiresAt = new Date(Date.now() + item.durationDays * 24 * 60 * 60 * 1000);
     }
 
-    // 7. Add to recipient inventory
-    const autoEquip = item.category === 'badge';
-    if (autoEquip) {
-      await UserInventory.updateMany(
-        { userId: recipient._id, category: 'badge' },
-        { equipped: false }
-      );
-    }
-
+    // 7. Add to recipient inventory (Item is added directly to Bag; equipped via Bag)
     const inventory = await UserInventory.create({
       userId: recipient._id,
       itemId: item._id,
       category: item.category,
       expiresAt,
-      equipped: autoEquip,
+      equipped: false,
       isNewItem: true,
       source: giftToUserId ? 'gift' : 'purchased',
       acquiredAt: new Date(),
     });
-
-    if (autoEquip) {
-      if (!recipient.equipped) recipient.equipped = {};
-      recipient.equipped.badge = item._id as any;
-      recipient.equippedBadge = {
-        _id: item._id as any,
-        name: item.name,
-        image: item.image,
-        preview: item.preview || item.image,
-        rarity: item.rarity || undefined,
-      };
-      recipient.markModified('equipped');
-      recipient.markModified('equippedBadge');
-      await recipient.save();
-    }
 
     // Push real-time balance update to buyer socket room
     try {

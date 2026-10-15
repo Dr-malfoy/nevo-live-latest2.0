@@ -82,6 +82,15 @@ export const streamController = {
     }
   },
 
+  async getUserActiveStream(req: Request, res: Response, next: NextFunction) {
+    try {
+      const stream = await streamService.getUserActiveStream(req.params.userId);
+      sendSuccess(res, stream || null);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async heartbeat(req: Request, res: Response, next: NextFunction) {
     try {
       const stream = await streamService.heartbeat(req.params.id, req.user!.userId);

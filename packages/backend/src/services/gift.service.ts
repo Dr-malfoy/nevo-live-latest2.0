@@ -27,14 +27,14 @@ export const giftService = {
     if (!receiver) throw new AppError('Receiver not found', 404);
 
     const totalCost = gift.priceDiamonds * quantity;
-    const canPayWithCoins = (sender.coins || 0) >= totalCost;
     const canPayWithDiamonds = (sender.diamonds || 0) >= totalCost;
-    if (!canPayWithCoins && !canPayWithDiamonds) {
+    const canPayWithCoins = (sender.coins || 0) >= totalCost;
+    if (!canPayWithDiamonds && !canPayWithCoins) {
       throw new AppError('Insufficient balance to send gift', 400);
     }
 
-    const payCurrency: 'coin' | 'diamond' = canPayWithCoins ? 'coin' : 'diamond';
-    const deductField = payCurrency === 'coin' ? 'coins' : 'diamonds';
+    const payCurrency: 'diamond' | 'coin' = canPayWithDiamonds ? 'diamond' : 'coin';
+    const deductField = payCurrency === 'diamond' ? 'diamonds' : 'coins';
 
     // Atomic deduction from sender — prevents double-spend
     const updatedSender = await User.findOneAndUpdate(

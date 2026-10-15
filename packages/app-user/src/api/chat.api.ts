@@ -41,6 +41,15 @@ export const chatApi = {
 
   getOrCreateChat: (userId: string) => client.post<ApiResponse>('/chats', { userId }),
 
+  createGroupChat: (data: { memberIds: string[]; name?: string; avatar?: string }) =>
+    client.post<ApiResponse>('/chats/group', data),
+
+  addGroupMembers: (chatId: string, memberIds: string[]) =>
+    client.post<ApiResponse>(`/chats/${chatId}/members`, { memberIds }),
+
+  updateGroupChat: (chatId: string, data: { name?: string; avatar?: string }) =>
+    client.patch<ApiResponse>(`/chats/${chatId}/group`, data),
+
   getMessages: (chatId: string, params?: any) =>
     client.get<ApiResponse>(`/chats/${chatId}/messages`, { params }),
 

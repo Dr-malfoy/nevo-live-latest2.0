@@ -1,16 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
-import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem } from '../models';
+import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage } from '../models';
 
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
 import { hostBadgeService } from '../services/hostBadge.service';
+import { securityService } from '../services/security.service';
 import { hashPassword } from '../utils/hash';
 import { sendSuccess, sendPaginated } from '../utils/response';
 
 export const adminController = {
   async getDashboard(_req: Request, res: Response, next: NextFunction) {
     try {
-      const [userCount, liveStreams, pendingTransactions, agentCount, hostCount, wallet, pendingWithdrawals, pendingAgentOrders] = await Promise.all([
+      const [
+        userCount,
+        liveStreams,
+        pendingTransactions,
+        agentCount,
+        hostCount,
+        wallet,
+        pendingWithdrawals,
+        pendingAgentOrders,
+        pendingTickets,
+        recentTickets,
+      ] = await Promise.all([
         User.countDocuments(),
         LiveStream.countDocuments({ status: 'live' }),
         Transaction.countDocuments({ status: 'pending' }),
@@ -19,6 +31,12 @@ export const adminController = {
         PlatformWallet.getWallet(),
         WithdrawalRequest.countDocuments({ status: 'pending' }),
         AgentPurchaseOrder.countDocuments({ status: 'pending' }),
+        ContactMessage.countDocuments({ status: { $in: ['pending', 'in_progress'] } }),
+        ContactMessage.find()
+          .populate('userId', 'uid nickname avatar phone')
+          .sort({ createdAt: -1 })
+          .limit(8)
+          .lean(),
       ]);
 
       sendSuccess(res, {
@@ -29,6 +47,8 @@ export const adminController = {
         pendingTransactions,
         pendingWithdrawals,
         pendingAgentOrders,
+        pendingTickets,
+        recentTickets,
         diamondInventory: wallet?.diamonds || 0,
         coinInventory: wallet?.coins || 0,
       });
@@ -588,5 +608,41 @@ export const adminController = {
       next(error);
     }
   },
+
+  /**
+   * Asset Password Admin Management
+   */
+  async lookupAssetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const uid = (req.query.uid || req.body?.uid) as string;
+      const contact = (req.query.contact || req.query.phoneOrEmail || req.query.phone || req.query.email || req.body?.contact) as string;
+      const query = (req.query.q || req.query.query || req.query.search) as string;
+      const result = await securityService.adminLookupAssetPassword({ uid, contact, query });
+      sendSuccess(res, result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resetUserAssetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId, newPassword } = req.body;
+      const result = await securityService.adminSetOrResetAssetPassword(userId, newPassword);
+      sendSuccess(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async unlockUserAssetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId } = req.body;
+      const result = await securityService.adminUnlockAssetPassword(userId);
+      sendSuccess(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  },
 };
+
 

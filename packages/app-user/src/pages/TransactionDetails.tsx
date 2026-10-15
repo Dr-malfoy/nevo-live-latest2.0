@@ -66,11 +66,22 @@ export const TransactionDetails = () => {
     }
   };
 
+  const isTransferSent =
+    tx?.type === 'transfer' &&
+    (tx?.description?.toLowerCase().startsWith('transferred') || !tx?.description?.toLowerCase().startsWith('received'));
+  const isTransferReceived =
+    tx?.type === 'transfer' && tx?.description?.toLowerCase().startsWith('received');
+
+  const isDeduction =
+    ['gift_send', 'withdraw', 'coin_sale', 'game_bet'].includes(tx?.type || '') ||
+    (tx?.type === 'transfer' && !isTransferReceived);
+
   const getTxTypeLabel = (type: string = '') => {
     switch (type) {
       case 'transfer':
       case 'transfer_in':
-        return 'Coin Transfer';
+        if (isTransferReceived) return 'Coin Transfer Received';
+        return 'Coin Transfer Sent';
       case 'recharge':
       case 'agent_recharge':
         return 'Deposit / Top-Up';
@@ -99,8 +110,6 @@ export const TransactionDetails = () => {
         return type.replace(/_/g, ' ').toUpperCase();
     }
   };
-
-  const isDeduction = ['gift_send', 'withdraw', 'coin_sale', 'game_bet'].includes(tx?.type || '');
 
   if (loading) {
     return (
@@ -210,7 +219,13 @@ export const TransactionDetails = () => {
         {targetUser && (
           <div className="rounded-xl bg-amber-50/60 border border-amber-200/80 p-3.5 space-y-2">
             <p className="text-[11px] font-bold text-amber-900/80 uppercase">
-              {tx.type === 'transfer' ? 'Recipient / Counterparty' : 'Participant'}
+              {isTransferSent
+                ? 'Recipient Details'
+                : isTransferReceived
+                ? 'Sender Details'
+                : tx.type === 'transfer'
+                ? 'Counterparty'
+                : 'Participant'}
             </p>
 
             <div className="flex items-center gap-3">
@@ -269,6 +284,19 @@ export const TransactionDetails = () => {
             <span className="text-ink-muted">Currency</span>
             <span className="font-semibold text-ink capitalize">{tx.currency}</span>
           </div>
+
+          {tx.type === 'transfer' && (
+            <>
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="text-ink-muted">Transfer Fee</span>
+                <span className="font-bold text-emerald-700">0 Coins (Free)</span>
+              </div>
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="text-ink-muted">{isTransferReceived ? 'Net Received' : 'Net Sent'}</span>
+                <span className="font-bold text-ink tabular-nums">{tx.amount.toLocaleString()} Coins</span>
+              </div>
+            </>
+          )}
 
           {tx.description && (
             <div className="py-2.5 space-y-1">

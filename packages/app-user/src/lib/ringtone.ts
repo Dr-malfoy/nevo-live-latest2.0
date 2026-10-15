@@ -68,7 +68,7 @@ class RingtoneManager {
     }
   }
 
-  start() {
+  start(vibrate: boolean = true) {
     if (this.isPlaying) return;
     this.isPlaying = true;
 
@@ -83,7 +83,7 @@ class RingtoneManager {
     }, 3000);
 
     // Vibration pattern: vibrate 800ms, pause 1000ms
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate([800, 1000, 800, 1000]);
         this.vibrateInterval = setInterval(() => {

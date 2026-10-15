@@ -12,7 +12,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 function resolveExtension(originalname?: string, mimetype?: string): string {
   if (originalname) {
     const ext = path.extname(originalname).toLowerCase();
-    if (ext && ext.length <= 6) return ext;
+    if (ext && ext.length >= 2 && ext.length <= 6) return ext;
   }
 
   const mime = (mimetype || '').toLowerCase();
@@ -21,13 +21,13 @@ function resolveExtension(originalname?: string, mimetype?: string): string {
   if (mime.includes('gif')) return '.gif';
   if (mime.includes('svg')) return '.svg';
   if (mime.includes('jpeg') || mime.includes('jpg')) return '.jpg';
-  if (mime.includes('mp4')) return '.mp4';
-  if (mime.includes('webm')) return '.webm';
-  if (mime.includes('quicktime') || mime.includes('mov')) return '.mov';
+  if (mime.includes('audio/mp4') || mime.includes('m4a') || mime.includes('aac')) return '.m4a';
   if (mime.includes('mpeg') || mime.includes('mp3')) return '.mp3';
   if (mime.includes('wav')) return '.wav';
   if (mime.includes('ogg')) return '.ogg';
-  if (mime.includes('m4a') || mime.includes('audio/mp4')) return '.m4a';
+  if (mime.includes('webm')) return '.webm';
+  if (mime.includes('mp4')) return '.mp4';
+  if (mime.includes('quicktime') || mime.includes('mov')) return '.mov';
 
   return '.jpg';
 }

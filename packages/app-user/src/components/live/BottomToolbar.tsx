@@ -21,6 +21,7 @@ interface BottomToolbarProps {
   onLeave: () => void;
   onEnd: () => void;
   onChatSend: (message: string) => void;
+  onOpenMenu?: () => void;
 }
 
 interface RoundBtnProps {
@@ -62,6 +63,7 @@ export const BottomToolbar = ({
   onLeave,
   onEnd,
   onChatSend,
+  onOpenMenu,
 }: BottomToolbarProps) => (
   <motion.div
     initial={{ opacity: 0, y: 24 }}
@@ -77,7 +79,7 @@ export const BottomToolbar = ({
 
       {/* Action horizontal row on the right */}
       <div className="flex items-center gap-2 shrink-0">
-        <RoundBtn label="Menu" onClick={() => {}}>
+        <RoundBtn label="Menu" onClick={onOpenMenu || (() => {})}>
           <Grid className="w-5 h-5 text-white/90" />
         </RoundBtn>
         <RoundBtn label={micOn ? 'Mute' : 'Unmute'} onClick={onToggleMic} active={!micOn} activeClass="text-red-400">

@@ -6,6 +6,10 @@ export interface IChatDocument extends Document {
   type: 'private' | 'group';
   /** §4.10 — set when `type` is `group` (fan group or party group). */
   groupId?: Schema.Types.ObjectId;
+  name?: string;
+  avatar?: string;
+  creator?: Schema.Types.ObjectId;
+  admins?: Schema.Types.ObjectId[];
   lastMessage: string;
   lastMessageAt: Date;
   lastMessageBy?: Schema.Types.ObjectId;
@@ -25,6 +29,10 @@ const chatSchema = new Schema<IChatDocument>(
     participants: [{ type: Schema.Types.ObjectId, ref: 'User', required: true }],
     type: { type: String, enum: ['private', 'group'], default: 'private', index: true },
     groupId: { type: Schema.Types.ObjectId, index: true, sparse: true },
+    name: { type: String, default: '', trim: true },
+    avatar: { type: String, default: '' },
+    creator: { type: Schema.Types.ObjectId, ref: 'User' },
+    admins: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     lastMessage: { type: String, default: '' },
     lastMessageAt: { type: Date },
     lastMessageBy: { type: Schema.Types.ObjectId, ref: 'User' },

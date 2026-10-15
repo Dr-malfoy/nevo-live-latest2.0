@@ -371,4 +371,44 @@
       background-position: 100% 50%;
     }
   }
+
+  /* ── Welcome Banner Floating Keyframes ── */
+  @keyframes welcome-float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-6px) rotate(1deg);
+    }
+  }
+
+  @keyframes float-badge {
+    0%, 100% {
+      transform: translateY(0px) scale(1);
+    }
+    50% {
+      transform: translateY(-5px) scale(1.05);
+    }
+  }
+
+  .animate-welcome-float {
+    animation: welcome-float 3.5s ease-in-out infinite;
+  }
+
+  .animate-float-slow {
+    animation: float-slow 4.5s ease-in-out infinite;
+  }
+
+  .animate-float-badge {
+    animation: float-badge 2.8s ease-in-out infinite;
+  }
 }

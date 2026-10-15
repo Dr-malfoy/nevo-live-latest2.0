@@ -29,6 +29,8 @@ import { ReportModal } from '../report/ReportModal';
 import { ShareModal } from './ShareModal';
 import { CommentsDrawer } from './CommentsDrawer';
 import { EditPostModal } from './EditPostModal';
+import { ReactionsModal } from './ReactionsModal';
+import { ImageLightboxModal } from '../ui';
 import type { Moment } from '../../types';
 
 interface PostCardProps {
@@ -54,6 +56,8 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [showReport, setShowReport] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
 
   // Helper to check if current user liked
   const checkIsLiked = (likes?: any[]) => {
@@ -390,18 +394,18 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       {/* ── MEDIA SECTION ── */}
       {mediaSrc && (
-        <div
-          className="relative w-full aspect-video bg-neutral-950 overflow-hidden select-none cursor-pointer flex items-center justify-center group"
-          onClick={(e) => {
-            if (isVideo && onWatchReel) {
-              onWatchReel(moment._id);
-            } else {
-              handleMediaDoubleTap(e);
-            }
-          }}
-        >
-          {isVideo ? (
-            videoError ? (
+        isVideo ? (
+          <div
+            className="relative w-full aspect-video bg-neutral-950 overflow-hidden select-none cursor-pointer flex items-center justify-center group"
+            onClick={(e) => {
+              if (onWatchReel) {
+                onWatchReel(moment._id);
+              } else {
+                handleMediaDoubleTap(e);
+              }
+            }}
+          >
+            {videoError ? (
               <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900 text-white/75 p-6 text-center select-none aspect-video">
                 <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mb-2.5 shadow-inner">
                   <VideoIcon className="w-6 h-6 text-rose-400" />
@@ -435,17 +439,19 @@ export const PostCard: React.FC<PostCardProps> = ({
                 />
 
                 {/* Watch Fullscreen Reel Badge Overlay */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRecordView();
-                    onWatchReel?.(moment._id);
-                  }}
-                  className="absolute top-3 left-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 hover:bg-black/90 active:scale-95 transition-all shadow-lg border border-white/20 z-10"
-                >
-                  <ReelsIcon className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Watch Reel</span>
-                </button>
+                {Boolean(onWatchReel) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRecordView();
+                      onWatchReel?.(moment._id);
+                    }}
+                    className="absolute top-3 left-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 hover:bg-black/90 active:scale-95 transition-all shadow-lg border border-white/20 z-10"
+                  >
+                    <ReelsIcon className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Watch Reel</span>
+                  </button>
+                )}
 
                 {/* View Count Badge on Video Overlay */}
                 <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 shadow-lg border border-white/20 z-10 pointer-events-none">
@@ -453,122 +459,211 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <span>{compactNumber(viewsCount)} {viewsCount === 1 ? 'view' : 'views'}</span>
                 </div>
 
-              {/* Play / Pause Center Overlay Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onWatchReel) {
-                    onWatchReel(moment._id);
-                  } else {
-                    togglePlay();
-                  }
-                }}
-                className={`absolute inset-0 m-auto w-14 h-14 rounded-full bg-black/55 backdrop-blur-md text-white flex items-center justify-center transition-all duration-200 ${
-                  isPlaying
-                    ? 'opacity-0 group-hover:opacity-90 scale-90'
-                    : 'opacity-100 scale-100 shadow-xl'
-                }`}
-              >
-                {isPlaying ? (
-                  <Pause className="w-6 h-6" />
-                ) : (
-                  <Play className="w-6 h-6 translate-x-0.5" />
-                )}
-              </button>
-
-              {/* Top Controls: Mute + Fullscreen Reel */}
-              <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
-                <button
-                  onClick={toggleMute}
-                  className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-md"
-                >
-                  {isMuted ? (
-                    <VolumeMute className="w-4 h-4" />
-                  ) : (
-                    <VolumeUp className="w-4 h-4" />
-                  )}
-                </button>
+                {/* Play / Pause Center Overlay Button */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onWatchReel) {
                       onWatchReel(moment._id);
                     } else {
-                      handleFullscreen(e);
+                      togglePlay();
                     }
                   }}
-                  className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-md"
-                  title="Watch Fullscreen Reel"
+                  className={`absolute inset-0 m-auto w-14 h-14 rounded-full bg-black/55 backdrop-blur-md text-white flex items-center justify-center transition-all duration-200 ${
+                    isPlaying
+                      ? 'opacity-0 group-hover:opacity-90 scale-90'
+                      : 'opacity-100 scale-100 shadow-xl'
+                  }`}
                 >
-                  <Fullscreen className="w-4 h-4" />
+                  {isPlaying ? (
+                    <Pause className="w-6 h-6" />
+                  ) : (
+                    <Play className="w-6 h-6 translate-x-0.5" />
+                  )}
                 </button>
-              </div>
 
-              {/* Bottom Progress Bar */}
-              <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20">
-                <div
-                  className="h-full bg-accent-500 transition-all duration-150"
-                  style={{ width: `${videoProgress}%` }}
-                />
+                {/* Top Controls: Mute + Fullscreen Reel */}
+                <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
+                  <button
+                    onClick={toggleMute}
+                    className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-md"
+                  >
+                    {isMuted ? (
+                      <VolumeMute className="w-4 h-4" />
+                    ) : (
+                      <VolumeUp className="w-4 h-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onWatchReel) {
+                        onWatchReel(moment._id);
+                      } else {
+                        handleFullscreen(e);
+                      }
+                    }}
+                    className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-md"
+                    title="Watch Fullscreen Reel"
+                  >
+                    <Fullscreen className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Bottom Progress Bar */}
+                <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20">
+                  <div
+                    className="h-full bg-accent-500 transition-all duration-150"
+                    style={{ width: `${videoProgress}%` }}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Double Tap Floating Heart Animation */}
+            {showDoubleTapHeart && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-ping">
+                <Heart className="w-20 h-20 text-rose-500 drop-shadow-2xl" />
               </div>
-            </>
-          )) : (
+            )}
+          </div>
+        ) : (
+          /* ── Uncropped Full Ratio Photo Card ── */
+          <div
+            className="relative w-full max-h-[580px] bg-neutral-900/5 overflow-hidden select-none cursor-pointer flex items-center justify-center group"
+            onClick={(e) => {
+              const now = Date.now();
+              if (now - lastTap < 300) {
+                handleMediaDoubleTap(e);
+              } else {
+                setShowLightbox(true);
+              }
+              lastTap = now;
+            }}
+            title="Click to view full picture in original ratio"
+          >
+            {/* Subtle Ambient Blurred Backdrop to avoid dark bars */}
+            <div
+              className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-25 scale-110 pointer-events-none"
+              style={{ backgroundImage: `url(${mediaSrc})` }}
+            />
+
+            {/* The Image: adapts to natural upload ratio without ANY cropping */}
             <img
               src={mediaSrc}
               alt="Post content"
-              className="w-full h-full object-cover aspect-video hover:scale-[1.02] transition-transform duration-500"
+              className="relative z-10 w-full h-auto max-h-[580px] object-contain mx-auto group-hover:scale-[1.01] transition-transform duration-300"
+              loading="lazy"
             />
-          )}
 
-          {/* Double Tap Floating Heart Animation */}
-          {showDoubleTapHeart && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 animate-ping">
-              <Heart className="w-20 h-20 text-rose-500 drop-shadow-2xl" />
+            {/* Floating Full View Badge */}
+            <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/65 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity shadow-lg z-20 pointer-events-none border border-white/20">
+              <Fullscreen className="w-3.5 h-3.5" />
+              <span>Full View</span>
             </div>
-          )}
+
+            {/* Double Tap Floating Heart Animation */}
+            {showDoubleTapHeart && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-ping">
+                <Heart className="w-20 h-20 text-rose-500 drop-shadow-2xl" />
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* ── WHO REACTED SUMMARY BAR (Clickable to see all who reacted) ── */}
+      {likesCount > 0 && (
+        <div
+          onClick={() => setShowReactions(true)}
+          className="px-4 py-2 border-t border-line/60 bg-surface-soft/20 hover:bg-surface-soft/80 flex items-center justify-between cursor-pointer group transition-colors select-none"
+          title="See who reacted to this post"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex -space-x-1.5 overflow-hidden shrink-0">
+              {(moment.likes || [])
+                .filter((u) => u && typeof u === 'object')
+                .slice(0, 3)
+                .map((u: any, idx: number) => (
+                  <Avatar
+                    key={u._id || idx}
+                    src={u.avatar}
+                    nickname={u.nickname || 'User'}
+                    size="xs"
+                    ringed
+                  />
+                ))}
+            </div>
+            <span className="text-xs text-ink-muted group-hover:text-ink transition-colors font-medium truncate">
+              Liked by{' '}
+              <strong className="text-ink font-bold group-hover:text-rose-500 transition-colors">
+                {(moment.likes || []).find((u) => u && typeof u === 'object')?.nickname || `${likesCount} people`}
+              </strong>
+              {likesCount > 1 ? ` and ${likesCount - 1} others` : ''}
+            </span>
+          </div>
+
+          <span className="text-[11px] text-accent-600 font-bold group-hover:underline shrink-0">
+            See all
+          </span>
         </div>
       )}
 
       {/* ── CARD FOOTER (ACTIONS) ── */}
       <div className="flex items-center justify-between px-4 py-3 border-t border-line bg-surface-soft/40">
-        <div className="flex items-center gap-5">
-          {/* Like Button */}
-          <button
-            onClick={handleLike}
-            className={`flex items-center gap-1.5 text-xs font-bold transition-all py-1 px-2.5 rounded-full active:scale-90 ${
-              isLiked
-                ? 'text-rose-500 bg-rose-50/80'
-                : 'text-ink-muted hover:text-ink hover:bg-surface-sunken'
-            }`}
-          >
-            <div className="relative flex items-center justify-center">
-              <Heart
-                className={`w-5 h-5 transition-all duration-300 ${
-                  likeAnim ? 'scale-135 rotate-[-12deg]' : 'scale-100 rotate-0'
-                } ${isLiked ? 'fill-rose-500 text-rose-500 drop-shadow-sm' : 'text-ink-muted'}`}
-              />
-              {likeAnim && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-ping pointer-events-none" />
-              )}
-            </div>
-            <span className="tabular-nums">{compactNumber(likesCount)}</span>
-          </button>
+        <div className="flex items-center gap-4">
+          {/* Reaction / Like Button with clickable count */}
+          <div className="flex items-center bg-white/70 rounded-full border border-line/70 p-0.5 shadow-2xs">
+            <button
+              onClick={handleLike}
+              className={`p-1 rounded-full active:scale-90 transition-transform ${
+                isLiked
+                  ? 'text-rose-500 bg-rose-50'
+                  : 'text-ink-muted hover:text-ink hover:bg-surface-sunken'
+              }`}
+              title={isLiked ? 'Unlike' : 'Like post'}
+            >
+              <div className="relative flex items-center justify-center">
+                <Heart
+                  className={`w-4 h-4 transition-all duration-300 ${
+                    likeAnim ? 'scale-135 rotate-[-12deg]' : 'scale-100 rotate-0'
+                  } ${isLiked ? 'fill-rose-500 text-rose-500 drop-shadow-sm' : 'text-ink-muted'}`}
+                />
+                {likeAnim && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-ping pointer-events-none" />
+                )}
+              </div>
+            </button>
 
-          {/* Comment Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowReactions(true);
+              }}
+              className="text-xs font-bold text-ink-muted hover:text-rose-500 transition-colors pr-2 pl-1 py-1 tabular-nums"
+              title="See who reacted"
+            >
+              {compactNumber(likesCount)}
+            </button>
+          </div>
+
+          {/* Comment Button (Click to see who commented) */}
           <button
             onClick={() => setShowComments(true)}
-            className="flex items-center gap-1.5 text-xs font-bold text-ink-muted hover:text-ink transition-colors active:scale-95"
+            className="flex items-center gap-1.5 text-xs font-bold text-ink-muted hover:text-ink transition-colors active:scale-95 bg-white/70 rounded-full border border-line/70 px-2.5 py-1.5 shadow-2xs hover:bg-white"
+            title="See who commented"
           >
-            <MessageCircle className="w-5 h-5 text-ink-muted" />
+            <MessageCircle className="w-4 h-4 text-ink-muted" />
             <span className="tabular-nums">{compactNumber(moment.comments?.length || 0)}</span>
           </button>
 
           {/* Share Button (To Users & Copy Link) */}
           <button
             onClick={() => setShowShare(true)}
-            className="flex items-center gap-1.5 text-xs font-bold text-ink-muted hover:text-ink transition-colors active:scale-95"
+            className="flex items-center gap-1.5 text-xs font-bold text-ink-muted hover:text-ink transition-colors active:scale-95 bg-white/70 rounded-full border border-line/70 px-2.5 py-1.5 shadow-2xs hover:bg-white"
+            title="Share"
           >
-            <Share2 className="w-5 h-5 text-ink-muted" />
+            <Share2 className="w-4 h-4 text-ink-muted" />
             <span className="tabular-nums">{compactNumber(sharesCount)}</span>
           </button>
         </div>
@@ -606,6 +701,26 @@ export const PostCard: React.FC<PostCardProps> = ({
           onUpdate?.();
         }}
       />
+
+      <ReactionsModal
+        isOpen={showReactions}
+        onClose={() => setShowReactions(false)}
+        momentId={moment._id}
+        initialLikes={moment.likes}
+        likesCount={likesCount}
+      />
+
+      {showLightbox && (
+        <ImageLightboxModal
+          isOpen={showLightbox}
+          imageUrl={mediaSrc}
+          title={`${authorName}'s Post`}
+          subtitle={timeAgo(moment.createdAt)}
+          avatar={authorAvatar}
+          nickname={authorName}
+          onClose={() => setShowLightbox(false)}
+        />
+      )}
 
       {showReport && (
         <ReportModal

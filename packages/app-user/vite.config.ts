@@ -11,8 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
-  const rawApiUrl = env.VITE_API_URL || process.env.VITE_API_URL || 'https://nevo-live-latest.onrender.com/api';
-  const backendTarget = rawApiUrl.replace(/\/api\/?$/, '');
+  const rawApiUrl = env.VITE_API_URL || process.env.VITE_API_URL || 'http://localhost:5000/api';
+  const backendTarget = env.VITE_BACKEND_TARGET || (mode === 'development' ? 'http://localhost:5000' : rawApiUrl.replace(/\/api\/?$/, ''));
 
   return {
     plugins: [react()],

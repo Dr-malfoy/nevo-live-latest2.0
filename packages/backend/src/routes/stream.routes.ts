@@ -9,6 +9,7 @@ const router = Router();
 
 router.get('/feed', optionalAuth, streamController.getFeed);
 router.get('/my-active', authenticate, streamController.getMyActiveStream);
+router.get('/user/:userId/active', optionalAuth, streamController.getUserActiveStream);
 // Country chips for the filter bar (must stay above /:id)
 router.get('/countries', streamController.getCountries);
 router.get('/', streamController.getFeed);

@@ -562,6 +562,7 @@ export const ContactMessages: React.FC = () => {
                 <span className="text-[11px] text-dark-400 font-semibold">Quick Presets:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {[
+                    'Your asset password has been reset. Please verify and change it in Profile > Settings.',
                     'Your issue has been verified and resolved. Thank you for your patience!',
                     'Please provide your payment transaction ID or screenshot so we can investigate.',
                     'Your account verification is under review and will be updated shortly.',
@@ -581,12 +582,17 @@ export const ContactMessages: React.FC = () => {
 
               {/* Admin Reply Input Box */}
               <div className="space-y-2 pt-2">
-                <label className="text-xs font-bold text-dark-200 block">Write Support Reply:</label>
+                <label className="text-xs font-bold text-dark-200 block flex items-center justify-between">
+                  <span>Write Support Reply:</span>
+                  <span className="text-[11px] text-emerald-400 font-normal">
+                    💬 Delivered directly to User's Messenger
+                  </span>
+                </label>
                 <textarea
                   value={replyMessage}
                   onChange={(e) => setReplyMessage(e.target.value)}
                   rows={4}
-                  placeholder="Type your response to the user here..."
+                  placeholder="Type your response to the user here... (This will appear in their Messenger chat)"
                   className="w-full bg-dark-900 border border-dark-600 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-primary-500 resize-none"
                 />
 
@@ -621,7 +627,7 @@ export const ContactMessages: React.FC = () => {
                       onClick={() => handleSendReply('resolved')}
                       className="px-4 py-1.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg text-xs font-bold transition shadow-sm"
                     >
-                      {submittingReply ? 'Sending...' : 'Send Reply & Resolve'}
+                      {submittingReply ? 'Sending...' : 'Send to Messenger & Resolve'}
                     </button>
                   </div>
                 </div>

@@ -16,6 +16,8 @@ import {
   PiCheckBold as CheckIcon,
   PiCrownFill as Crown,
   PiBackpackFill as BackpackIcon,
+  PiArrowRightBold as ArrowRightIcon,
+  PiWarningCircleFill as WarningIcon,
 } from 'react-icons/pi';
 import { storeApi, type StoreCategory, type StoreItem } from '../api/economy.api';
 import { optional } from '../api/pending';
@@ -69,6 +71,18 @@ export const Store = () => {
 
   // Selected item modal for choosing payment method (Coin / Diamond)
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
+
+  // Confirmation state before executing purchase
+  const [confirmingPurchase, setConfirmingPurchase] = useState<{
+    item: StoreItem;
+    payWith: 'coins' | 'diamonds' | 'tickets';
+    price: number;
+  } | null>(null);
+
+  // Success dialog state after item is added to bag
+  const [purchasedSuccess, setPurchasedSuccess] = useState<{
+    item: StoreItem;
+  } | null>(null);
 
   useEffect(() => {
     const catFromParam = searchParams.get('category') as StoreCategory;
@@ -126,6 +140,10 @@ export const Store = () => {
     setSelectedItem(item);
   };
 
+  const handleInitiatePurchase = (item: StoreItem, payWith: 'coins' | 'diamonds' | 'tickets', price: number) => {
+    setConfirmingPurchase({ item, payWith, price });
+  };
+
   const handleConfirmBuy = async (item: StoreItem, payWith: 'coins' | 'diamonds' | 'tickets') => {
     setBuying(item._id);
     try {
@@ -135,8 +153,10 @@ export const Store = () => {
         return;
       }
       if (res.success) {
-        showToast(`${item.name} purchased & equipped!`, 'success');
+        showToast(`${item.name} added to your bag!`, 'success');
+        setConfirmingPurchase(null);
         setSelectedItem(null);
+        setPurchasedSuccess({ item });
         const balances = (res as any).data?.balances || (res as any).balances;
         if (balances) {
           const updates: any = {};
@@ -259,7 +279,7 @@ export const Store = () => {
         <PillTabs
           tabs={SORTS.map((s) => ({ key: s.key, label: s.label }))}
           active={sort}
-          onChange={setSort}
+          onChange={(key) => setSort(key as 'hot' | 'latest')}
           className="px-4 pt-3"
         />
       )}
@@ -342,11 +362,10 @@ export const Store = () => {
                           name: item.name,
                           image: item.image,
                           preview: item.preview,
-                          rarity: item.rarity,
+                          rarity: (item.rarity || undefined) as any,
                         }}
                         size="xs"
                         showLabel={true}
-                        animated={true}
                       />
                     </div>
                   ) : isEmoji ? (
@@ -438,7 +457,7 @@ export const Store = () => {
                       name: selectedItem.name,
                       image: selectedItem.image,
                       preview: selectedItem.preview,
-                      rarity: selectedItem.rarity,
+                      rarity: (selectedItem.rarity || undefined) as any,
                     }}
                     size="md"
                   />
@@ -473,7 +492,7 @@ export const Store = () => {
               {/* Pay with Coins Button */}
               {selectedItem.priceCoins != null && selectedItem.priceCoins > 0 && (
                 <button
-                  onClick={() => handleConfirmBuy(selectedItem, 'coins')}
+                  onClick={() => handleInitiatePurchase(selectedItem, 'coins', selectedItem.priceCoins!)}
                   disabled={buying === selectedItem._id || (user?.coins ?? 0) < selectedItem.priceCoins}
                   className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-extrabold text-sm flex items-center justify-between shadow-md active:scale-98 transition-all disabled:opacity-50"
                 >
@@ -488,7 +507,7 @@ export const Store = () => {
               {/* Pay with Diamonds Button */}
               {selectedItem.priceDiamonds != null && selectedItem.priceDiamonds > 0 && (
                 <button
-                  onClick={() => handleConfirmBuy(selectedItem, 'diamonds')}
+                  onClick={() => handleInitiatePurchase(selectedItem, 'diamonds', selectedItem.priceDiamonds!)}
                   disabled={buying === selectedItem._id || (user?.diamonds ?? 0) < selectedItem.priceDiamonds}
                   className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-extrabold text-sm flex items-center justify-between shadow-md active:scale-98 transition-all disabled:opacity-50"
                 >
@@ -506,7 +525,7 @@ export const Store = () => {
                 !selectedItem.priceCoins &&
                 !selectedItem.priceDiamonds && (
                   <button
-                    onClick={() => handleConfirmBuy(selectedItem, 'tickets')}
+                    onClick={() => handleInitiatePurchase(selectedItem, 'tickets', selectedItem.priceTickets!)}
                     disabled={buying === selectedItem._id}
                     className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-extrabold text-sm flex items-center justify-between shadow-md active:scale-98 transition-all"
                   >
@@ -536,6 +555,199 @@ export const Store = () => {
                     </button>
                   </div>
                 )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal — Direct purchase prevented, user confirms and item adds to bag */}
+      {confirmingPurchase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl relative border border-slate-100">
+            <button
+              onClick={() => setConfirmingPurchase(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 text-slate-500 hover:text-black transition-colors"
+              aria-label="Close"
+            >
+              <CloseIcon className="w-4 h-4" />
+            </button>
+
+            <div className="flex flex-col items-center text-center">
+              {/* Destination badge */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-black mb-3">
+                <BackpackIcon className="w-4 h-4 text-indigo-600" />
+                <span>Destination: My Bag</span>
+              </div>
+
+              <h3 className="text-lg font-black text-ink">Confirm Purchase</h3>
+              <p className="text-xs text-ink-muted mt-0.5">
+                Review payment details before adding to bag
+              </p>
+
+              {/* Item Card */}
+              <div className="w-full mt-3.5 p-3 rounded-2xl bg-surface-sunken flex items-center gap-3 text-left">
+                <div className="w-14 h-14 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  {confirmingPurchase.item.category === 'badge' ? (
+                    <EquippedBadge
+                      badge={{
+                        name: confirmingPurchase.item.name,
+                        image: confirmingPurchase.item.image,
+                        preview: confirmingPurchase.item.preview,
+                        rarity: (confirmingPurchase.item.rarity || undefined) as any,
+                      }}
+                      size="sm"
+                    />
+                  ) : confirmingPurchase.item.image &&
+                    !confirmingPurchase.item.image.startsWith('http') &&
+                    !confirmingPurchase.item.image.startsWith('data:') ? (
+                    <span className="text-2xl select-none">{confirmingPurchase.item.image}</span>
+                  ) : confirmingPurchase.item.image ? (
+                    <img
+                      src={confirmingPurchase.item.image}
+                      alt={confirmingPurchase.item.name}
+                      className="w-10 h-10 object-contain"
+                    />
+                  ) : (
+                    <Medal className="w-7 h-7 text-amber-500" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-extrabold text-ink text-sm truncate">{confirmingPurchase.item.name}</p>
+                  <p className="text-[11px] text-ink-muted mt-0.5">
+                    Validity: <span className="font-semibold text-ink">{confirmingPurchase.item.durationDays ? `${confirmingPurchase.item.durationDays} Days` : 'Permanent'}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Cost & Balance Breakdown */}
+              <div className="w-full mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Price:</span>
+                  <span className="font-extrabold flex items-center gap-1 text-ink">
+                    {confirmingPurchase.payWith === 'coins' ? (
+                      <CoinIcon className="w-4 h-4 text-yellow-500" />
+                    ) : confirmingPurchase.payWith === 'diamonds' ? (
+                      <DiamondIcon className="w-4 h-4 text-cyan-500" />
+                    ) : (
+                      <TicketIcon />
+                    )}
+                    <span>{confirmingPurchase.price.toLocaleString()}</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Your Current Balance:</span>
+                  <span className="font-bold flex items-center gap-1 text-slate-700">
+                    {confirmingPurchase.payWith === 'coins' ? (
+                      <CoinIcon className="w-3.5 h-3.5 text-yellow-500" />
+                    ) : confirmingPurchase.payWith === 'diamonds' ? (
+                      <DiamondIcon className="w-3.5 h-3.5 text-cyan-500" />
+                    ) : (
+                      <TicketIcon />
+                    )}
+                    <span>
+                      {(
+                        confirmingPurchase.payWith === 'coins'
+                          ? user?.coins ?? 0
+                          : confirmingPurchase.payWith === 'diamonds'
+                          ? user?.diamonds ?? 0
+                          : (user as any)?.tickets ?? 0
+                      ).toLocaleString()}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="border-t border-slate-200 pt-1.5 flex items-center justify-between">
+                  <span className="text-slate-600 font-semibold">Remaining Balance:</span>
+                  <span className="font-extrabold text-emerald-600 flex items-center gap-1">
+                    {confirmingPurchase.payWith === 'coins' ? (
+                      <CoinIcon className="w-3.5 h-3.5 text-yellow-500" />
+                    ) : confirmingPurchase.payWith === 'diamonds' ? (
+                      <DiamondIcon className="w-3.5 h-3.5 text-cyan-500" />
+                    ) : (
+                      <TicketIcon />
+                    )}
+                    <span>
+                      {Math.max(
+                        0,
+                        (confirmingPurchase.payWith === 'coins'
+                          ? user?.coins ?? 0
+                          : confirmingPurchase.payWith === 'diamonds'
+                          ? user?.diamonds ?? 0
+                          : (user as any)?.tickets ?? 0) - confirmingPurchase.price
+                      ).toLocaleString()}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Informational Callout */}
+              <div className="w-full mt-3 p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/70 flex items-start gap-2 text-left">
+                <BackpackIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-900 leading-tight">
+                  This item will be added to your <strong>Bag</strong>. You can wear or equip it anytime from your Bag.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="w-full mt-4 flex items-center gap-2">
+                <button
+                  onClick={() => setConfirmingPurchase(null)}
+                  disabled={buying === confirmingPurchase.item._id}
+                  className="w-1/3 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleConfirmBuy(confirmingPurchase.item, confirmingPurchase.payWith)}
+                  disabled={buying === confirmingPurchase.item._id}
+                  className="w-2/3 py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all disabled:opacity-50"
+                >
+                  {buying === confirmingPurchase.item._id ? (
+                    <Loading size="sm" />
+                  ) : (
+                    <>
+                      <CheckIcon className="w-4 h-4" />
+                      <span>Confirm & Add to Bag</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Success Modal */}
+      {purchasedSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto mb-3 text-2xl shadow-inner">
+              <BackpackIcon className="w-8 h-8 text-emerald-600" />
+            </div>
+
+            <h3 className="text-lg font-black text-ink">Added to Your Bag!</h3>
+            <p className="text-xs text-ink-muted mt-1 px-2">
+              <strong className="text-ink">{purchasedSuccess.item.name}</strong> is now available in your Bag.
+            </p>
+
+            <div className="mt-5 space-y-2">
+              <button
+                onClick={() => {
+                  setPurchasedSuccess(null);
+                  navigate('/bag');
+                }}
+                className="w-full py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
+              >
+                <BackpackIcon className="w-4 h-4" />
+                <span>Open My Bag</span>
+              </button>
+              <button
+                onClick={() => setPurchasedSuccess(null)}
+                className="w-full py-2.5 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs active:scale-98 transition-all"
+              >
+                Continue Shopping
+              </button>
             </div>
           </div>
         </div>

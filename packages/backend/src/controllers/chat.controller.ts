@@ -34,6 +34,36 @@ export const chatController = {
     }
   },
 
+  async createGroupChat(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { memberIds, name, avatar } = req.body;
+      const chat = await chatService.createGroupChat(req.user!.userId, memberIds, name, avatar);
+      sendSuccess(res, chat, 'Group chat created', 201);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async addGroupMembers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { memberIds } = req.body;
+      const chat = await chatService.addGroupMembers(req.params.chatId, req.user!.userId, memberIds);
+      sendSuccess(res, chat, 'Members added');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateGroupChat(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name, avatar } = req.body;
+      const chat = await chatService.updateGroupChat(req.params.chatId, req.user!.userId, { name, avatar });
+      sendSuccess(res, chat, 'Group updated');
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getChat(req: Request, res: Response, next: NextFunction) {
     try {
       const chat = await chatService.getChatById(req.params.chatId, req.user!.userId);

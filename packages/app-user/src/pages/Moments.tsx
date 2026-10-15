@@ -5,7 +5,6 @@ import {
   PiFilmReelFill as ReelsIcon,
   PiSquaresFourFill as FeedIcon,
   PiImageFill as ImageIcon,
-  PiVideoCameraFill as VideoIcon,
   PiMagnifyingGlassBold as Search,
   PiArrowClockwiseBold as Refresh,
   PiSparkleFill as Sparkle,
@@ -19,7 +18,11 @@ import { useAuthStore, useSocketStore } from '../stores';
 import type { Moment } from '../types';
 
 type SocialTab = 'feed' | 'reels';
-type FilterMode = 'all' | 'video' | 'photo' | 'trending';
+type FilterMode = 'all' | 'photo' | 'trending';
+
+// Feature flags: set to false/true to temporarily hide reels and videos from /social
+const SHOW_REELS_SYSTEM = false;
+const HIDE_VIDEO_SYSTEM = true;
 
 export const MomentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,8 +31,8 @@ export const MomentsPage: React.FC = () => {
   const currentUser = useAuthStore((s) => s.user);
   const socket = useSocketStore((s) => s.socket);
 
-  // Active tab from URL query param or default to 'feed'
-  const initialTab = (searchParams.get('tab') as SocialTab) || 'feed';
+  // Active tab from URL query param or default to 'feed' (forced to 'feed' if reels hidden)
+  const initialTab = (SHOW_REELS_SYSTEM && (searchParams.get('tab') as SocialTab)) || 'feed';
   const [activeTab, setActiveTab] = useState<SocialTab>(initialTab);
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
 
@@ -62,6 +65,7 @@ export const MomentsPage: React.FC = () => {
 
   // Switch tab and sync with searchParams
   const handleTabChange = (tab: SocialTab) => {
+    if (!SHOW_REELS_SYSTEM && tab === 'reels') return;
     setActiveTab(tab);
     setSearchParams({ tab });
   };
@@ -230,8 +234,18 @@ export const MomentsPage: React.FC = () => {
     };
   }, []);
 
-  // Filter moments according to filterMode & exclude hidden moments
-  const visibleMoments = moments.filter((m) => !hiddenMomentIds.includes(m._id));
+  // Filter moments according to filterMode & exclude hidden moments & exclude videos if HIDE_VIDEO_SYSTEM
+  const visibleMoments = moments.filter((m) => {
+    if (hiddenMomentIds.includes(m._id)) return false;
+    if (HIDE_VIDEO_SYSTEM) {
+      const isVid =
+        m.mediaType === 'video' ||
+        Boolean(m.videoUrl) ||
+        Boolean(m.media?.[0]?.match(/\.(mp4|webm|mov|mkv)$/i));
+      if (isVid) return false;
+    }
+    return true;
+  });
 
   const filteredMoments = visibleMoments.filter((m) => {
     const isVid =
@@ -239,7 +253,6 @@ export const MomentsPage: React.FC = () => {
       Boolean(m.videoUrl) ||
       Boolean(m.media?.[0]?.match(/\.(mp4|webm|mov|mkv)$/i));
 
-    if (filterMode === 'video') return isVid;
     if (filterMode === 'photo') return !isVid;
     if (filterMode === 'trending') return (m.likes?.length || 0) >= 1;
     return true;
@@ -267,34 +280,36 @@ export const MomentsPage: React.FC = () => {
             </h1>
           </div>
 
-          {/* Tab Switcher: Feed vs Reels */}
-          <div className="flex items-center p-1 bg-surface-sunken rounded-full border border-line">
-            <button
-              onClick={() => handleTabChange('feed')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
-                activeTab === 'feed'
-                  ? 'bg-black text-white shadow-sm scale-102'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              <FeedIcon className="w-3.5 h-3.5" />
-              <span>Feed</span>
-            </button>
-            <button
-              onClick={() => handleTabChange('reels')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
-                activeTab === 'reels'
-                  ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm scale-102'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              <ReelsIcon className="w-3.5 h-3.5" />
-              <span>Reels</span>
-              {reelCount > 0 && (
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
-              )}
-            </button>
-          </div>
+          {/* Tab Switcher: Feed vs Reels (Hidden when SHOW_REELS_SYSTEM is false) */}
+          {SHOW_REELS_SYSTEM && (
+            <div className="flex items-center p-1 bg-surface-sunken rounded-full border border-line">
+              <button
+                onClick={() => handleTabChange('feed')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  activeTab === 'feed'
+                    ? 'bg-black text-white shadow-sm scale-102'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                <FeedIcon className="w-3.5 h-3.5" />
+                <span>Feed</span>
+              </button>
+              <button
+                onClick={() => handleTabChange('reels')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  activeTab === 'reels'
+                    ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm scale-102'
+                    : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                <ReelsIcon className="w-3.5 h-3.5" />
+                <span>Reels</span>
+                {reelCount > 0 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                )}
+              </button>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5">
@@ -325,16 +340,6 @@ export const MomentsPage: React.FC = () => {
               All Posts
             </button>
             <button
-              onClick={() => setFilterMode('video')}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                filterMode === 'video'
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-white text-ink-muted border border-line hover:text-ink'
-              }`}
-            >
-              <VideoIcon className="w-3.5 h-3.5" /> Videos
-            </button>
-            <button
               onClick={() => setFilterMode('photo')}
               className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                 filterMode === 'photo'
@@ -362,22 +367,22 @@ export const MomentsPage: React.FC = () => {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-28">
           <Loading size="lg" />
-          <p className="text-xs text-ink-muted mt-3 font-medium">Loading moments & reels…</p>
+          <p className="text-xs text-ink-muted mt-3 font-medium">Loading moments…</p>
         </div>
-      ) : activeTab === 'reels' ? (
+      ) : SHOW_REELS_SYSTEM && activeTab === 'reels' ? (
         /* ── REELS TAB (FULL SCREEN TIKTOK REELS) ── */
         <div className="w-full">
           <ReelsViewer
             moments={visibleMoments}
             onUpdate={() => loadMoments(true)}
             onOpenCreate={() => {
-              setCreateDefaultType('video');
+              setCreateDefaultType('image');
               setCreateModalOpen(true);
             }}
           />
         </div>
       ) : (
-        /* ── HOME FEED TAB (PHOTOS & VIDEOS) ── */
+        /* ── HOME FEED TAB (PHOTOS & TEXT) ── */
         <div className="px-3 pt-3 space-y-4">
           {/* Posts Feed */}
           {filteredMoments.length === 0 ? (
@@ -387,15 +392,13 @@ export const MomentsPage: React.FC = () => {
               </div>
               <h3 className="text-sm font-bold text-ink mb-1">No moments in this view</h3>
               <p className="text-xs text-ink-muted max-w-xs mx-auto mb-4">
-                {filterMode === 'video'
-                  ? 'No video posts found. Share your first video!'
-                  : filterMode === 'photo'
+                {filterMode === 'photo'
                   ? 'No photo posts found. Share a photo with your followers!'
                   : 'Be the first to share a moment with everyone!'}
               </p>
               <button
                 onClick={() => {
-                  setCreateDefaultType(filterMode === 'video' ? 'video' : 'image');
+                  setCreateDefaultType('image');
                   setCreateModalOpen(true);
                 }}
                 className="px-5 py-2 rounded-full bg-black text-white text-xs font-bold hover:bg-neutral-800 transition-transform active:scale-95 shadow-sm"
@@ -411,7 +414,7 @@ export const MomentsPage: React.FC = () => {
                   moment={moment}
                   onUpdate={() => loadMoments(true)}
                   onHidePost={handleHidePost}
-                  onWatchReel={(id) => setActiveReelModalId(id)}
+                  onWatchReel={SHOW_REELS_SYSTEM ? ((id) => setActiveReelModalId(id)) : undefined}
                 />
               ))}
             </div>
@@ -428,7 +431,7 @@ export const MomentsPage: React.FC = () => {
       />
 
       {/* ── FULLSCREEN TIKTOK REEL VIEWER MODAL (WHEN WATCHING FROM FEED) ── */}
-      {activeReelModalId && (
+      {SHOW_REELS_SYSTEM && activeReelModalId && (
         <ReelsViewer
           moments={visibleMoments}
           initialMomentId={activeReelModalId}

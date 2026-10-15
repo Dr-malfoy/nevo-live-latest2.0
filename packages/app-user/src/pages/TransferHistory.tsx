@@ -146,7 +146,7 @@ export const TransferHistory = () => {
                         onClick={(e) => handleOpenProfile(r.receiver._id || r.receiver.uid, e)}
                         className="font-bold text-sm text-ink hover:text-amber-800 truncate text-left block"
                       >
-                        {r.receiver.nickname || 'Agent'}
+                        {r.receiver.nickname || 'User'}
                       </button>
 
                       <button

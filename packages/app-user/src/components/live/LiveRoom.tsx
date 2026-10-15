@@ -14,6 +14,7 @@ import { LiveSkeleton } from './LiveSkeleton';
 import { HostCameraPreview } from './HostCameraPreview';
 import { FilterPicker } from './FilterPicker';
 import { StickerPicker, StickerOverlay } from './StickerPicker';
+import { LiveToolsSheet } from './LiveToolsSheet';
 import type { LiveRoomProps } from './types';
 
 export const LiveRoom = ({
@@ -56,6 +57,7 @@ export const LiveRoom = ({
   onToggleStickers,
 }: LiveRoomProps) => {
   const [showAudience, setShowAudience] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [shared, setShared] = useState(false);
   const { hearts, burst } = useFloatingHearts();
   const { items: reactions, trigger: triggerReaction } = useReactions();
@@ -254,6 +256,7 @@ export const LiveRoom = ({
         onLeave={onLeave}
         onEnd={onEnd}
         onChatSend={onChatSend}
+        onOpenMenu={() => setToolsOpen(true)}
       />
 
       {/* Camera enhancement pickers (host only) */}
@@ -263,6 +266,24 @@ export const LiveRoom = ({
           <StickerPicker open={showStickers} onAdd={stickerState?.addSticker || (() => {})} onClose={onToggleStickers || (() => {})} />
         </>
       )}
+
+      {/* Live tools and features menu sheet */}
+      <LiveToolsSheet
+        isOpen={toolsOpen}
+        onClose={() => setToolsOpen(false)}
+        isHost={isHost}
+        videoEnabled={videoEnabled}
+        cameraOn={cameraOn}
+        micOn={micOn}
+        onToggleCamera={onToggleCamera}
+        onToggleMic={onToggleMic}
+        onSwitchCamera={onSwitchCamera}
+        onToggleFilters={onToggleFilters}
+        onToggleStickers={onToggleStickers}
+        onOpenGift={onOpenGift}
+        onShare={handleShare}
+        onReport={onReport}
+      />
 
       <PKPanel data={null} />
 

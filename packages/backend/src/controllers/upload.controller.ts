@@ -10,9 +10,10 @@ export const uploadController = {
         return;
       }
 
-      const isVideo = req.file.mimetype.startsWith('video/');
-      const isAudio = req.file.mimetype.startsWith('audio/');
       const folder = req.body.folder || 'bogolive';
+      const isVoiceFolder = folder === 'voice-messages' || folder.includes('voice') || folder.includes('audio');
+      const isAudio = req.file.mimetype.startsWith('audio/') || isVoiceFolder;
+      const isVideo = !isAudio && req.file.mimetype.startsWith('video/');
 
       let url: string;
       if (isAudio) {

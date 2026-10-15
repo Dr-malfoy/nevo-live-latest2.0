@@ -33,7 +33,7 @@ export interface TransferRecord {
 export const TRANSFER_UNIT = 1;
 export const TRANSFER_MIN_UNITS = 1;
 export const TRANSFER_MIN_POINTS = 1;
-export const TRANSFER_CHARGE_PERCENT = 5; // 5% transfer charge
+export const TRANSFER_CHARGE_PERCENT = 0; // 0% transfer charge (free)
 
 export interface TransferBreakdown {
   units?: number;
@@ -42,11 +42,11 @@ export interface TransferBreakdown {
   finalAmount: number;
 }
 
-/** Calculate 5% transfer charge breakdown */
+/** Calculate 0% transfer charge breakdown (100% credited) */
 export function calculateTransferBreakdown(amount: number): TransferBreakdown {
   const transferAmount = Math.max(0, Math.floor(amount || 0));
-  const charge = Math.round(transferAmount * (TRANSFER_CHARGE_PERCENT / 100));
-  const finalAmount = transferAmount > 0 ? Math.max(1, transferAmount - charge) : 0;
+  const charge = 0;
+  const finalAmount = transferAmount;
   return {
     units: transferAmount,
     transferAmount,

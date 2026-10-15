@@ -17,6 +17,8 @@ router.get('/me/followers', authenticate, userController.getFollowers);
 router.get('/me/stats', authenticate, userController.getStats);
 router.get('/me/friends', authenticate, userController.getFriends);
 router.get('/me/visitors', authenticate, userController.getVisitors);
+router.delete('/me/visitors', authenticate, userController.clearVisitors);
+router.post('/me/visitors/clear', authenticate, userController.clearVisitors);
 // Bag / Inventory (#22, #29, §4.0)
 router.get('/me/bag', authenticate, storeController.getBag);
 router.post('/me/bag/:inventoryId/equip', authenticate, storeController.equip);
@@ -52,6 +54,8 @@ router.get('/:id/followers', userController.getFollowers);
 router.get('/:id/friends', userController.getFriends);
 // Visitors are private — the controller rejects anyone but the owner.
 router.get('/:id/visitors', authenticate, userController.getVisitors);
+router.delete('/:id/visitors', authenticate, userController.clearVisitors);
+router.post('/:id/visitors/clear', authenticate, userController.clearVisitors);
 router.post('/:id/follow', authenticate, userController.toggleFollow);
 router.put('/:id/follow', authenticate, userController.follow);
 router.delete('/:id/follow', authenticate, userController.unfollow);

@@ -243,6 +243,12 @@ export const streamService = {
     return stream ? toStreamDTO(stream) : null;
   },
 
+  /** Check if any specific user currently has an active live stream. */
+  async getUserActiveStream(hostId: string) {
+    const stream = await LiveStream.findOne({ hostId, status: 'live' }).populate('hostId', HOST_FIELDS);
+    return stream ? toStreamDTO(stream) : null;
+  },
+
   async createStream(hostId: string, data: { title: string; cover?: string; type: 'video' | 'voice' | 'game'; category: string }) {
     // One host = one live session. End any previous live stream for this host
     // and credit any completed streaming duration.
@@ -366,6 +372,21 @@ export const streamService = {
           }
         })
         .catch(() => {});
+    } catch {}
+
+    try {
+      const { getIO } = await import('../socket');
+      getIO().emit('user:live-status', {
+        userId: hostId,
+        isLive: true,
+        streamId: stream._id.toString(),
+        liveStream: {
+          _id: stream._id.toString(),
+          title: stream.title,
+          cover: stream.cover,
+          viewerCount: stream.viewerCount,
+        },
+      });
     } catch {}
 
     return toStreamDTO(populated);
@@ -531,6 +552,15 @@ export const streamService = {
         console.error('[stream] Error updating host live stream duration:', err);
       }
     }
+
+    try {
+      const { getIO } = await import('../socket');
+      getIO().emit('user:live-status', {
+        userId: hostId,
+        isLive: false,
+        streamId,
+      });
+    } catch {}
 
     return toStreamDTO(stream);
   },

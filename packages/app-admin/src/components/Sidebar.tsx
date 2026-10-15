@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, Award, Radio, ArrowLeftRight, Gift, Building2, ShoppingCart, Settings, Wallet, ShoppingBag, Handshake, ScrollText, BarChart3, Flag, Headphones, LogOut, Megaphone, ShieldCheck, KeyRound } from 'lucide-react';
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -15,7 +15,8 @@ const links = [
   { to: '/withdrawal-requests', icon: Handshake, label: 'Withdrawals' },
   { to: '/wallet', icon: Wallet, label: 'Platform Wallet' },
   { to: '/moderation-reports', icon: Flag, label: 'Complaints' },
-  { to: '/contact-messages', icon: Headphones, label: 'Contact Messages' },
+  { to: '/contact-messages', icon: Headphones, label: 'Support Tickets' },
+  { to: '/asset-passwords', icon: KeyRound, label: 'Asset Passwords' },
   { to: '/official-notifications', icon: Megaphone, label: 'Official Notifications' },
   { to: '/verification', icon: ShieldCheck, label: 'Verification' },
   { to: '/reports', icon: BarChart3, label: 'Analytics' },
@@ -25,7 +26,17 @@ const links = [
   { to: '/reward-config', icon: Gift, label: 'Rewards' },
 ];
 
-export const Sidebar = ({ onLogout, complaintsCount, pendingVerifications }: { onLogout: () => void; complaintsCount?: number; pendingVerifications?: number }) => (
+export const Sidebar = ({
+  onLogout,
+  complaintsCount,
+  pendingVerifications,
+  pendingTickets,
+}: {
+  onLogout: () => void;
+  complaintsCount?: number;
+  pendingVerifications?: number;
+  pendingTickets?: number;
+}) => (
   <aside className="w-60 min-h-screen bg-dark-900 border-r border-dark-800 flex flex-col">
     <div className="p-4 border-b border-dark-800">
       <h1 className="text-lg font-bold">Navo Live Admin</h1>
@@ -49,6 +60,11 @@ export const Sidebar = ({ onLogout, complaintsCount, pendingVerifications }: { o
           {to === '/verification' && pendingVerifications ? (
             <span className="min-w-[18px] h-[18px] px-1 bg-yellow-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
               {pendingVerifications > 99 ? '99+' : pendingVerifications}
+            </span>
+          ) : null}
+          {to === '/contact-messages' && pendingTickets ? (
+            <span className="min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+              {pendingTickets > 99 ? '99+' : pendingTickets}
             </span>
           ) : null}
         </NavLink>

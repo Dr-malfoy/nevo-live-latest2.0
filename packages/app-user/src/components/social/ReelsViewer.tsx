@@ -21,6 +21,7 @@ import { useAuthStore, useUIStore } from '../../stores';
 import { ShareModal } from './ShareModal';
 import { CommentsDrawer } from './CommentsDrawer';
 import { EditPostModal } from './EditPostModal';
+import { ReactionsModal } from './ReactionsModal';
 import {
   PiXBold as X,
   PiTrashBold as TrashIcon,
@@ -78,6 +79,7 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
   const [selectedMomentForShare, setSelectedMomentForShare] = useState<Moment | null>(null);
   const [selectedMomentForComments, setSelectedMomentForComments] = useState<Moment | null>(null);
   const [selectedMomentForEdit, setSelectedMomentForEdit] = useState<Moment | null>(null);
+  const [selectedMomentForReactions, setSelectedMomentForReactions] = useState<Moment | null>(null);
   const [followedMap, setFollowedMap] = useState<Record<string, boolean>>({});
 
   // Likes tracking state
@@ -475,28 +477,37 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
                 </div>
 
                 {/* 1. React / Like Option */}
-                <button
-                  onClick={() => handleLikeReel(moment)}
-                  className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"
-                  aria-label="Like reel"
-                >
-                  <div
-                    className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border border-white/20 transition-all ${
-                      likeInfo.liked
-                        ? 'bg-rose-500/90 text-white shadow-glow-pink'
-                        : 'bg-black/40 text-white hover:bg-black/60'
-                    }`}
+                <div className="flex flex-col items-center gap-1 group">
+                  <button
+                    onClick={() => handleLikeReel(moment)}
+                    className="active:scale-90 transition-transform"
+                    aria-label="Like reel"
                   >
-                    <Heart
-                      className={`w-6 h-6 ${
-                        likeInfo.liked ? 'fill-white' : 'text-white'
+                    <div
+                      className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border border-white/20 transition-all ${
+                        likeInfo.liked
+                          ? 'bg-rose-500/90 text-white shadow-glow-pink'
+                          : 'bg-black/40 text-white hover:bg-black/60'
                       }`}
-                    />
-                  </div>
-                  <span className="text-white text-[11px] font-bold drop-shadow-md tabular-nums">
+                    >
+                      <Heart
+                        className={`w-6 h-6 ${
+                          likeInfo.liked ? 'fill-white' : 'text-white'
+                        }`}
+                      />
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedMomentForReactions(moment);
+                    }}
+                    className="text-white text-[11px] font-bold drop-shadow-md tabular-nums hover:underline active:scale-95 cursor-pointer"
+                    title="View who reacted"
+                  >
                     {compactNumber(likeInfo.count)}
-                  </span>
-                </button>
+                  </button>
+                </div>
 
                 {/* 2. Comment Option */}
                 <button
@@ -658,6 +669,16 @@ export const ReelsViewer: React.FC<ReelsViewerProps> = ({
             onUpdate?.();
             setSelectedMomentForEdit(null);
           }}
+        />
+      )}
+
+      {/* Reactions Modal */}
+      {selectedMomentForReactions && (
+        <ReactionsModal
+          isOpen={Boolean(selectedMomentForReactions)}
+          onClose={() => setSelectedMomentForReactions(null)}
+          momentId={selectedMomentForReactions._id}
+          initialLikes={selectedMomentForReactions.likes}
         />
       )}
     </div>

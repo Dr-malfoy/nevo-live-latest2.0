@@ -10,12 +10,11 @@ import {
   ToggleLeft,
   ToggleRight,
   RefreshCw,
-  Coins,
   ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
 import { adminApi } from '../api';
-import { DiamondIcon, CoinIcon } from '../components/CurrencyIcon';
+import { DiamondIcon } from '../components/CurrencyIcon';
 
 interface GiftItem {
   _id: string;
@@ -123,7 +122,7 @@ export const Gifts = () => {
       return;
     }
     if (form.priceDiamonds < 1) {
-      setError('Coin price must be at least 1 coin.');
+      setError('Diamond price must be at least 1 diamond.');
       return;
     }
 
@@ -237,13 +236,13 @@ export const Gifts = () => {
 
       {/* Revenue Split Banner */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-amber-950/40 via-dark-800 to-dark-800 border border-amber-500/30 p-4 rounded-2xl flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
-            <CoinIcon className="w-5 h-5 text-yellow-400" />
+        <div className="bg-gradient-to-br from-cyan-950/40 via-dark-800 to-dark-800 border border-cyan-500/30 p-4 rounded-2xl flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center shrink-0">
+            <DiamondIcon className="w-5 h-5 text-cyan-400" />
           </div>
           <div>
-            <p className="text-xs font-semibold text-yellow-300 uppercase tracking-wider">Sender Coin Cost</p>
-            <p className="text-sm font-bold text-white mt-0.5">Fixed per Gift (Paid in Coins)</p>
+            <p className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Sender Diamond Cost</p>
+            <p className="text-sm font-bold text-white mt-0.5">Fixed per Gift (Paid in Diamonds)</p>
           </div>
         </div>
 
@@ -253,7 +252,7 @@ export const Gifts = () => {
           </div>
           <div>
             <p className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Host Revenue (70%)</p>
-            <p className="text-sm font-bold text-white mt-0.5">70 diamonds per 100 coins</p>
+            <p className="text-sm font-bold text-white mt-0.5">70 diamonds per 100 diamonds</p>
           </div>
         </div>
 
@@ -263,7 +262,7 @@ export const Gifts = () => {
           </div>
           <div>
             <p className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Platform Cut (30%)</p>
-            <p className="text-sm font-bold text-white mt-0.5">30 diamonds per 100 coins</p>
+            <p className="text-sm font-bold text-white mt-0.5">30 diamonds per 100 diamonds</p>
           </div>
         </div>
       </div>
@@ -361,14 +360,14 @@ export const Gifts = () => {
                   {isEditingThis ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5">
-                        <CoinIcon className="w-4 h-4 text-yellow-400 shrink-0" />
+                        <DiamondIcon className="w-4 h-4 text-cyan-400 shrink-0" />
                         <input
                           type="number"
                           min="1"
                           autoFocus
                           value={inlinePrice}
                           onChange={(e) => setInlinePrice(parseInt(e.target.value) || 0)}
-                          className="w-full bg-dark-800 border border-yellow-500/60 rounded px-2 py-1 text-sm font-bold text-white focus:outline-none"
+                          className="w-full bg-dark-800 border border-cyan-500/60 rounded px-2 py-1 text-sm font-bold text-white focus:outline-none"
                         />
                       </div>
                       <div className="flex items-center gap-1">
@@ -389,7 +388,7 @@ export const Gifts = () => {
                   ) : (
                     <div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-dark-400 font-medium">Coin Price:</span>
+                        <span className="text-[11px] text-dark-400 font-medium">Diamond Price:</span>
                         <button
                           onClick={() => handleStartInlineEdit(gift)}
                           className="text-[10px] text-primary-400 hover:underline inline-flex items-center gap-0.5"
@@ -399,9 +398,9 @@ export const Gifts = () => {
                         </button>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <CoinIcon className="w-4 h-4 text-yellow-400" />
-                        <span className="text-base font-black text-yellow-300">
-                          {gift.priceDiamonds.toLocaleString()} Coins
+                        <DiamondIcon className="w-4 h-4 text-cyan-400" />
+                        <span className="text-base font-black text-cyan-300">
+                          {gift.priceDiamonds.toLocaleString()} Diamonds
                         </span>
                       </div>
 
@@ -566,11 +565,11 @@ export const Gifts = () => {
               {/* Price Diamonds Input & Quick Buttons */}
               <div className="bg-dark-900/80 border border-dark-700/80 p-3.5 rounded-xl space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-yellow-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <CoinIcon className="w-4 h-4 text-yellow-400" />
-                    Fixed Coin Price <span className="text-rose-400">*</span>
+                  <label className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <DiamondIcon className="w-4 h-4 text-cyan-400" />
+                    Fixed Diamond Price <span className="text-rose-400">*</span>
                   </label>
-                  <span className="text-[11px] text-dark-400">Cost in Coins to viewer on send</span>
+                  <span className="text-[11px] text-dark-400">Cost in Diamonds to viewer on send</span>
                 </div>
 
                 <input
@@ -580,7 +579,7 @@ export const Gifts = () => {
                   value={form.priceDiamonds}
                   onChange={(e) => setForm({ ...form, priceDiamonds: parseInt(e.target.value) || 0 })}
                   placeholder="e.g. 500"
-                  className="w-full bg-dark-800 border border-yellow-500/50 rounded-xl px-3.5 py-2 text-lg font-black text-yellow-300 focus:outline-none focus:border-yellow-400"
+                  className="w-full bg-dark-800 border border-cyan-500/50 rounded-xl px-3.5 py-2 text-lg font-black text-cyan-300 focus:outline-none focus:border-cyan-400"
                 />
 
                 {/* Quick Add Chips */}
@@ -593,7 +592,7 @@ export const Gifts = () => {
                       onClick={() => setForm({ ...form, priceDiamonds: amt })}
                       className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${
                         form.priceDiamonds === amt
-                          ? 'bg-yellow-500 text-black shadow-sm font-black'
+                          ? 'bg-cyan-500 text-black shadow-sm font-black'
                           : 'bg-dark-800 text-dark-300 hover:text-white hover:bg-dark-700 border border-dark-700'
                       }`}
                     >

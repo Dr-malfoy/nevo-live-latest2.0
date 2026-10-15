@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import {
   PiXBold as X,
   PiImageFill as ImageIcon,
-  PiVideoCameraFill as VideoIcon,
   PiPaperPlaneRightFill as Send,
   PiSpinnerBold as Loader2,
   PiTagFill as TagIcon,
@@ -42,13 +41,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const currentUser = useAuthStore((s) => s.user);
   const showToast = useUIStore((s) => s.showToast);
 
-  const [postType, setPostType] = useState<'image' | 'video'>(defaultMediaType);
   const [caption, setCaption] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [customTagInput, setCustomTagInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
-  const [videoDuration, setVideoDuration] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -60,39 +57,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const isVid = selected.type.startsWith('video/') || /\.(mp4|webm|mov|mkv)$/i.test(selected.name);
 
     if (isVid) {
-      const videoElement = document.createElement('video');
-      videoElement.preload = 'metadata';
-      const objUrl = URL.createObjectURL(selected);
-      videoElement.src = objUrl;
-
-      videoElement.onloadedmetadata = () => {
-        const duration = videoElement.duration;
-        if (duration > 90) {
-          showToast(`Video too long (${Math.round(duration)}s). Maximum allowed is 1 min 30 sec (90s).`, 'error');
-          setFile(null);
-          setPreview('');
-          setVideoDuration(null);
-          URL.revokeObjectURL(objUrl);
-          return;
-        }
-        setPostType('video');
-        setFile(selected);
-        setPreview(objUrl);
-        setVideoDuration(Math.round(duration));
-      };
-
-      videoElement.onerror = () => {
-        setPostType('video');
-        setFile(selected);
-        setPreview(objUrl);
-        setVideoDuration(null);
-      };
-    } else {
-      setPostType('image');
-      setFile(selected);
-      setPreview(URL.createObjectURL(selected));
-      setVideoDuration(null);
+      showToast('Video upload is currently disabled. Please upload a photo.', 'info');
+      return;
     }
+
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,7 +83,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const handleClearMedia = () => {
     setFile(null);
     setPreview('');
-    setVideoDuration(null);
   };
 
   const toggleTag = (tag: string) => {
@@ -159,10 +128,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       const payload = {
         content: caption.trim() || undefined,
         media: mediaUrl ? [mediaUrl] : [],
-        mediaType: postType,
-        videoUrl: postType === 'video' && mediaUrl ? mediaUrl : undefined,
-        thumbnail: postType === 'image' && mediaUrl ? mediaUrl : undefined,
-        durationSec: videoDuration || undefined,
+        mediaType: 'image' as const,
+        thumbnail: mediaUrl || undefined,
         hashtags: combinedTags,
       };
 
@@ -194,8 +161,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-line bg-surface-soft">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold text-ink">Create New Post</h3>
-            <span className="px-2.5 py-0.5 rounded-full bg-accent-50 text-accent-600 text-[11px] font-bold border border-accent-100">
-              {postType === 'video' ? 'Video / Reel' : 'Photo'}
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[11px] font-bold border border-emerald-100 flex items-center gap-1">
+              <ImageIcon className="w-3 h-3" /> Photo
             </span>
           </div>
           <button
@@ -221,32 +188,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             </div>
           </div>
 
-          {/* Type Selector Tabs */}
-          <div className="flex items-center p-1 bg-surface-sunken rounded-xl border border-line">
-            <button
-              type="button"
-              onClick={() => setPostType('image')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                postType === 'image'
-                  ? 'bg-white text-ink shadow-sm'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4 text-emerald-500" /> Photo Post
-            </button>
-            <button
-              type="button"
-              onClick={() => setPostType('video')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                postType === 'video'
-                  ? 'bg-white text-ink shadow-sm'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              <VideoIcon className="w-4 h-4 text-rose-500" /> Video / Reel
-            </button>
-          </div>
-
           {/* Caption Input */}
           <div className="relative">
             <textarea
@@ -264,31 +205,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
           {/* Media Preview or Dropzone */}
           {preview ? (
-            <div className="relative rounded-2xl overflow-hidden border border-line bg-black group aspect-video flex items-center justify-center">
-              {postType === 'video' || file?.type.startsWith('video/') ? (
-                <>
-                  <video
-                    src={preview}
-                    controls
-                    className="w-full h-full object-contain aspect-video"
-                  />
-                  {videoDuration !== null && (
-                    <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 shadow-md">
-                      <VideoIcon className="w-3.5 h-3.5 text-rose-400" />
-                      <span>
-                        {Math.floor(videoDuration / 60)}:
-                        {String(videoDuration % 60).padStart(2, '0')} / 1:30 max
-                      </span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <img
-                  src={preview}
-                  alt="preview"
-                  className="w-full h-full object-contain aspect-video"
-                />
-              )}
+            <div className="relative rounded-2xl overflow-hidden border border-line bg-neutral-900 group max-h-[380px] flex items-center justify-center">
+              <img
+                src={preview}
+                alt="preview"
+                className="w-full max-h-[380px] object-contain rounded-2xl"
+              />
               <button
                 onClick={handleClearMedia}
                 className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 backdrop-blur-md text-white flex items-center justify-center hover:bg-black transition-colors shadow-lg"
@@ -312,21 +234,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               }`}
             >
               <div className="w-12 h-12 rounded-full bg-white shadow-sm border border-line mx-auto flex items-center justify-center mb-2">
-                {postType === 'video' ? (
-                  <VideoIcon className="w-6 h-6 text-rose-500" />
-                ) : (
-                  <ImageIcon className="w-6 h-6 text-emerald-500" />
-                )}
+                <ImageIcon className="w-6 h-6 text-emerald-500" />
               </div>
-              <p className="text-xs font-bold text-ink">
-                {postType === 'video'
-                  ? 'Upload Video or Reel'
-                  : 'Upload High-Quality Photo'}
-              </p>
+              <p className="text-xs font-bold text-ink">Upload High-Quality Photo</p>
               <p className="text-[11px] text-ink-muted mt-0.5">
-                {postType === 'video'
-                  ? 'Max length: 1 min 30 sec (90s) • MP4, WebM, MOV'
-                  : 'Drag & drop or click to browse (PNG, JPG)'}
+                Drag & drop or click to browse (PNG, JPG, WebP)
               </p>
             </div>
           )}
@@ -334,7 +246,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept={postType === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'image/*'}
+            accept="image/*"
             className="hidden"
             onChange={handleFileChange}
           />

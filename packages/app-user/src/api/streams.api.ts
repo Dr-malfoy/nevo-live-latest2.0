@@ -43,6 +43,9 @@ export const streamsApi = {
 
   getMyActiveStream: () => client.get<ApiResponse<LiveStream | null>>('/streams/my-active'),
 
+  getUserActiveStream: (userId: string) =>
+    client.get<ApiResponse<LiveStream | null>>(`/streams/user/${userId}/active`),
+
   getViewers: (id: string) => client.get<ApiResponse<any[]>>(`/streams/${id}/viewers`),
 
   heartbeat: (id: string) => client.post(`/streams/${id}/heartbeat`),

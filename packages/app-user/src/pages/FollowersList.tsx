@@ -48,10 +48,25 @@ export const FollowersList = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   const isOwnProfile = !!id && id === currentUserId;
   const active: RelationListType = isListType(listType) ? listType : 'followers';
   const tabs = isOwnProfile ? TABS : TABS.filter((t) => t.key !== 'visitors');
+
+  const handleClearVisitors = async () => {
+    if (clearing) return;
+    setClearing(true);
+    try {
+      await usersApi.clearVisitors(id);
+      setRows([]);
+      window.dispatchEvent(new CustomEvent('visitors:cleared'));
+    } catch (err: any) {
+      console.warn('Failed to clear visitors:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -64,8 +79,19 @@ export const FollowersList = () => {
     FETCHERS[active](id)
       .then(({ data }) => {
         if (cancelled) return;
-        if (data.success) setRows(data.data || []);
-        else setError(data.error || 'Could not load this list');
+        if (data.success) {
+          const list = data.data || [];
+          setRows(list);
+          // Once viewed by the profile owner, clear the old visitors so count becomes 0 and old visits are removed
+          if (active === 'visitors' && isOwnProfile) {
+            window.dispatchEvent(new CustomEvent('visitors:cleared'));
+            if (list.length > 0) {
+              usersApi.clearVisitors(id).catch(() => {});
+            }
+          }
+        } else {
+          setError(data.error || 'Could not load this list');
+        }
       })
       .catch((err: any) => {
         if (!cancelled) setError(err.response?.data?.error || 'Could not load this list');
@@ -77,18 +103,29 @@ export const FollowersList = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, active]);
+  }, [id, active, isOwnProfile]);
 
   const empty = EMPTY_COPY[active];
 
   return (
     <div className="min-h-screen bg-surface-soft">
       <header className="sticky top-0 z-20 bg-white border-b border-line">
-        <div className="flex items-center gap-3 px-4 h-14">
-          <button onClick={() => navigate(-1)} aria-label="Back" className="-ml-1 p-1 text-ink">
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-base font-bold text-ink">{isOwnProfile ? 'My Connections' : 'Connections'}</h1>
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(-1)} aria-label="Back" className="-ml-1 p-1 text-ink">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-base font-bold text-ink">{isOwnProfile ? 'My Connections' : 'Connections'}</h1>
+          </div>
+          {active === 'visitors' && isOwnProfile && rows.length > 0 && (
+            <button
+              onClick={handleClearVisitors}
+              disabled={clearing}
+              className="text-xs font-semibold text-rose-500 hover:text-rose-600 px-3 py-1 rounded-full bg-rose-50 border border-rose-200/80 active:scale-95 transition-transform disabled:opacity-50"
+            >
+              Clear History
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-5 px-4 overflow-x-auto no-scrollbar">

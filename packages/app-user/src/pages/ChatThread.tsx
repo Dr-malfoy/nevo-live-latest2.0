@@ -35,13 +35,17 @@ import {
   PiProhibitFill as Prohibit,
   PiImageFill as ImageIcon,
   PiCameraFill as CameraIcon,
+  PiUsersThreeFill as UsersGroup,
+  PiUserPlusFill as UserPlus,
 } from 'react-icons/pi';
-import { chatApi, callApi, giftsApi, uploadApi, reportApi, usersApi } from '../api';
+import { chatApi, callApi, giftsApi, uploadApi, reportApi, usersApi, streamsApi } from '../api';
+import { securityApi } from '../api/economy.api';
 import { optional } from '../api/pending';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
+import { CoinIcon } from '../components/ui/CurrencyIcon';
 import { CallScreen } from '../components/call/CallScreen';
 import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
@@ -193,58 +197,152 @@ const clockTime = (iso?: string) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
 /** Voice bubble */
-const VoiceBubble = ({ url, duration, mine }: { url: string; duration?: number; mine: boolean }) => {
+const VoiceBubble = ({ url, duration, mine }: { url?: string; duration?: number; mine: boolean }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState<number>(duration && duration > 0 ? duration : 0);
+  const [loadError, setLoadError] = useState(false);
+
+  const resolvedUrl = useMemo(() => (url ? getMediaUrl(url) : ''), [url]);
 
   useEffect(() => {
-    const audio = new Audio(url);
+    if (duration && duration > 0) {
+      setAudioDuration(duration);
+    }
+  }, [duration]);
+
+  useEffect(() => {
+    if (!resolvedUrl) return;
+    setLoadError(false);
+    setCurrentTime(0);
+
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'metadata';
+    audio.src = resolvedUrl;
     audioRef.current = audio;
-    audio.ontimeupdate = () => {
-      if (audio.duration) setProgress(audio.currentTime / audio.duration);
+
+    const onLoadedMetadata = () => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        setAudioDuration(audio.duration);
+      }
     };
-    audio.onended = () => {
+
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      if (Number.isFinite(audio.duration) && audio.duration > 0 && !audioDuration) {
+        setAudioDuration(audio.duration);
+      }
+    };
+
+    const onEnded = () => {
       setPlaying(false);
-      setProgress(0);
+      setCurrentTime(0);
     };
+
+    const onError = () => {
+      console.warn('Audio failed to load from:', resolvedUrl);
+      setPlaying(false);
+      setLoadError(true);
+    };
+
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+
     return () => {
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
       audio.pause();
       audioRef.current = null;
     };
-  }, [url]);
+  }, [resolvedUrl]);
 
-  const toggle = () => {
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
     const audio = audioRef.current;
     if (!audio) return;
     if (playing) {
       audio.pause();
       setPlaying(false);
     } else {
-      audio.play();
-      setPlaying(true);
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setPlaying(true);
+            setLoadError(false);
+          })
+          .catch((err) => {
+            console.warn('Audio playback error:', err);
+            setPlaying(false);
+            setLoadError(true);
+          });
+      }
     }
   };
 
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    const dur = audioDuration || (audio && Number.isFinite(audio.duration) ? audio.duration : 0);
+    if (!audio || dur <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    audio.currentTime = ratio * dur;
+    setCurrentTime(audio.currentTime);
+  };
+
+  const effectiveDuration = audioDuration || (duration && duration > 0 ? duration : 0);
+  const progress = effectiveDuration > 0 ? Math.min(1, currentTime / effectiveDuration) : 0;
+
+  const formatSecs = (secs: number) => {
+    const s = Math.round(secs);
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+  };
+
+  const displayTime = playing
+    ? `${formatSecs(currentTime)} / ${formatSecs(effectiveDuration)}`
+    : effectiveDuration > 0
+    ? `${Math.round(effectiveDuration)}"`
+    : '';
+
   return (
-    <div className="flex items-center gap-2 min-w-[150px]">
+    <div className="flex items-center gap-2 min-w-[160px] sm:min-w-[180px] max-w-[240px] py-0.5">
       <button
+        type="button"
         onClick={toggle}
-        aria-label={playing ? 'Pause' : 'Play'}
-        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-          mine ? 'bg-white/25 text-white' : 'bg-surface-sunken text-ink'
+        aria-label={playing ? 'Pause' : 'Play voice message'}
+        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-2xs transition-transform active:scale-95 ${
+          mine ? 'bg-white/25 text-white hover:bg-white/35' : 'bg-surface-sunken text-ink hover:bg-surface-sunken/80'
         }`}
       >
         {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
       </button>
-      <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${mine ? 'bg-white/30' : 'bg-line-strong'}`}>
-        <div
-          className={`h-full transition-[width] duration-200 ${mine ? 'bg-white' : 'bg-primary-500'}`}
-          style={{ width: `${progress * 100}%` }}
-        />
+
+      {/* Progress / Seek bar */}
+      <div
+        onClick={handleSeek}
+        className="flex-1 h-4 flex items-center cursor-pointer group py-1"
+        title="Seek audio"
+      >
+        <div className={`w-full h-1.5 rounded-full overflow-hidden ${mine ? 'bg-white/30' : 'bg-line-strong'}`}>
+          <div
+            className={`h-full transition-[width] duration-100 rounded-full ${mine ? 'bg-white' : 'bg-primary-500'}`}
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
       </div>
-      <span className={`text-[11px] tabular-nums font-semibold ${mine ? 'text-white/90' : 'text-ink-muted'}`}>
-        {duration ? `${duration}"` : ''}
+
+      <span className={`text-[11px] tabular-nums font-semibold shrink-0 select-none ${mine ? 'text-white/90' : 'text-ink-muted'}`}>
+        {loadError ? 'Error' : displayTime}
       </span>
     </div>
   );
@@ -302,31 +400,31 @@ const VoiceReviewBar = ({ voice, onCancel, onSend, sending }: VoiceReviewProps) 
   };
 
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2.5 bg-white border-t border-line safe-bottom animate-in fade-in slide-in-from-bottom-2">
+    <div className="w-full max-w-full flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3 py-2 sm:py-2.5 bg-white border-t border-line safe-bottom animate-in fade-in slide-in-from-bottom-2 box-border">
       {/* Discard Button */}
       <button
         onClick={onCancel}
         disabled={sending}
         title="Discard voice recording"
         aria-label="Discard voice recording"
-        className="w-10 h-10 rounded-full flex items-center justify-center text-rose-500 hover:bg-rose-50 active:scale-95 transition-all shrink-0 border border-rose-200"
+        className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-rose-500 hover:bg-rose-50 active:scale-95 transition-all shrink-0 border border-rose-200"
       >
-        <Trash className="w-5 h-5" />
+        <Trash className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
       </button>
 
       {/* Review Player Pill */}
-      <div className="flex-1 flex items-center gap-2.5 h-11 px-3.5 rounded-full bg-surface-sunken border border-line-subtle min-w-0">
+      <div className="flex-1 flex items-center gap-2 sm:gap-2.5 h-10 sm:h-11 px-2.5 sm:px-3.5 rounded-full bg-surface-sunken border border-line-subtle min-w-0">
         <button
           onClick={togglePlay}
           disabled={sending}
           aria-label={playing ? 'Pause preview' : 'Play preview'}
-          className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-2xs hover:bg-primary-700 active:scale-95 transition-all"
+          className="w-7.5 h-7.5 sm:w-8 sm:h-8 rounded-full bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-2xs hover:bg-primary-700 active:scale-95 transition-all"
         >
-          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+          {playing ? <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-0.5" />}
         </button>
 
         <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-ink-muted leading-none">
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold text-ink-muted leading-none">
             <span className="tabular-nums">{formatTime(currentTime)}</span>
             <span className="tabular-nums font-bold text-primary-600">{formatTime(voice.duration)}</span>
           </div>
@@ -356,12 +454,12 @@ const VoiceReviewBar = ({ voice, onCancel, onSend, sending }: VoiceReviewProps) 
         disabled={sending}
         title="Send voice message"
         aria-label="Send voice message"
-        className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 shadow-sm disabled:opacity-50 active:scale-95 transition-all"
+        className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 shadow-sm disabled:opacity-50 active:scale-95 transition-all"
       >
         {sending ? (
-          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
         ) : (
-          <Send className="w-[18px] h-[18px]" />
+          <Send className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
         )}
       </button>
     </div>
@@ -626,6 +724,7 @@ export const ChatThread = () => {
   const showToast = useUIStore((s) => s.showToast);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [chatData, setChatData] = useState<any>(null);
   const [other, setOther] = useState<any>(null);
   const [streak, setStreak] = useState<ChatStreak | null>(null);
   const [input, setInput] = useState('');
@@ -635,6 +734,121 @@ export const ChatThread = () => {
   const [giftList, setGiftList] = useState<Gift[]>([]);
   const [giftBurst, setGiftBurst] = useState<GiftBurstData | null>(null);
   const giftBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Group chat states
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addMemberQuery, setAddMemberQuery] = useState('');
+  const [addMemberResults, setAddMemberResults] = useState<any[]>([]);
+  const [addMemberSearching, setAddMemberSearching] = useState(false);
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
+
+  const isGroup = Boolean(chatData?.type === 'group' || chatData?.isGroup || other?.isGroup);
+  const participantsMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (chatData?.participants && Array.isArray(chatData.participants)) {
+      chatData.participants.forEach((p: any) => {
+        if (p?._id) map.set(p._id.toString(), p);
+      });
+    }
+    return map;
+  }, [chatData?.participants]);
+
+  const handleSearchAddMembers = async () => {
+    if (!addMemberQuery.trim()) {
+      setAddMemberResults([]);
+      return;
+    }
+    setAddMemberSearching(true);
+    try {
+      const { data } = await usersApi.searchUsers(addMemberQuery.trim(), { limit: 20 });
+      const existing = new Set((chatData?.participants || []).map((p: any) => p._id?.toString() || p.toString()));
+      const filtered = (data.data || []).filter((u: any) => !existing.has(u._id));
+      setAddMemberResults(filtered);
+    } catch {
+      setAddMemberResults([]);
+    } finally {
+      setAddMemberSearching(false);
+    }
+  };
+
+  const handleAddMemberToGroup = async (targetUser: any) => {
+    if (!chatId || !targetUser?._id) return;
+    setAddingMemberId(targetUser._id);
+    try {
+      const { data } = await chatApi.addGroupMembers(chatId, [targetUser._id]);
+      if (data.success && data.data) {
+        setChatData(data.data);
+        showToast(`${targetUser.nickname || 'User'} added to group`, 'success');
+        setAddMemberResults((prev) => prev.filter((u) => u._id !== targetUser._id));
+        loadChat();
+      } else {
+        showToast('Could not add member', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Failed to add member', 'error');
+    } finally {
+      setAddingMemberId(null);
+    }
+  };
+
+  // Group editing state
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [groupAvatarInput, setGroupAvatarInput] = useState('');
+  const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
+  const [savingGroupInfo, setSavingGroupInfo] = useState(false);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGroupAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image size should be less than 10MB', 'error');
+      return;
+    }
+    setUploadingGroupAvatar(true);
+    try {
+      const url = await uploadApi.upload(file, 'group-avatars');
+      setGroupAvatarInput(url);
+      showToast('Group picture uploaded!', 'success');
+    } catch {
+      showToast('Failed to upload picture', 'error');
+    } finally {
+      setUploadingGroupAvatar(false);
+      if (groupAvatarInputRef.current) groupAvatarInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveGroupInfo = async () => {
+    if (!chatId) return;
+    if (!groupNameInput.trim()) {
+      showToast('Group name cannot be empty', 'error');
+      return;
+    }
+    setSavingGroupInfo(true);
+    try {
+      const { data } = await chatApi.updateGroupChat(chatId, {
+        name: groupNameInput.trim(),
+        avatar: groupAvatarInput,
+      });
+      if (data.success && data.data) {
+        setChatData(data.data);
+        if (data.data.other) {
+          setOther(data.data.other);
+        }
+        showToast('Group info updated successfully!', 'success');
+        setShowEditGroupModal(false);
+        loadChat();
+      } else {
+        showToast(data.message || 'Could not update group', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Failed to update group', 'error');
+    } finally {
+      setSavingGroupInfo(false);
+    }
+  };
 
   useEffect(() => {
     giftsApi
@@ -736,6 +950,11 @@ export const ChatThread = () => {
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
 
+  // Call price configuration
+  const [showSetCallPriceModal, setShowSetCallPriceModal] = useState(false);
+  const [settingCallPrice, setSettingCallPrice] = useState(false);
+  const [callPriceInput, setCallPriceInput] = useState<number>((user as any)?.callPricePerMinute ?? 1000);
+
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callRef = useRef<CallState | null>(null);
   callRef.current = call;
@@ -770,25 +989,100 @@ export const ChatThread = () => {
       .finally(() => setLoading(false));
   };
 
-  // Resolve the other participant by fetching chat details
+  // Resolve the chat details & other participant
   useEffect(() => {
     if (!chatId) return;
     chatApi
       .getChat(chatId)
       .then(({ data }) => {
-        if (data.success && data.data?.other) {
-          setOther(data.data.other);
+        if (data.success && data.data) {
+          setChatData(data.data);
+          if (data.data.other) {
+            setOther(data.data.other);
+          }
         }
       })
       .catch(() => {
         chatApi.getChats({ limit: 50 }).then(({ data }) => {
           if (data.success) {
             const found = (data.data || []).find((x: any) => x._id === chatId);
-            if (found?.other) setOther(found.other);
+            if (found) {
+              setChatData(found);
+              if (found.other) setOther(found.other);
+            }
           }
         });
       });
   }, [chatId]);
+
+  useEffect(() => {
+    if (!other?._id) return;
+    callApi
+      .getQuote(other._id)
+      .then(({ data }) => {
+        if (data.success && data.data?.coinsPerMinute != null) {
+          setOther((prev: any) => ({ ...prev, callPricePerMinute: data.data.coinsPerMinute }));
+        }
+      })
+      .catch(() => {
+        usersApi.getProfile(other._id).then(({ data }) => {
+          if (data.success && data.data?.callPricePerMinute !== undefined) {
+            setOther((prev: any) => ({ ...prev, callPricePerMinute: data.data.callPricePerMinute }));
+          }
+        }).catch(() => {});
+      });
+  }, [other?._id]);
+
+  // Check active live stream for other participant + listen for live status updates
+  useEffect(() => {
+    if (!other?._id) return;
+    const fetchLive = () => {
+      streamsApi
+        .getUserActiveStream(other._id)
+        .then(({ data }) => {
+          if (data?.success) {
+            setOther((prev: any) => {
+              if (!prev) return prev;
+              const isLive = Boolean(data.data && data.data.status === 'live');
+              return {
+                ...prev,
+                isLive,
+                liveStreamId: isLive ? (data.data?._id || prev.liveStreamId) : null,
+                liveStream: isLive ? data.data : null,
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchLive();
+    const interval = setInterval(fetchLive, 8000);
+
+    if (socket) {
+      const handleLiveStatus = (payload: { userId: string; isLive: boolean; streamId?: string; liveStream?: any }) => {
+        if (payload?.userId === other._id) {
+          setOther((prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              isLive: payload.isLive,
+              liveStreamId: payload.isLive ? (payload.streamId || prev.liveStreamId) : null,
+              liveStream: payload.isLive ? (payload.liveStream || prev.liveStream) : null,
+            };
+          });
+        }
+      };
+
+      socket.on('user:live-status', handleLiveStatus);
+      return () => {
+        clearInterval(interval);
+        socket.off('user:live-status', handleLiveStatus);
+      };
+    }
+
+    return () => clearInterval(interval);
+  }, [other?._id, socket]);
 
   // Streak tag
   useEffect(() => {
@@ -903,6 +1197,7 @@ export const ChatThread = () => {
 
     const onCallInvite = (payload: any) => {
       if (payload?.initiatorId === otherIdRef.current) {
+        socket.emit('call:ringing', { callId: payload.callId });
         setCall({
           incoming: {
             callId: payload.callId,
@@ -920,9 +1215,33 @@ export const ChatThread = () => {
 
 
     const onCallAccept = (payload: any) => {
-      if (payload?.callId && callRef.current?.outgoing?.callId === payload.callId) setCallAccepted(true);
+      if (payload?.callId && callRef.current?.outgoing?.callId === payload.callId) {
+        setCallAccepted(true);
+        if (payload?.audienceCoins != null) {
+          updateUser({ coins: payload.audienceCoins });
+        }
+      }
     };
     socket.on('call:accept', onCallAccept);
+
+    const onMemberAdded = (payload: any) => {
+      if (payload?.chatId === chatId && payload?.chat) {
+        setChatData(payload.chat);
+      }
+    };
+    socket.on('chat:member-added', onMemberAdded);
+
+    const onGroupUpdated = (payload: any) => {
+      if (payload?.chatId === chatId) {
+        if (payload.chat) setChatData(payload.chat);
+        setOther((prev: any) => ({
+          ...prev,
+          nickname: payload.name || prev?.nickname,
+          avatar: payload.avatar !== undefined ? payload.avatar : prev?.avatar,
+        }));
+      }
+    };
+    socket.on('chat:group-updated', onGroupUpdated);
 
     return () => {
       socket.off('chat:message', handler);
@@ -934,6 +1253,8 @@ export const ChatThread = () => {
       socket.off('chat:cleared', onChatCleared);
       socket.off('call:invite', onCallInvite);
       socket.off('call:accept', onCallAccept);
+      socket.off('chat:member-added', onMemberAdded);
+      socket.off('chat:group-updated', onGroupUpdated);
     };
   }, [socket, chatId, user, other]);
 
@@ -1127,14 +1448,45 @@ export const ChatThread = () => {
   /* ── Calls & Gifts ──────────────────────────────────────────────── */
 
   const startCall = async (type: 'audio' | 'video') => {
-    if (!other?._id) return;
-
     // Check & request camera/mic permissions
     const perm = await requestMediaPermissions(type);
     if (!perm.granted) {
       showToast(perm.error || 'Media permission denied', 'error');
       return;
     }
+
+    if (isGroup) {
+      const targetIds = (chatData?.participants || [])
+        .map((p: any) => p._id)
+        .filter((id: string) => id && id !== user?._id);
+
+      if (targetIds.length === 0) {
+        showToast('No other members to call in this group', 'error');
+        return;
+      }
+
+      try {
+        setCallAccepted(false);
+        const { data } = await callApi.create(targetIds, type, 'group');
+        if (data.success && data.data) {
+          setCall({
+            outgoing: {
+              callId: data.data.callId,
+              channel: data.data.channel,
+              type: data.data.type,
+              token: data.data.token,
+              callee: { nickname: chatData?.name || 'Group Call' },
+              coinsPerMinute: 0,
+            },
+          });
+        }
+      } catch (err: any) {
+        showToast(err?.response?.data?.message || 'Failed to start group call', 'error');
+      }
+      return;
+    }
+
+    if (!other?._id) return;
 
     try {
       // 1. Balance Check & Price Quote
@@ -1156,26 +1508,28 @@ export const ChatThread = () => {
       setCallAccepted(false);
       const { data } = await callApi.create([other._id], type, 'messenger');
       if (data.success && data.data) {
+        const isOnline = data.data.recipientOnline ?? Boolean(other.online);
         setCall({
           outgoing: {
             callId: data.data.callId,
             channel: data.data.channel,
             type: data.data.type,
             token: data.data.token,
-            callee: { nickname: other.nickname, avatar: other.avatar, online: Boolean(other.online) },
-            coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || 10000,
+            callee: { nickname: other.nickname, avatar: other.avatar, online: isOnline },
+            coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || other.callPricePerMinute || 1000,
           },
         });
       }
     } catch (err: any) {
       const errorData = err.response?.data;
       if (err.response?.status === 402 || errorData?.error?.includes('Insufficient Coins')) {
+        const rate = other?.callPricePerMinute || 1000;
         setInsufficientCoins({
           visible: true,
           reason: errorData?.error || 'Insufficient Coins to start call',
-          coinsPerMinute: 10000,
+          coinsPerMinute: rate,
           balance: user?.coins || 0,
-          minBalance: 1000000,
+          minBalance: rate * 1,
         });
       } else {
         showToast(err.response?.data?.error || err.message || 'Could not start the call', 'error');
@@ -1225,8 +1579,8 @@ export const ChatThread = () => {
       };
       setMessages((prev) => [...prev, messageToStore]);
 
-      const costCoins = (gift.priceDiamonds || 0) * quantity;
-      showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
+      const costDiamonds = (gift.priceDiamonds || 0) * quantity;
+      showToast(`Sent ${quantity}x ${gift.name}! (-${costDiamonds.toLocaleString()} Diamonds)`, 'success');
       setShowGift(false);
       triggerGiftBurst({
         id: `burst-${Date.now()}`,
@@ -1267,20 +1621,42 @@ export const ChatThread = () => {
   const handleSendVoiceReview = async () => {
     if (!voiceReview || !chatId || sendingVoice) return;
     setSendingVoice(true);
+
+    const tempId = `temp-voice-${Date.now()}`;
+    const localReview = voiceReview;
+    setVoiceReview(null);
+
+    const optimisticMsg: any = {
+      _id: tempId,
+      senderId: user?._id,
+      message: 'Voice message',
+      kind: 'voice',
+      voiceUrl: localReview.url,
+      voiceDuration: Math.round(localReview.duration),
+      createdAt: new Date().toISOString(),
+      read: false,
+      delivered: false,
+      status: 'sending',
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     try {
-      const url = await uploadApi.upload(voiceReview.blob, 'voice-messages');
+      const url = await uploadApi.upload(localReview.blob, 'voice-messages');
       const { data } = await chatApi.sendMessage(chatId, 'Voice message', {
         kind: 'voice',
         voiceUrl: url,
-        voiceDuration: voiceReview.duration,
+        voiceDuration: Math.round(localReview.duration),
       });
       if (data.success && data.data) {
-        setMessages((prev) => [...prev, data.data]);
+        setMessages((prev) => prev.map((m) => (m._id === tempId ? data.data : m)));
       }
-      URL.revokeObjectURL(voiceReview.url);
-      setVoiceReview(null);
       showToast('Voice message sent', 'success');
-    } catch {
+    } catch (err) {
+      console.error('Failed to send voice message:', err);
+      setMessages((prev) =>
+        prev.map((m) => (m._id === tempId ? { ...m, failed: true, status: 'failed' } : m))
+      );
       showToast('Failed to send voice message', 'error');
     } finally {
       setSendingVoice(false);
@@ -1357,47 +1733,180 @@ export const ChatThread = () => {
             <ArrowLeft className="w-6 h-6" />
           </button>
 
-          <div
-            role="button"
-            onClick={() => other?._id && navigate(`/user/${other._id}`)}
-            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer group"
-          >
-            <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="sm" online={other?.online} />
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            {isGroup ? (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowGroupInfo(true)}
+                className="relative shrink-0 cursor-pointer group/avatar transition-transform active:scale-95"
+                title="View Group Info"
+              >
+                {chatData?.avatar || other?.avatar ? (
+                  <img
+                    src={getMediaUrl(chatData?.avatar || other?.avatar)}
+                    alt=""
+                    className="w-10 h-10 rounded-2xl object-cover shadow-md ring-1 ring-white"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 ring-1 ring-white">
+                    <UsersGroup className="w-5 h-5 text-white" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Round Avatar Profile with animated LIVE indicator */
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (other?.isLive && (other.liveStreamId || other.liveStream?._id)) {
+                    navigate(`/live/${other.liveStreamId || other.liveStream?._id}`);
+                  } else if (other?._id) {
+                    navigate(`/user/${other._id}`);
+                  }
+                }}
+                className="relative shrink-0 cursor-pointer group/avatar transition-transform active:scale-95"
+                title={other?.isLive ? '🔴 LIVE NOW! Click to join live stream' : 'View Profile'}
+              >
+                {/* Outer pulsing glow ring when live */}
+                {other?.isLive && (
+                  <span className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-amber-400 opacity-75 blur-xs animate-pulse" />
+                )}
+                <div
+                  className={
+                    other?.isLive
+                      ? 'relative p-[2px] rounded-full bg-gradient-to-tr from-rose-600 via-pink-500 to-rose-400 shadow-md ring-2 ring-rose-500/50'
+                      : 'relative'
+                  }
+                >
+                  <Avatar
+                    src={other?.avatar}
+                    nickname={other?.nickname || '?'}
+                    size="sm"
+                    online={other?.online}
+                    className={other?.isLive ? 'ring-1 ring-white' : ''}
+                  />
+                </div>
 
-            <div className="flex-1 min-w-0">
-              <h1 className="text-[15px] font-bold text-ink truncate leading-tight group-hover:text-primary-600 transition-colors">
-                {other?.nickname || 'User'}
-              </h1>
-              {streak && streak.current < streak.target ? (
-                <span className="inline-flex items-center gap-1 mt-0.5 h-[17px] px-1.5 rounded bg-surface-sunken text-[10px] font-semibold text-ink-muted">
-                  ⭐ Activating {streak.current}/{streak.target}
-                </span>
-              ) : (
-                <p className="text-[11px] text-ink-muted leading-tight">
-                  {other?.uid ? `ID: ${other.uid}` : other?.online ? 'Online' : ''}
+                {/* Pulsing LIVE badge on round profile */}
+                {other?.isLive && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-[0.5px] rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-pink-600 text-white text-[8px] font-black uppercase tracking-wider shadow-md flex items-center gap-0.5 border border-white ring-1 ring-rose-500/30 select-none animate-pulse">
+                    <span className="w-1 h-1 rounded-full bg-white animate-ping" />
+                    <span>LIVE</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {isGroup ? (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowGroupInfo(true)}
+                className="flex-1 min-w-0 cursor-pointer group"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h1 className="text-[15px] font-bold text-ink truncate leading-tight group-hover:text-primary-600 transition-colors">
+                    {chatData?.name || other?.nickname || 'Group Chat'}
+                  </h1>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-purple-50 border border-purple-200 text-purple-600 text-[9px] font-extrabold uppercase tracking-wide shrink-0">
+                    <UsersGroup className="w-2.5 h-2.5" />
+                    <span>Group</span>
+                  </span>
+                </div>
+                <p className="text-[11px] text-ink-muted leading-tight mt-0.5">
+                  {chatData?.participants?.length || other?.memberCount || 2} members • Tap for info
                 </p>
+              </div>
+            ) : (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (other?.isLive && (other.liveStreamId || other.liveStream?._id)) {
+                    navigate(`/live/${other.liveStreamId || other.liveStream?._id}`);
+                  } else if (other?._id) {
+                    navigate(`/user/${other._id}`);
+                  }
+                }}
+                className="flex-1 min-w-0 cursor-pointer group"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h1 className="text-[15px] font-bold text-ink truncate leading-tight group-hover:text-primary-600 transition-colors">
+                    {other?.nickname || 'User'}
+                  </h1>
+                  {other?.isLive && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-black uppercase tracking-wide shrink-0 animate-pulse">
+                      <span className="w-1 h-1 rounded-full bg-rose-500" />
+                      <span>Streaming</span>
+                    </span>
+                  )}
+                </div>
+
+                {other?.isLive ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 leading-tight">
+                    <span>🔴 Watching Live • Tap to join</span>
+                  </span>
+                ) : streak && streak.current < streak.target ? (
+                  <span className="inline-flex items-center gap-1 mt-0.5 h-[17px] px-1.5 rounded bg-surface-sunken text-[10px] font-semibold text-ink-muted">
+                    ⭐ Activating {streak.current}/{streak.target}
+                  </span>
+                ) : (
+                  <p className="text-[11px] text-ink-muted leading-tight">
+                    {other?.uid ? `ID: ${other.uid}` : other?.online ? 'Online' : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Audio & Video Call buttons with dynamic Coin rate badge directly underneath */}
+          <div className="flex flex-col items-center justify-center shrink-0">
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => startCall('audio')}
+                aria-label="Audio call"
+                title={isGroup ? 'Group Voice Call' : 'Voice Call'}
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-ink hover:text-primary-600 active:bg-surface-sunken transition-colors"
+              >
+                <Phone className="w-[17px] h-[17px]" />
+              </button>
+              <button
+                onClick={() => startCall('video')}
+                aria-label="Video call"
+                title={isGroup ? 'Group Video Call' : 'Video Call'}
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-ink hover:text-primary-600 active:bg-surface-sunken transition-colors"
+              >
+                <Video className="w-[17px] h-[17px]" />
+              </button>
+              {isGroup && (
+                <button
+                  onClick={() => setShowAddMember(true)}
+                  aria-label="Add Member"
+                  title="Add Members"
+                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-purple-600 hover:bg-purple-50 transition-colors"
+                >
+                  <UserPlus className="w-[17px] h-[17px]" />
+                </button>
               )}
             </div>
+            {!isGroup && (
+              <div
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-[10px] font-extrabold text-amber-600 leading-none select-none -mt-0.5"
+                title={`Call rate: ${(other?.callPricePerMinute ?? 1000).toLocaleString()} coins / minute`}
+              >
+                <CoinIcon className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                <span>{(other?.callPricePerMinute ?? 1000).toLocaleString()}/m</span>
+              </div>
+            )}
           </div>
 
           <button
-            onClick={() => startCall('audio')}
-            aria-label="Audio call"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-ink active:bg-surface-sunken transition-colors"
-          >
-            <Phone className="w-[18px] h-[18px]" />
-          </button>
-          <button
-            onClick={() => startCall('video')}
-            aria-label="Video call"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-ink active:bg-surface-sunken transition-colors"
-          >
-            <Video className="w-[18px] h-[18px]" />
-          </button>
-          <button
             onClick={() => setShowOptionsMenu(true)}
             aria-label="More options"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-ink active:bg-surface-sunken transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-ink active:bg-surface-sunken transition-colors"
           >
             <MoreHorizontal className="w-5 h-5" />
           </button>
@@ -1416,7 +1925,40 @@ export const ChatThread = () => {
           <p className="text-center text-sm text-ink-muted py-10">Loading…</p>
         ) : messages.length === 0 ? (
           <div className="text-center py-12 px-6">
-            <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="lg" className="mx-auto mb-3" />
+            <div
+              className="inline-block relative cursor-pointer"
+              onClick={() => {
+                if (other?.isLive && (other.liveStreamId || other.liveStream?._id)) {
+                  navigate(`/live/${other.liveStreamId || other.liveStream?._id}`);
+                }
+              }}
+            >
+              {other?.isLive && (
+                <span className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-amber-400 opacity-75 blur-xs animate-pulse" />
+              )}
+              <div className={other?.isLive ? 'relative p-[2.5px] rounded-full bg-gradient-to-tr from-rose-600 via-pink-500 to-rose-400 ring-2 ring-rose-500/50' : 'relative'}>
+                <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="lg" className="mx-auto mb-3" />
+              </div>
+              {other?.isLive && (
+                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-white animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                  <span>LIVE</span>
+                </span>
+              )}
+            </div>
+
+            {other?.isLive && (
+              <div className="my-3">
+                <button
+                  onClick={() => navigate(`/live/${other.liveStreamId || other.liveStream?._id}`)}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 text-white text-xs font-bold shadow-md hover:opacity-95 active:scale-95 transition-all"
+                >
+                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                  <span>Join Live Stream</span>
+                </button>
+              </div>
+            )}
+
             <p className="text-base font-bold text-ink mb-1">
               Say hi to {other?.nickname || 'your friend'} 👋
             </p>
@@ -1437,6 +1979,7 @@ export const ChatThread = () => {
             }
 
             const mine = item.senderId === user?._id;
+            const senderObj = isGroup ? participantsMap.get(item.senderId) : null;
             const isGift = item.kind === 'gift';
             const resolvedGiftIcon = isGift ? resolveGiftIcon(item, giftList) : '';
             const isLastSent =
@@ -1453,10 +1996,20 @@ export const ChatThread = () => {
             return (
               <div key={item._id || index} className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
                 {!mine && (
-                  <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="xs" className="mt-auto mb-1 ring-1 ring-black/5" />
+                  <Avatar
+                    src={senderObj?.avatar || other?.avatar}
+                    nickname={senderObj?.nickname || other?.nickname || '?'}
+                    size="xs"
+                    className="mt-auto mb-1 ring-1 ring-black/5"
+                  />
                 )}
 
                 <div className="max-w-[76%] flex flex-col group">
+                  {isGroup && !mine && (
+                    <span className="text-[10px] font-bold text-rose-500 mb-0.5 ml-1">
+                      {senderObj?.nickname || 'Member'}
+                    </span>
+                  )}
                   {/* Long press message bubble */}
                   <div
                     onPointerDown={() => handlePointerDownMessage(item)}
@@ -1497,7 +2050,7 @@ export const ChatThread = () => {
                         />
                       </div>
                     ) : item.kind === 'voice' ? (
-                      <VoiceBubble url={item.voiceUrl} duration={item.voiceDuration} mine={mine} />
+                      <VoiceBubble url={item.voiceUrl || item.message} duration={item.voiceDuration} mine={mine} />
                     ) : item.kind === 'gift' ? (
                       <div
                         onClick={(e) => {
@@ -1787,13 +2340,13 @@ export const ChatThread = () => {
 
         {/* ── Quick replies ──────────────────────────────────────────── */}
         {!editingMessage && !voiceReview && (
-          <div className="flex gap-2 px-3 pb-2 pt-1.5 overflow-x-auto no-scrollbar bg-surface-soft border-t border-slate-200/60">
+          <div className="w-full max-w-full flex gap-2 px-2.5 sm:px-3 pb-2 pt-1.5 overflow-x-auto no-scrollbar bg-surface-soft border-t border-slate-200/60 box-border">
             {QUICK_REPLIES.map(({ label, emoji }) => (
               <button
                 key={label}
                 onClick={() => sendText(label)}
                 disabled={sending}
-                className="shrink-0 h-9 px-3.5 rounded-full bg-white border border-line text-sm text-ink
+                className="shrink-0 h-8 sm:h-9 px-3 sm:px-3.5 rounded-full bg-white border border-line text-xs sm:text-sm text-ink
                   flex items-center gap-1.5 active:bg-surface-sunken disabled:opacity-50 shadow-2xs hover:shadow-xs transition-shadow"
               >
                 <span>{emoji}</span>
@@ -1802,9 +2355,9 @@ export const ChatThread = () => {
             ))}
             <button
               onClick={() => setShowGift(true)}
-              className="shrink-0 h-9 px-3.5 rounded-full bg-primary-50 border border-primary-200 text-sm font-medium text-primary-600 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-shadow"
+              className="shrink-0 h-8 sm:h-9 px-3 sm:px-3.5 rounded-full bg-primary-50 border border-primary-200 text-xs sm:text-sm font-medium text-primary-600 flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-shadow"
             >
-              <GiftIcon className="w-4 h-4" />
+              <GiftIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Gift
             </button>
           </div>
@@ -1819,7 +2372,7 @@ export const ChatThread = () => {
             sending={sendingVoice}
           />
         ) : (
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-t border-line safe-bottom">
+          <div className="w-full max-w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 bg-white border-t border-line safe-bottom box-border">
             {!editingMessage && (
               <button
                 onPointerDown={handleVoiceStart}
@@ -1828,22 +2381,22 @@ export const ChatThread = () => {
                   if (recordingRef.current) handleVoiceStop();
                 }}
                 aria-label="Hold to record a voice message"
-                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                   recording ? 'bg-role-host border-role-host text-white' : 'border-ink text-ink'
                 }`}
               >
-                <AudioLines className="w-5 h-5" />
+                <AudioLines className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
             )}
 
-            <div className="flex-1 flex items-center gap-1.5 h-11 pl-4 pr-1.5 rounded-full bg-surface-sunken">
+            <div className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1.5 h-10 sm:h-11 pl-2.5 sm:pl-4 pr-1 sm:pr-1.5 rounded-full bg-surface-sunken">
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder={editingMessage ? 'Edit your message…' : 'Say something'}
-                className="flex-1 min-w-0 bg-transparent text-ink placeholder:text-ink-faint focus:outline-none text-sm"
+                className="flex-1 min-w-0 w-0 bg-transparent text-ink placeholder:text-ink-faint focus:outline-none text-xs sm:text-sm"
               />
               <button
                 type="button"
@@ -1852,27 +2405,27 @@ export const ChatThread = () => {
                   setShowQuickReacts(false);
                 }}
                 aria-label="Emoji"
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 transition-all ${
                   showEmojiPicker
                     ? 'text-amber-500 bg-amber-50 scale-110 shadow-xs'
                     : 'text-ink-muted hover:text-amber-500 hover:bg-slate-100'
                 }`}
                 title="Emoji picker"
               >
-                <Smile className="w-5 h-5" />
+                <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               {!editingMessage && (
                 <button
                   onClick={() => imageInputRef.current?.click()}
                   disabled={uploadingImage}
                   aria-label="Send photo"
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-ink-muted hover:text-primary-600 transition-colors"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 text-ink-muted hover:text-primary-600 transition-colors"
                   title="Send photo"
                 >
                   {uploadingImage ? (
-                    <span className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="w-3.5 h-3.5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <ImageIcon className="w-5 h-5" />
+                    <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   )}
                 </button>
               )}
@@ -1881,9 +2434,9 @@ export const ChatThread = () => {
                   onClick={() => setShowGift(true)}
                   aria-label="Send a gift"
                   title="Send a gift"
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-rose-500 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 text-rose-500 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
                 >
-                  <GiftIcon className="w-5 h-5" />
+                  <GiftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               )}
             </div>
@@ -1905,9 +2458,9 @@ export const ChatThread = () => {
                 onClick={handleSend}
                 disabled={sending}
                 aria-label="Send"
-                className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors"
               >
-                <Send className="w-[18px] h-[18px]" />
+                <Send className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
               </button>
             ) : (
               <div className="relative shrink-0">
@@ -1948,9 +2501,9 @@ export const ChatThread = () => {
                   disabled={sending}
                   aria-label="Like or React"
                   title="Send Like (tap to send, hold for reactions)"
-                  className="w-10 h-10 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-600 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-sm border border-primary-100/60"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-600 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-sm border border-primary-100/60"
                 >
-                  <ThumbsUp className="w-5 h-5" />
+                  <ThumbsUp className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
                 </button>
               </div>
             )}
@@ -2022,21 +2575,88 @@ export const ChatThread = () => {
       <Modal
         isOpen={showOptionsMenu}
         onClose={() => setShowOptionsMenu(false)}
-        title="Conversation Options"
+        title={isGroup ? 'Group Options' : 'Conversation Options'}
       >
         <div className="space-y-2 pt-1">
-          {other?._id && (
-            <button
-              onClick={() => {
-                setShowOptionsMenu(false);
-                navigate(`/user/${other._id}`);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-sm font-semibold text-ink transition-colors"
-            >
-              <UserIcon className="w-5 h-5 text-ink-muted" />
-              <span>View Profile</span>
-            </button>
+          {isGroup ? (
+            <>
+              {/* Edit Group Name & Picture */}
+              <button
+                onClick={() => {
+                  setShowOptionsMenu(false);
+                  setGroupNameInput(chatData?.name || other?.nickname || '');
+                  setGroupAvatarInput(chatData?.avatar || other?.avatar || '');
+                  setShowEditGroupModal(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-purple-50/70 hover:bg-purple-100/70 active:bg-purple-100 text-sm font-bold text-purple-700 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="leading-tight font-bold">Edit Group Info</p>
+                  <p className="text-[11px] text-purple-600/70 font-normal">Change group name & picture</p>
+                </div>
+              </button>
+
+              {/* Group Members & Info */}
+              <button
+                onClick={() => {
+                  setShowOptionsMenu(false);
+                  setShowGroupInfo(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-sm font-semibold text-ink transition-colors"
+              >
+                <UsersGroup className="w-5 h-5 text-ink-muted" />
+                <span>Group Members & Info</span>
+              </button>
+
+              {/* Add Members */}
+              <button
+                onClick={() => {
+                  setShowOptionsMenu(false);
+                  setShowAddMember(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-sm font-semibold text-ink transition-colors"
+              >
+                <UserPlus className="w-5 h-5 text-ink-muted" />
+                <span>Add Members</span>
+              </button>
+            </>
+          ) : (
+            other?._id && (
+              <button
+                onClick={() => {
+                  setShowOptionsMenu(false);
+                  navigate(`/user/${other._id}`);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-100 active:bg-slate-200 text-sm font-semibold text-ink transition-colors"
+              >
+                <UserIcon className="w-5 h-5 text-ink-muted" />
+                <span>View Profile</span>
+              </button>
+            )
           )}
+
+          {/* Configure My Call Price */}
+          <button
+            onClick={() => {
+              setShowOptionsMenu(false);
+              setCallPriceInput((user as any)?.callPricePerMinute ?? 1000);
+              setShowSetCallPriceModal(true);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 active:bg-amber-100 text-sm font-semibold text-amber-700 transition-colors"
+          >
+            <div className="w-5 h-5 flex items-center justify-center shrink-0">
+              <CoinIcon className="w-4.5 h-4.5 text-amber-500" />
+            </div>
+            <div className="flex-1 flex items-center justify-between min-w-0">
+              <span className="truncate">Set My Call Rate</span>
+              <span className="text-[11px] font-extrabold text-amber-600 bg-amber-500/15 border border-amber-500/25 px-2 py-0.5 rounded-full shrink-0">
+                {((user as any)?.callPricePerMinute ?? 1000).toLocaleString()} coins/m
+              </span>
+            </div>
+          </button>
 
           <button
             onClick={() => {
@@ -2230,6 +2850,378 @@ export const ChatThread = () => {
       {/* Send Gift Modal */}
       <Modal isOpen={showGift} onClose={() => setShowGift(false)} title="Send a gift">
         {other?._id && <GiftPanel receiverId={other._id} onSend={handleSendGift} />}
+      </Modal>
+
+      {/* ── Set Call Price Modal ─────────────────────────────────────── */}
+      <Modal
+        isOpen={showSetCallPriceModal}
+        onClose={() => setShowSetCallPriceModal(false)}
+        title="Set Call Rate"
+      >
+        <div className="space-y-4 pt-1">
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Configure how many Coins users pay per minute to call you in 1:1 Voice &amp; Video calls. You earn these Coins directly!
+          </p>
+
+          <div>
+            <label className="block text-[11px] font-bold text-ink uppercase tracking-wider mb-2">
+              Quick Preset (Coins / Min)
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[500, 1000, 2000, 5000, 10000, 20000].map((preset) => {
+                const selected = callPriceInput === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setCallPriceInput(preset)}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                      selected
+                        ? 'border-amber-500 bg-amber-500/15 text-amber-700 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 text-ink bg-slate-50'
+                    }`}
+                  >
+                    <CoinIcon className="w-3 h-3 text-amber-500" />
+                    <span>{preset.toLocaleString()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-ink uppercase tracking-wider mb-1.5">
+              Or Custom Rate (Coins / Minute)
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                step={100}
+                value={callPriceInput}
+                onChange={(e) => setCallPriceInput(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                className="w-full pl-9 pr-14 py-2.5 text-sm font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-amber-500 text-ink"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <CoinIcon className="w-4 h-4 text-amber-500" />
+              </div>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-ink-muted pointer-events-none">
+                / min
+              </span>
+            </div>
+          </div>
+
+          {/* Earnings calculator preview */}
+          <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs flex items-center justify-between">
+            <span className="text-ink font-medium">Estimated 10m Call Earning:</span>
+            <span className="font-extrabold text-amber-600 flex items-center gap-1">
+              <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
+              {(callPriceInput * 10).toLocaleString()} Coins
+            </span>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowSetCallPriceModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-ink active:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={settingCallPrice}
+              onClick={async () => {
+                setSettingCallPrice(true);
+                try {
+                  const res = await securityApi.setCallPrice(callPriceInput);
+                  if (res.data?.success) {
+                    updateUser({ callPricePerMinute: callPriceInput } as any);
+                    showToast(`Call price updated to ${callPriceInput.toLocaleString()} coins/min`, 'success');
+                    setShowSetCallPriceModal(false);
+                  } else {
+                    showToast(res.data?.error || 'Could not update call price', 'error');
+                  }
+                } catch (err: any) {
+                  showToast(err.response?.data?.error || 'Failed to update rate', 'error');
+                } finally {
+                  setSettingCallPrice(false);
+                }
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-xs font-bold text-white shadow-sm active:scale-95 transition-all disabled:opacity-50"
+            >
+              {settingCallPrice ? 'Saving…' : 'Save Rate'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Group Information Modal */}
+      <Modal
+        isOpen={showGroupInfo}
+        onClose={() => setShowGroupInfo(false)}
+        title="Group Information"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-500/10 via-indigo-500/5 to-transparent rounded-2xl border border-purple-500/15 text-center relative group">
+            {chatData?.avatar || other?.avatar ? (
+              <img
+                src={getMediaUrl(chatData?.avatar || other?.avatar)}
+                alt=""
+                className="w-16 h-16 rounded-3xl object-cover shadow-lg shadow-purple-500/30 ring-4 ring-white mb-2.5"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/30 ring-4 ring-white mb-2.5">
+                <UsersGroup className="w-8 h-8 text-white" />
+              </div>
+            )}
+            <h3 className="text-base font-extrabold text-ink leading-tight">
+              {chatData?.name || other?.nickname || 'Group Chat'}
+            </h3>
+            <p className="text-xs text-ink-muted mt-0.5">
+              {chatData?.participants?.length || 2} members
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowGroupInfo(false);
+                setGroupNameInput(chatData?.name || other?.nickname || '');
+                setGroupAvatarInput(chatData?.avatar || other?.avatar || '');
+                setShowEditGroupModal(true);
+              }}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Edit Name & Picture</span>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink uppercase tracking-wider">
+              Members ({chatData?.participants?.length || 0})
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowGroupInfo(false);
+                setShowAddMember(true);
+              }}
+              className="inline-flex items-center gap-1 text-xs font-bold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-xl transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add Member</span>
+            </button>
+          </div>
+
+          <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100">
+            {(chatData?.participants || []).map((p: any) => {
+              const isCreator = p._id === chatData?.creator || p._id === chatData?.creator?._id;
+              const isMe = p._id === user?._id;
+              return (
+                <div key={p._id} className="flex items-center gap-3 py-2">
+                  <Avatar src={p.avatar} nickname={p.nickname || '?'} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-ink truncate">
+                        {p.nickname || 'Member'} {isMe && '(You)'}
+                      </p>
+                      {isCreator && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded-md">
+                          Creator
+                        </span>
+                      )}
+                    </div>
+                    {p.uid && <p className="text-[10px] text-ink-muted">UID: {p.uid}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowGroupInfo(false)}
+            className="w-full py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-ink hover:bg-slate-50 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
+
+      {/* Add Members to Group Modal */}
+      <Modal
+        isOpen={showAddMember}
+        onClose={() => {
+          setShowAddMember(false);
+          setAddMemberQuery('');
+          setAddMemberResults([]);
+        }}
+        title="Add Members to Group"
+      >
+        <div className="space-y-3.5">
+          <div className="flex items-center gap-2 px-3 h-10 rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-purple-500/10 transition-all">
+            <UserPlus className="w-4 h-4 text-slate-400 shrink-0" />
+            <input
+              type="text"
+              value={addMemberQuery}
+              onChange={(e) => setAddMemberQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearchAddMembers()}
+              placeholder="Search user by UID or nickname..."
+              className="flex-1 min-w-0 bg-transparent text-xs text-ink placeholder:text-ink-muted focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleSearchAddMembers}
+              disabled={addMemberSearching}
+              className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold transition-all disabled:opacity-50"
+            >
+              {addMemberSearching ? '...' : 'Search'}
+            </button>
+          </div>
+
+          <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100">
+            {addMemberResults.length > 0 ? (
+              addMemberResults.map((u: any) => (
+                <div key={u._id} className="flex items-center justify-between gap-2.5 py-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar src={u.avatar} nickname={u.nickname} size="sm" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-ink truncate">{u.nickname}</p>
+                      {u.uid && <p className="text-[10px] text-ink-muted">UID: {u.uid}</p>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={addingMemberId === u._id}
+                    onClick={() => handleAddMemberToGroup(u)}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all disabled:opacity-50 shrink-0"
+                  >
+                    {addingMemberId === u._id ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-center py-6 text-xs text-ink-muted">
+                {addMemberSearching ? 'Searching...' : addMemberQuery ? 'No users found' : 'Search by username or UID to add new members'}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddMember(false);
+              setAddMemberQuery('');
+              setAddMemberResults([]);
+            }}
+            className="w-full py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-ink hover:bg-slate-50 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </Modal>
+
+      {/* ── Edit Group Modal (Name and Photo) ── */}
+      <Modal
+        isOpen={showEditGroupModal}
+        onClose={() => setShowEditGroupModal(false)}
+        title="Edit Group Info"
+      >
+        <div className="space-y-4 pt-1">
+          {/* Group Photo / Avatar Upload */}
+          <div className="flex flex-col items-center justify-center">
+            <input
+              ref={groupAvatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleGroupAvatarUpload}
+            />
+            <div
+              onClick={() => groupAvatarInputRef.current?.click()}
+              className="relative w-20 h-20 rounded-3xl cursor-pointer group/pic overflow-hidden shadow-lg shadow-purple-500/20 ring-4 ring-purple-100 hover:ring-purple-300 transition-all flex items-center justify-center bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 text-white"
+            >
+              {groupAvatarInput ? (
+                <img
+                  src={getMediaUrl(groupAvatarInput)}
+                  alt="Group photo"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <UsersGroup className="w-9 h-9 text-white" />
+              )}
+              {/* Overlay on hover/click */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/pic:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                <CameraIcon className="w-5 h-5 mb-0.5" />
+                <span>Change</span>
+              </div>
+              {uploadingGroupAvatar && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-[11px] font-bold">
+                  <span>Uploading…</span>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={uploadingGroupAvatar}
+              onClick={() => groupAvatarInputRef.current?.click()}
+              className="mt-2 text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1 active:scale-95 transition-transform"
+            >
+              <CameraIcon className="w-3.5 h-3.5" />
+              <span>{uploadingGroupAvatar ? 'Uploading photo...' : 'Change Group Photo'}</span>
+            </button>
+            {groupAvatarInput && (
+              <button
+                type="button"
+                onClick={() => setGroupAvatarInput('')}
+                className="text-[11px] text-red-500 hover:underline mt-0.5"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
+
+          {/* Group Name Input */}
+          <div>
+            <label className="block text-xs font-bold text-ink uppercase tracking-wider mb-1.5">
+              Group Name
+            </label>
+            <div className="flex items-center gap-2.5 px-3.5 h-11 rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-purple-500/10 transition-all">
+              <Pencil className="w-4 h-4 text-purple-500 shrink-0" />
+              <input
+                type="text"
+                value={groupNameInput}
+                onChange={(e) => setGroupNameInput(e.target.value)}
+                placeholder="Enter group name..."
+                maxLength={40}
+                className="flex-1 min-w-0 bg-transparent text-sm text-ink placeholder:text-ink-muted focus:outline-none"
+              />
+            </div>
+            <p className="text-[10px] text-ink-muted mt-1 text-right">
+              {groupNameInput.length}/40 characters
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowEditGroupModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-ink active:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={savingGroupInfo || uploadingGroupAvatar}
+              onClick={handleSaveGroupInfo}
+              className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-xs font-bold text-white shadow-md active:scale-95 transition-all disabled:opacity-50"
+            >
+              {savingGroupInfo ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Insufficient Coins Modal */}

@@ -47,21 +47,17 @@ export const callService = {
    */
   async getCallQuote(callerId: string, hostId: string) {
     const host = await User.findById(hostId).select('callPricePerMinute nickname avatar');
-    if (!host) throw new AppError('Host not found', 404);
+    if (!host) throw new AppError('User not found', 404);
 
     const caller = await User.findById(callerId).select('coins');
-    const coinsPerMinute = host.callPricePerMinute || 10_000;
+    const coinsPerMinute = typeof host.callPricePerMinute === 'number' ? host.callPricePerMinute : 1000;
     const balance = caller?.coins || 0;
 
-    // Must have 1,000,000 base balance AND enough for at least 1 minute.
-    const hasBaseBalance = balance >= MIN_AUDIENCE_BALANCE;
-    const hasMinuteBalance = balance >= coinsPerMinute;
-    const canCall = hasBaseBalance && hasMinuteBalance;
+    const hasMinuteBalance = coinsPerMinute <= 0 || balance >= coinsPerMinute;
+    const canCall = hasMinuteBalance;
 
     let reason: string | undefined;
-    if (!hasBaseBalance) {
-      reason = `You need at least ${MIN_AUDIENCE_BALANCE.toLocaleString()} Coins to use the call feature`;
-    } else if (!hasMinuteBalance) {
+    if (!hasMinuteBalance) {
       reason = `You need at least ${coinsPerMinute.toLocaleString()} Coins for 1 minute`;
     }
 
@@ -70,7 +66,7 @@ export const callService = {
       balance,
       canCall,
       reason,
-      minBalance: MIN_AUDIENCE_BALANCE,
+      minBalance: coinsPerMinute,
       hostNickname: host.nickname,
       hostAvatar: host.avatar,
     };
@@ -78,7 +74,7 @@ export const callService = {
 
   /**
    * Create a ringing call invitation.
-   * For 1:1 calls (single recipient who is a host), we lock in the pricing.
+   * For 1:1 calls, lock in the dynamic per-minute coin price.
    * source: 'profile' | 'messenger' — tracked for analytics.
    */
   async createCall(
@@ -96,27 +92,22 @@ export const callService = {
     const found = await User.find({ _id: { $in: recipients } }).select('_id role callPricePerMinute').lean();
     if (found.length !== recipients.length) throw new AppError('One or more users not found', 404);
 
-    // For 1:1 calls, determine if this is a priced host call.
+    // For 1:1 calls, determine the pricing based on recipient's callPricePerMinute.
     let hostId: string | undefined;
     let audienceId: string | undefined;
     let coinsPerMinute = 0;
 
     if (recipients.length === 1) {
       const recipient = found[0] as any;
-      const initiator = await User.findById(initiatorId).select('role coins').lean() as any;
+      const initiator = (await User.findById(initiatorId).select('role coins').lean()) as any;
 
-      // If recipient is a host and initiator is not a host → priced call
-      if (recipient.role === 'host' && initiator?.role !== 'host') {
+      const rate = typeof recipient.callPricePerMinute === 'number' ? recipient.callPricePerMinute : 1000;
+      if (rate > 0) {
         hostId = String(recipient._id);
         audienceId = initiatorId;
-        coinsPerMinute = (recipient.callPricePerMinute as number) || 10_000;
+        coinsPerMinute = rate;
 
-        // Backend balance check — audience must have MIN_AUDIENCE_BALANCE
-        // and at least 1 minute worth of coins.
         const audienceCoins = initiator?.coins || 0;
-        if (audienceCoins < MIN_AUDIENCE_BALANCE) {
-          throw new AppError(`Insufficient Coins. You need at least ${MIN_AUDIENCE_BALANCE.toLocaleString()} Coins`, 402);
-        }
         if (audienceCoins < coinsPerMinute) {
           throw new AppError(`Insufficient Coins for 1 minute at ${coinsPerMinute.toLocaleString()} Coins/min`, 402);
         }
@@ -165,6 +156,17 @@ export const callService = {
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,
     };
+    let recipientOnline = false;
+    try {
+      const io = getIO();
+      if (io && recipients.length === 1) {
+        const room = io.sockets.adapter.rooms.get(`user:${recipients[0]}`);
+        if (room && room.size > 0) {
+          recipientOnline = true;
+        }
+      }
+    } catch {}
+
     for (const id of recipients) {
       emitSafe('call:invite', `user:${id}`, invite);
       pushNotificationService.sendIncomingCallPush(id, {
@@ -179,6 +181,12 @@ export const callService = {
       }).catch((err) => console.warn('[call] Error sending incoming call push:', err));
     }
 
+    if (recipientOnline) {
+      emitSafe('call:ringing', `user:${initiatorId}`, { callId, recipientId: recipients[0], online: true });
+    } else {
+      emitSafe('call:calling', `user:${initiatorId}`, { callId, recipientId: recipients[0], online: false });
+    }
+
     return {
       callId,
       channel,
@@ -187,6 +195,7 @@ export const callService = {
       participantCount: participants.length,
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,
+      recipientOnline,
     };
   },
 
@@ -203,6 +212,56 @@ export const callService = {
     if (!call.participants.some((p) => p.toString() === userId)) {
       call.participants.push(userId as any);
     }
+
+    // Prepaid System: Deduct Minute 1 upfront immediately as the call connects
+    let audienceCoins: number | undefined;
+    let isLowBalance = false;
+    let minutesRemaining = 0;
+
+    if (call.audienceId && call.coinsPerMinute > 0 && call.minutesBilled === 0) {
+      const audience = await User.findOneAndUpdate(
+        { _id: call.audienceId, coins: { $gte: call.coinsPerMinute } },
+        { $inc: { coins: -call.coinsPerMinute } },
+        { new: true }
+      );
+
+      if (!audience) {
+        call.status = 'ended';
+        call.endedAt = new Date();
+        call.endReason = 'INSUFFICIENT_COINS';
+        await call.save();
+        emitSafe('call:coins-finished', `user:${call.audienceId.toString()}`, { callId });
+        throw new AppError('Caller has insufficient coins for the first minute', 402);
+      }
+
+      call.minutesBilled = 1;
+      call.totalCoins = call.coinsPerMinute;
+
+      await Transaction.create({
+        userId: call.audienceId,
+        type: 'call_payment' as const,
+        amount: call.coinsPerMinute,
+        currency: 'coin' as const,
+        sourceType: 'call',
+        targetId: call.hostId,
+        targetModel: 'User',
+        status: 'completed' as const,
+        description: `1:1 call billing (prepaid) — minute 1`,
+      });
+
+      audienceCoins = audience.coins;
+      minutesRemaining = Math.floor(audience.coins / call.coinsPerMinute);
+      isLowBalance = minutesRemaining <= 1;
+
+      emitSafe('balance:update', `user:${call.audienceId.toString()}`, {
+        coins: audience.coins,
+        minutesBilled: 1,
+        totalCoins: call.coinsPerMinute,
+        isLowBalance,
+        minutesRemaining,
+      });
+    }
+
     await call.save();
 
     const token = generateAgoraToken(call.channel, 0, 'publisher');
@@ -214,6 +273,10 @@ export const callService = {
       type: call.type,
       token,
       coinsPerMinute: call.coinsPerMinute,
+      audienceCoins,
+      minutesBilled: call.minutesBilled,
+      isLowBalance,
+      minutesRemaining,
     });
 
     const profile = await getDisplayProfile(userId);
@@ -222,7 +285,17 @@ export const callService = {
       ...profile,
     });
 
-    return { callId: callIdStr, channel: call.channel, type: call.type, token, coinsPerMinute: call.coinsPerMinute };
+    return {
+      callId: callIdStr,
+      channel: call.channel,
+      type: call.type,
+      token,
+      coinsPerMinute: call.coinsPerMinute,
+      audienceCoins,
+      minutesBilled: call.minutesBilled,
+      isLowBalance,
+      minutesRemaining,
+    };
   },
 
   /** Join an active call (the "Join" option) — max 10 enforced here. */
@@ -314,11 +387,16 @@ export const callService = {
         description: `1:1 call billing — minute ${call.minutesBilled}`,
       });
 
+      const minutesRemaining = Math.floor(audience.coins / call.coinsPerMinute);
+      const isLowBalance = minutesRemaining <= 1;
+
       // Emit live balance update to the audience
       emitSafe('balance:update', `user:${audienceId}`, {
         coins: audience.coins,
         minutesBilled: call.minutesBilled,
         totalCoins: call.totalCoins,
+        isLowBalance,
+        minutesRemaining,
       });
 
       return {
@@ -326,6 +404,8 @@ export const callService = {
         audienceCoins: audience.coins,
         minutesBilled: call.minutesBilled,
         totalCoins: call.totalCoins,
+        isLowBalance,
+        minutesRemaining,
       };
     } catch (err) {
       console.error('[call] Error in billingTick:', err);
@@ -365,9 +445,8 @@ export const callService = {
   /**
    * Finalize call billing — idempotent (guarded by `finalized` flag).
    *
-   * Calculates total coins charged, distributes 60% to host and records
-   * the 40% company commission. Safe to call multiple times; only the
-   * first call does any work.
+   * Calculates total coins charged, distributes to host and records
+   * the earning. Safe to call multiple times; only the first call does any work.
    */
   async finalizeCallBilling(callId: string) {
     try {
@@ -416,8 +495,7 @@ export const callService = {
       }
 
       const totalCoins = call.totalCoins;
-      const hostEarning = Math.floor(totalCoins * HOST_SHARE);
-      const companyCommission = totalCoins - hostEarning;
+      const hostEarning = totalCoins; // Host receives 100% of coins configured for their call
 
       // Credit host
       await User.findOneAndUpdate(
@@ -436,24 +514,13 @@ export const callService = {
           targetId: call.audienceId,
           targetModel: 'User',
           status: 'completed' as const,
-          description: `1:1 call earning (60%) — ${call.minutesBilled} min`,
-        },
-        {
-          userId: call.hostId,
-          type: 'commission' as const,
-          amount: companyCommission,
-          currency: 'coin' as const,
-          sourceType: 'call',
-          targetId: call.audienceId,
-          targetModel: 'User',
-          status: 'completed' as const,
-          description: `1:1 call platform commission (40%)`,
+          description: `1:1 call earning — ${call.minutesBilled} min (${call.coinsPerMinute} coins/min)`,
         },
       ]);
 
       // Record finalized amounts on the call
       call.hostEarning = hostEarning;
-      call.companyCommission = companyCommission;
+      call.companyCommission = 0;
       await call.save();
 
       // Emit updated balance to host & audience
@@ -481,7 +548,7 @@ export const callService = {
       return {
         totalCoins,
         hostEarning,
-        companyCommission,
+        companyCommission: 0,
         minutesBilled: call.minutesBilled,
       };
     } catch (err) {

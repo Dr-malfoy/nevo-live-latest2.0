@@ -5,3 +5,4 @@ export type { ChatRow } from './ChatListRow';
 export { StoryViewerModal } from './StoryViewerModal';
 export { CreateStoryModal } from './CreateStoryModal';
 export { CreateNoteModal } from './CreateNoteModal';
+export { CreateGroupModal } from './CreateGroupModal';

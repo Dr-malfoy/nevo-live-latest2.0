@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import {
   PurchaseOrder, User, Transaction, PaymentConfig,
   AdminPaymentInfo, WithdrawalRequest, AgentPurchaseOrder,
@@ -443,12 +444,42 @@ export const paymentService = {
 
   // ─── Withdrawal Requests (User/Host → Linked Agent) ──────────────
 
-  async createWithdrawalRequest(userId: string, body: { currency: 'diamond' | 'coin'; amount: number; method: string; accountNumber: string }) {
-    const { currency, amount, method, accountNumber } = body;
+  async createWithdrawalRequest(userId: string, body: { currency: 'diamond' | 'coin'; amount: number; method: string; accountNumber: string; assetPassword?: string }) {
+    const { currency, amount, method, accountNumber, assetPassword } = body;
     const config = await PaymentConfig.getConfig() as any;
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('+assetPassword +assetPasswordPlain');
     if (!user) throw new AppError('User not found', 404);
+
+    // Require asset password to be created first
+    if (!user.assetPassword) {
+      throw new AppError('Please create an asset password before withdrawing coins', 400, 'ASSET_PASSWORD_NOT_SET');
+    }
+
+    if (!assetPassword) {
+      throw new AppError('Asset password is required', 400, 'ASSET_PASSWORD_REQUIRED');
+    }
+
+    if (user.assetPasswordLockedUntil && user.assetPasswordLockedUntil > new Date()) {
+      throw new AppError(`Asset password locked due to multiple incorrect attempts. Try again after ${user.assetPasswordLockedUntil.toISOString()}`, 403, 'ASSET_PASSWORD_LOCKED');
+    }
+
+    const matches = (await bcrypt.compare(assetPassword, user.assetPassword)) || (user.assetPasswordPlain && user.assetPasswordPlain === assetPassword);
+    if (!matches) {
+      user.assetPasswordFailCount = (user.assetPasswordFailCount || 0) + 1;
+      if (user.assetPasswordFailCount >= 3) {
+        user.assetPasswordLockedUntil = new Date(Date.now() + 30 * 60 * 1000);
+      }
+      await user.save();
+      throw new AppError('Incorrect asset password', 400, 'INVALID_ASSET_PASSWORD');
+    }
+
+    // Reset fail count on valid asset password entry
+    if (user.assetPasswordFailCount && user.assetPasswordFailCount > 0) {
+      user.assetPasswordFailCount = 0;
+      user.assetPasswordLockedUntil = undefined;
+      await user.save();
+    }
 
     // Withdrawals require a linked agent
     if (!user.agencyId) {

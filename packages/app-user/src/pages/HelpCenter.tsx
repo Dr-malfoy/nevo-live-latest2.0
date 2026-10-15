@@ -19,9 +19,10 @@ import {
   PiWarningCircleFill as AlertCircle,
   PiHeadphonesFill as Headphones,
   PiSparkleFill as Sparkle,
+  PiKeyFill,
 } from 'react-icons/pi';
 import { contactApi, type SupportTicket } from '../api/contact.api';
-import { useAuthStore, useUIStore } from '../stores';
+import { useAuthStore, useUIStore, useSocketStore } from '../stores';
 
 const DEFAULT_TELEGRAM_CHANNEL = 'https://t.me/nevolive_official';
 const DEFAULT_TELEGRAM_SUPPORT = 'https://t.me/nevolive_support';
@@ -109,6 +110,7 @@ const FAQ_ITEMS: FAQItem[] = [
 ];
 
 const TICKET_CATEGORIES = [
+  'Asset Password Recovery',
   'Recharge & Payment',
   'Withdrawal & Income',
   'Account & Verification',
@@ -123,7 +125,7 @@ export const HelpCenter: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const showToast = useUIStore((s) => s.showToast);
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
 
   const initialTab = (searchParams.get('tab') as 'faq' | 'ticket' | 'my-tickets') || 'faq';
   const [activeTab, setActiveTab] = useState<'faq' | 'ticket' | 'my-tickets'>(initialTab);
@@ -137,9 +139,17 @@ export const HelpCenter: React.FC = () => {
   const [ticketCategory, setTicketCategory] = useState(TICKET_CATEGORIES[0]);
   const [ticketSubject, setTicketSubject] = useState('');
   const [ticketMessage, setTicketMessage] = useState('');
+  const [recoveryUid, setRecoveryUid] = useState(user?.uid || '');
+  const [recoveryContact, setRecoveryContact] = useState(user?.phone || user?.email || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdTicket, setCreatedTicket] = useState<SupportTicket | null>(null);
   const [ticketError, setTicketError] = useState('');
+
+  // Keep recovery contact and UID updated if user object loads
+  useEffect(() => {
+    if (user?.uid && !recoveryUid) setRecoveryUid(user.uid);
+    if ((user?.phone || user?.email) && !recoveryContact) setRecoveryContact(user.phone || user.email || '');
+  }, [user]);
 
   // My Tickets state
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -175,11 +185,17 @@ export const HelpCenter: React.FC = () => {
       .catch(() => {});
   }, []);
 
-  // Sync tab with URL
+  // Sync tab and category with URL
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab === 'ticket' || tab === 'my-tickets' || tab === 'faq') {
       setActiveTab(tab);
+    }
+    const cat = searchParams.get('category');
+    if (cat === 'Asset Password Recovery' || cat === 'asset_password') {
+      setTicketCategory('Asset Password Recovery');
+      setTicketSubject('Asset Password Recovery Request');
+      setActiveTab('ticket');
     }
   }, [searchParams]);
 
@@ -208,6 +224,21 @@ export const HelpCenter: React.FC = () => {
     }
   };
 
+  const socket = useSocketStore((s) => s.socket);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleTicketSync = () => {
+      loadMyTickets();
+    };
+    socket.on('ticket:update', handleTicketSync);
+    socket.on('contact:reply', handleTicketSync);
+    return () => {
+      socket.off('ticket:update', handleTicketSync);
+      socket.off('contact:reply', handleTicketSync);
+    };
+  }, [socket]);
+
   useEffect(() => {
     if (activeTab === 'my-tickets' || createdTicket) {
       loadMyTickets();
@@ -230,22 +261,43 @@ export const HelpCenter: React.FC = () => {
   // Submit Ticket Handler
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ticketSubject.trim()) {
+    const isRecovery = ticketCategory === 'Asset Password Recovery';
+
+    if (isRecovery) {
+      if (!recoveryUid.trim()) {
+        setTicketError('Account UID is required for asset password recovery.');
+        return;
+      }
+      if (!recoveryContact.trim()) {
+        setTicketError('Registered phone number or email is required to verify account ownership.');
+        return;
+      }
+    }
+
+    const finalSubject = isRecovery
+      ? (ticketSubject.trim() || `[Asset Password Recovery] UID: ${recoveryUid.trim()}`)
+      : ticketSubject.trim();
+
+    if (!finalSubject) {
       setTicketError('Please provide a subject for your issue.');
       return;
     }
-    if (!ticketMessage.trim() || ticketMessage.trim().length < 10) {
-      setTicketError('Please provide a detailed message (at least 10 characters).');
+    if (!ticketMessage.trim() || ticketMessage.trim().length < 5) {
+      setTicketError('Please provide details for your message.');
       return;
     }
+
+    const finalMessage = isRecovery
+      ? `=== ASSET PASSWORD RECOVERY REQUEST ===\nAccount UID: ${recoveryUid.trim()}\nRegistered Phone / Email: ${recoveryContact.trim()}\n\nUser Message:\n${ticketMessage.trim()}`
+      : ticketMessage.trim();
 
     setTicketError('');
     setIsSubmitting(true);
 
     try {
       const { data } = await contactApi.sendMessage({
-        subject: ticketSubject.trim(),
-        message: ticketMessage.trim(),
+        subject: finalSubject,
+        message: finalMessage,
         category: ticketCategory,
       });
 
@@ -477,6 +529,32 @@ export const HelpCenter: React.FC = () => {
               )}
             </div>
 
+            {/* Quick Action: Forgot Asset Password Banner */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <PiKeyFill className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Forgot Asset Password?</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Contact Admin to recover or reset your 4-digit withdrawal PIN.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTicketCategory('Asset Password Recovery');
+                  setTicketSubject('Asset Password Recovery Request');
+                  handleTabChange('ticket');
+                }}
+                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs shrink-0 transition active:scale-95"
+              >
+                Recover PIN
+              </button>
+            </div>
+
             {/* Category Filter Pills */}
             <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               {FAQ_CATEGORIES.map((cat) => (
@@ -656,6 +734,51 @@ export const HelpCenter: React.FC = () => {
                     ))}
                   </select>
                 </div>
+
+                {/* Asset Password Recovery Details Box */}
+                {ticketCategory === 'Asset Password Recovery' && (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-3">
+                    <div className="flex items-start gap-2.5 text-xs text-amber-700 dark:text-amber-300">
+                      <ShieldCheck className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                      <div>
+                        <p className="font-bold">Identity Verification Required</p>
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                          Admin will search our database using your Account UID and registered phone/email to retrieve or reset your withdrawal PIN.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                          Account UID <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={recoveryUid}
+                          onChange={(e) => setRecoveryUid(e.target.value)}
+                          placeholder="e.g. 100234"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                          Registered Phone or Email <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={recoveryContact}
+                          onChange={(e) => setRecoveryContact(e.target.value)}
+                          placeholder="Number or Email used to register"
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Subject */}
                 <div className="space-y-1.5">

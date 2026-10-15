@@ -19,9 +19,9 @@ export interface AgencyMemberInfo {
   avatar: string;
   level: number;
   liveHours: number;
-  contribution: number;
-  coins: number;
-  diamonds: number;
+  contribution?: number;
+  coins?: number;
+  diamonds?: number;
   lastActiveAt?: string;
 }
 
@@ -33,6 +33,16 @@ export interface AgencyRelationship {
   hasPendingJoinRequest: boolean;
   hasPendingLeaveRequest: boolean;
   joinRequestId?: string;
+}
+
+export interface AgencyWelcomeBanner {
+  enabled?: boolean;
+  title?: string;
+  message?: string;
+  imageUrl?: string;
+  theme?: string; // 'purple' | 'gold' | 'sunset' | 'emerald' | 'ocean' | 'dark'
+  badgeText?: string;
+  floatAnimation?: boolean;
 }
 
 export interface AgencyItem {
@@ -54,6 +64,7 @@ export interface AgencyItem {
   agent: AgencyAgentInfo;
   members?: AgencyMemberInfo[];
   userRelationship?: AgencyRelationship;
+  welcomeBanner?: AgencyWelcomeBanner;
   createdAt: string;
 }
 
@@ -110,7 +121,15 @@ export const agencyApi = {
   decideJoinRequest: (requestId: string, decision: 'approve' | 'reject') =>
     client.post<ApiResponse<{ success: boolean; status: string; message?: string }>>(`/agency/join-requests/${requestId}/decide`, { decision }),
 
-  updateSettings: (data: { name?: string; description?: string; avatar?: string; cover?: string; type?: 'public' | 'private'; commission?: number }) =>
+  updateSettings: (data: {
+    name?: string;
+    description?: string;
+    avatar?: string;
+    cover?: string;
+    type?: 'public' | 'private';
+    commission?: number;
+    welcomeBanner?: AgencyWelcomeBanner;
+  }) =>
     client.put<ApiResponse<any>>('/agency/settings', data),
 
   removeMember: (userId: string, reason?: string) =>

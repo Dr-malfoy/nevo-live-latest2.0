@@ -15,6 +15,7 @@ export interface IProfileVisitDocument extends Document {
   profileId: Schema.Types.ObjectId;
   visitTime: Date;
   visitCount: number;
+  seen: boolean;
 }
 
 const VISIT_WINDOW_DAYS = 7;
@@ -25,6 +26,7 @@ const profileVisitSchema = new Schema<IProfileVisitDocument>(
     profileId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     visitTime: { type: Date, default: Date.now },
     visitCount: { type: Number, default: 1 },
+    seen: { type: Boolean, default: false, index: true },
   },
   { versionKey: false }
 );

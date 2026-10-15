@@ -1,6 +1,7 @@
 import { ContactMessage, User, Notification } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
+import { chatService } from './chat.service';
 
 function generateTicketId(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -124,6 +125,20 @@ export const contactService = {
 
     await ticket.save();
 
+    // Mirror user's reply to the chat with Admin so Admin sees it in Messenger too
+    try {
+      const admin = await User.findOne({ role: 'admin' });
+      if (admin && admin._id.toString() !== userId) {
+        const chat = await chatService.getOrCreateChat(userId, admin._id.toString());
+        await chatService.sendMessage(
+          chat._id.toString(),
+          userId,
+          `🎫 [Reply on Ticket ${ticket.ticketId}]\n${message.trim()}`,
+          { kind: 'text' }
+        );
+      }
+    } catch {}
+
     try {
       getIO().emit('contact:reply', { ticketId: ticket.ticketId, contactId: ticket._id });
     } catch {}
@@ -146,7 +161,7 @@ export const contactService = {
     return { data, total };
   },
 
-  // Admin: reply / resolve
+  // Admin: reply / resolve & deliver directly to User Messenger
   async replyToMessage(
     messageId: string,
     adminId: string,
@@ -156,8 +171,9 @@ export const contactService = {
     const contact = await ContactMessage.findById(messageId);
     if (!contact) throw new AppError('Contact message not found', 404);
 
-    if (reply && reply.trim()) {
-      const trimmedReply = reply.trim().slice(0, 3000);
+    const trimmedReply = reply ? reply.trim().slice(0, 3000) : '';
+
+    if (trimmedReply) {
       contact.adminReply = trimmedReply;
       contact.replies.push({
         sender: 'support',
@@ -170,15 +186,54 @@ export const contactService = {
     contact.status = status;
     await contact.save();
 
-    // Notify the user
+    // 1. Notify the user via system notification
     try {
       await Notification.create({
         userId: contact.userId,
         type: 'system',
         title: `Support update on ticket ${contact.ticketId}`,
-        message: reply ? reply.slice(0, 120) : `Your ticket ${contact.ticketId} has been marked ${status}.`,
+        message: trimmedReply ? trimmedReply.slice(0, 120) : `Your ticket ${contact.ticketId} has been marked ${status}.`,
         data: { contactId: contact._id, ticketId: contact.ticketId },
       });
+    } catch {}
+
+    // 2. Deliver message directly to user's Messenger (1:1 chat from Support Team / Admin)
+    try {
+      let senderAdminId = adminId;
+      const adminUser = await User.findById(senderAdminId);
+      if (!adminUser) {
+        const fallbackAdmin = await User.findOne({ role: 'admin' });
+        if (fallbackAdmin) senderAdminId = fallbackAdmin._id.toString();
+      }
+
+      const targetUserId = contact.userId?.toString();
+      if (senderAdminId && targetUserId && senderAdminId !== targetUserId) {
+        const chat = await chatService.getOrCreateChat(senderAdminId, targetUserId);
+
+        const statusLabel = status.toUpperCase().replace('_', ' ');
+        const chatText = trimmedReply
+          ? `🎫 [Support Ticket ${contact.ticketId}]\n${trimmedReply}\n\nStatus: ${statusLabel}`
+          : `🎫 [Support Ticket ${contact.ticketId}]\nYour ticket "${contact.subject}" has been updated to: ${statusLabel}.`;
+
+        await chatService.sendMessage(chat._id.toString(), senderAdminId, chatText, {
+          kind: 'text',
+        });
+      }
+    } catch (chatError) {
+      console.error('Failed to deliver ticket reply to messenger chat:', chatError);
+    }
+
+    // 3. Emit real-time socket events for live sync
+    try {
+      getIO().emit('contact:reply', { ticketId: contact.ticketId, contactId: contact._id, status });
+      if (contact.userId) {
+        getIO().to(`user:${contact.userId.toString()}`).emit('ticket:update', {
+          ticketId: contact.ticketId,
+          contactId: contact._id,
+          status,
+          adminReply: trimmedReply,
+        });
+      }
     } catch {}
 
     return contact;

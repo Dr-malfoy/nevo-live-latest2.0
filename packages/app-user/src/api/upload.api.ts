@@ -19,8 +19,27 @@ export const uploadApi = {
     } else if (file instanceof File) {
       processedFile = file;
     } else {
-      processedFile = new File([file], `media_${Date.now()}.mp4`, {
-        type: file.type || 'application/octet-stream',
+      const mime = (file.type || '').toLowerCase();
+      let ext = 'webm';
+      let cleanType = file.type || 'audio/webm';
+      if (mime.includes('mp4') || mime.includes('m4a')) {
+        ext = 'm4a';
+        cleanType = 'audio/mp4';
+      } else if (mime.includes('ogg')) {
+        ext = 'ogg';
+        cleanType = 'audio/ogg';
+      } else if (mime.includes('wav')) {
+        ext = 'wav';
+        cleanType = 'audio/wav';
+      } else if (mime.includes('mp3') || mime.includes('mpeg')) {
+        ext = 'mp3';
+        cleanType = 'audio/mpeg';
+      } else if (mime.includes('video')) {
+        ext = 'mp4';
+        cleanType = 'video/mp4';
+      }
+      processedFile = new File([file], `media_${Date.now()}.${ext}`, {
+        type: cleanType,
       });
     }
 

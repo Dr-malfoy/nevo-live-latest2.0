@@ -8,9 +8,9 @@ const isLocalWeb =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const SOCKET_URL =
-  import.meta.env.VITE_SOCKET_URL ||
-  (isLocalWeb ? window.location.origin : 'https://nevo-live-latest.onrender.com');
+const SOCKET_URL = isLocalWeb
+  ? window.location.origin
+  : (import.meta.env.VITE_SOCKET_URL || 'https://nevo-live-latest.onrender.com');
 
 interface SocketState {
   socket: Socket | null;

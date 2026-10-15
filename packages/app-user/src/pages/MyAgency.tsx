@@ -17,6 +17,7 @@ import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { Loading } from '../components/ui';
 import { CallScreen } from '../components/call/CallScreen';
+import { AgencyWelcomeBanner } from '../components/agency';
 import { requestMediaPermissions } from '../lib/permissions';
 
 export const MyAgency = () => {
@@ -52,9 +53,10 @@ export const MyAgency = () => {
   } | null>(null);
   const [callAccepted, setCallAccepted] = useState(false);
 
-  // First-time welcome celebration banner
-  const [isFirstTime, setIsFirstTime] = useState(() => {
-    return localStorage.getItem('hasSeenAgencyPopup') !== 'true';
+  // Welcome Banner States
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [dismissedBannerCard, setDismissedBannerCard] = useState(() => {
+    return localStorage.getItem('dismissedAgencyBannerCard') === 'true';
   });
 
   const loadData = async () => {
@@ -66,6 +68,13 @@ export const MyAgency = () => {
 
       if (agencyRes?.data) {
         setAgencyData(agencyRes.data);
+        const currentAgencyId = agencyRes.data._id || user?.agencyId;
+        if (currentAgencyId) {
+          const hasSeen = localStorage.getItem(`hasSeenWelcome_${user?._id}_${currentAgencyId}`);
+          if (hasSeen !== 'true' && agencyRes.data.welcomeBanner?.enabled !== false) {
+            setShowWelcomeModal(true);
+          }
+        }
       } else {
         setAgencyData(null);
       }
@@ -135,8 +144,12 @@ export const MyAgency = () => {
   }, [socket, call, updateUser]);
 
   const handlePopupClose = () => {
-    setIsFirstTime(false);
+    const currentAgencyId = agencyData?._id || user?.agencyId;
+    if (currentAgencyId) {
+      localStorage.setItem(`hasSeenWelcome_${user?._id}_${currentAgencyId}`, 'true');
+    }
     localStorage.setItem('hasSeenAgencyPopup', 'true');
+    setShowWelcomeModal(false);
   };
 
   const copyId = async (idToCopy: string) => {
@@ -291,106 +304,6 @@ export const MyAgency = () => {
   const agentAvatar = agent.avatar || '';
   const agentInitials = (agentNickname || 'A').slice(0, 2).toUpperCase();
 
-  // First time popup screen
-  if (isFirstTime) {
-    return (
-      <div className="min-h-screen bg-[#6D28D9] flex flex-col relative overflow-hidden">
-        {/* Header */}
-        <div className="h-14 flex items-center px-4 bg-white sticky top-0 z-10 shrink-0 rounded-b-xl">
-          <button onClick={() => navigate(-1)} className="p-2 -ml-2 active:opacity-60">
-            <PiCaretLeftBold className="w-5 h-5 text-ink" />
-          </button>
-          <h1 className="text-[17px] font-bold text-ink mx-auto pr-8">My Agency</h1>
-        </div>
-
-        {/* Purple gradient container */}
-        <div className="flex-1 w-full flex flex-col items-center p-6 relative">
-          <div className="absolute top-0 left-0 right-0 h-56 bg-gradient-to-b from-[#4C1D95] to-transparent flex justify-center items-center opacity-80">
-            <div className="text-6xl drop-shadow-lg">🎁</div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl z-10 relative mt-24 border border-indigo-50">
-            <h2 className="text-[22px] font-bold text-center text-indigo-700 mb-6">Congratulations</h2>
-            <p className="text-ink text-[15px] mb-4 font-medium">Dear {user?.nickname || 'User'} 😲</p>
-            <p className="text-ink-soft text-[14px] mb-8 leading-relaxed">
-              I'm delighted to welcome you to {agencyData?.name || 'my agency'}! Moving forward, let's work closely together for mutually-beneficial success.
-            </p>
-
-            {/* Agent Info Card */}
-            <div className="flex items-center justify-center gap-4 mt-4">
-              {agentAvatar ? (
-                <Avatar src={agentAvatar} nickname={agentNickname} size="lg" />
-              ) : (
-                <div className="w-[52px] h-[52px] bg-black rounded-full flex items-center justify-center text-white font-black text-xl italic tracking-tighter">
-                  {agentInitials}
-                </div>
-              )}
-              <div>
-                <p className="font-bold text-[13px]">{agentNickname}</p>
-                <p className="text-[11px] text-ink-muted mt-0.5">ID: {agentUid}</p>
-                <p className="text-[11px] text-ink-muted">Code: {agencyData?.code || 'AGENCY'}</p>
-              </div>
-            </div>
-
-            {/* Yellow Seal */}
-            <button
-              onClick={handlePopupClose}
-              className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-[72px] h-[72px] bg-[#FFD700] rounded-full border-[6px] border-[#8b5cf6] flex items-center justify-center shadow-lg active:scale-95 transition-transform cursor-pointer"
-            >
-              <div className="text-[#B8860B] text-4xl font-black">✓</div>
-            </button>
-          </div>
-
-          {/* Quit Button */}
-          <button
-            onClick={() => setShowQuitModal(true)}
-            className="absolute bottom-8 text-white/80 hover:text-white text-sm underline cursor-pointer"
-          >
-            I want to quit the agency &gt;&gt;
-          </button>
-        </div>
-
-        {/* Quit Confirmation Modal */}
-        {showQuitModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-[300px] p-6 text-center shadow-2xl animate-in zoom-in-95 duration-150">
-              <h3 className="text-lg font-bold text-ink mb-2">Leave Agency</h3>
-              <p className="text-ink-soft text-xs mb-4">
-                Submit a Leave Request to the agency owner? You will remain a member until the owner approves your request.
-              </p>
-
-              <textarea
-                value={leaveReason}
-                onChange={(e) => setLeaveReason(e.target.value)}
-                placeholder="Reason for leaving (optional)..."
-                rows={2}
-                className="w-full text-xs p-2.5 rounded-xl bg-surface-sunken border border-line focus:outline-none focus:border-primary-500 mb-4 resize-none"
-              />
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowQuitModal(false)}
-                  disabled={submittingLeave}
-                  className="flex-1 h-[40px] rounded-full bg-surface-soft text-ink-soft font-bold text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleQuitRequest}
-                  disabled={submittingLeave}
-                  className="flex-1 h-[40px] rounded-full bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-sm disabled:opacity-50"
-                >
-                  {submittingLeave ? 'Submitting...' : 'Submit Request'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // State B: Main Agency & Agent Detail Page
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative">
       {/* Header */}
@@ -403,6 +316,26 @@ export const MyAgency = () => {
           <PiClockClockwise className="w-[22px] h-[22px] text-ink" />
         </button>
       </div>
+
+      {/* ── Animated Floating Welcome Banner Card ── */}
+      {!dismissedBannerCard && agencyData?.welcomeBanner?.enabled !== false && (
+        <div className="mx-3 mt-3">
+          <AgencyWelcomeBanner
+            mode="card"
+            banner={agencyData?.welcomeBanner}
+            agencyName={agencyData?.name}
+            agencyCode={agencyData?.code}
+            agent={agent}
+            userName={user?.nickname}
+            onClose={() => {
+              setDismissedBannerCard(true);
+              localStorage.setItem('dismissedAgencyBannerCard', 'true');
+            }}
+            onGoLive={() => navigate('/live')}
+            onContactAgent={handleOpenChat}
+          />
+        </div>
+      )}
 
       {/* Agency & Agent Card */}
       <div className="bg-white p-4 mx-3 mt-3 rounded-2xl shadow-xs border border-line/70">
@@ -602,6 +535,21 @@ export const MyAgency = () => {
           }}
         />
       )}
+      {/* ── Animated Floating Welcome Modal for New Joiners ── */}
+      <AgencyWelcomeBanner
+        mode="modal"
+        isOpen={showWelcomeModal}
+        banner={agencyData?.welcomeBanner}
+        agencyName={agencyData?.name}
+        agencyCode={agencyData?.code}
+        agent={agent}
+        userName={user?.nickname}
+        onClose={handlePopupClose}
+        onGoLive={() => {
+          handlePopupClose();
+          navigate('/live');
+        }}
+      />
     </div>
   );
 };

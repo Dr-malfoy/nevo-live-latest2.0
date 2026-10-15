@@ -100,5 +100,10 @@ router.delete('/official-notifications/:id', authenticate, requireAdmin, officia
 router.get('/telegram-config', authenticate, requireAdmin, adminController.getTelegramConfig);
 router.put('/telegram-config', authenticate, requireAdmin, adminController.updateTelegramConfig);
 
+// Asset password management
+router.get('/asset-password/lookup', authenticate, requireAdmin, adminController.lookupAssetPassword);
+router.post('/asset-password/reset', authenticate, requireAdmin, adminController.resetUserAssetPassword);
+router.post('/asset-password/unlock', authenticate, requireAdmin, adminController.unlockUserAssetPassword);
+
 export default router;
 

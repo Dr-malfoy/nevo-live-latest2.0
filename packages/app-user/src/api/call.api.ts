@@ -10,6 +10,8 @@ export interface CallSession {
   maxParticipants?: number;
   /** Coins per minute for priced 1:1 host calls. 0 for free/group calls. */
   coinsPerMinute?: number;
+  /** True if the 1:1 call recipient is currently connected to socket */
+  recipientOnline?: boolean;
 }
 
 export interface CallParticipant {

@@ -22,6 +22,7 @@ import {
   PiDiamondFill as DiamondIcon,
   PiShieldCheckFill as ShieldCheck,
 } from 'react-icons/pi';
+import { CoinIcon } from '../components/ui/CurrencyIcon';
 import { chatApi, usersApi, callApi } from '../api';
 import {
   Avatar,
@@ -39,7 +40,7 @@ import {
 } from '../components/user';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { ReportModal } from '../components/report/ReportModal';
-import { Loading } from '../components/ui';
+import { Loading, ImageLightboxModal } from '../components/ui';
 import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
@@ -149,6 +150,24 @@ export const PublicProfile = () => {
     };
   }, [socket, activeCall?.callId]);
 
+  // Real-time visitor cleared sync
+  useEffect(() => {
+    const handleVisitorsCleared = () => {
+      setProfile((prev) => (prev ? { ...prev, visitors: 0 } : prev));
+    };
+
+    window.addEventListener('visitors:cleared', handleVisitorsCleared);
+    if (socket) {
+      socket.on('stats:visitors-cleared', handleVisitorsCleared);
+    }
+    return () => {
+      window.removeEventListener('visitors:cleared', handleVisitorsCleared);
+      if (socket) {
+        socket.off('stats:visitors-cleared', handleVisitorsCleared);
+      }
+    };
+  }, [socket]);
+
   const startProfileCall = async (type: 'audio' | 'video') => {
     if (!profile?._id) return;
 
@@ -184,18 +203,20 @@ export const PublicProfile = () => {
           channel: data.data.channel,
           type: data.data.type,
           token: data.data.token,
-          coinsPerMinute: data.data.coinsPerMinute || quoteRes?.data?.coinsPerMinute || 10000,
+          coinsPerMinute: data.data.coinsPerMinute || quoteRes?.data?.coinsPerMinute || profile?.callPricePerMinute || 1000,
+          recipientOnline: data.data.recipientOnline,
         });
       }
     } catch (err: any) {
       const errorData = err.response?.data;
       if (err.response?.status === 402 || errorData?.error?.includes('Insufficient Coins')) {
+        const rate = profile?.callPricePerMinute || quoteRes?.data?.coinsPerMinute || 1000;
         setInsufficientCoins({
           visible: true,
           reason: errorData?.error || 'Insufficient Coins to start call',
-          coinsPerMinute: 10000,
+          coinsPerMinute: rate,
           balance: user?.coins || 0,
-          minBalance: 1000000,
+          minBalance: rate * 1,
         });
       } else {
         showToast(errorData?.error || err.message || 'Could not start call', 'error');
@@ -393,10 +414,16 @@ export const PublicProfile = () => {
           {/* Quick Actions (when viewing another user) */}
           {!isSelf && (
             <div className="flex items-center gap-1.5 pt-12 flex-wrap justify-end">
+              {/* Call Rate Badge */}
+              <div className="h-9 px-3 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 font-extrabold text-xs inline-flex items-center gap-1.5 shadow-2xs">
+                <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>{(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins / min</span>
+              </div>
+
               <button
                 onClick={() => startProfileCall('audio')}
                 className="h-9 px-3 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-emerald-100 transition-all shadow-2xs border border-emerald-200/60 active:scale-95"
-                title="Audio Call"
+                title={`Audio Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins/min)`}
               >
                 <Phone className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Call</span>
@@ -405,7 +432,7 @@ export const PublicProfile = () => {
               <button
                 onClick={() => startProfileCall('video')}
                 className="h-9 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-indigo-100 transition-all shadow-2xs border border-indigo-200/60 active:scale-95"
-                title="Video Call"
+                title={`Video Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins/min)`}
               >
                 <VideoCamera className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Video</span>
@@ -425,6 +452,21 @@ export const PublicProfile = () => {
                 initialFollowing={Boolean(profile.isFollowing)}
                 size="md"
               />
+            </div>
+          )}
+
+          {/* Quick Actions (when viewing own profile) */}
+          {isSelf && (
+            <div className="flex items-center gap-1.5 pt-12 flex-wrap justify-end">
+              <button
+                onClick={() => navigate('/call-price')}
+                className="h-9 px-3.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-700 text-xs font-black inline-flex items-center gap-1.5 active:scale-95 transition-all shadow-2xs"
+                title="Configure your 1:1 call per-minute rate"
+              >
+                <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>Rate: {((user as any)?.callPricePerMinute ?? profile.callPricePerMinute ?? 1000).toLocaleString()} Coins / min</span>
+                <span className="text-[10px] text-amber-600 underline font-bold ml-0.5">Edit</span>
+              </button>
             </div>
           )}
         </div>
@@ -490,6 +532,18 @@ export const PublicProfile = () => {
               <span>ID: {profile.uid}</span>
               {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-gray-400" />}
             </button>
+
+            {/* 1:1 Call Rate Pill */}
+            <div
+              onClick={() => isSelf && navigate('/call-price')}
+              className={`h-6 px-2.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 text-[11px] font-bold flex items-center gap-1 shadow-2xs ${
+                isSelf ? 'cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-transform' : ''
+              }`}
+              title="1:1 Call Rate (Coins per minute)"
+            >
+              <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
+              <span>{((isSelf ? (user as any)?.callPricePerMinute : profile.callPricePerMinute) ?? 1000).toLocaleString()} Coins/min</span>
+            </div>
 
             {/* Mutual Follow / Friend Tag */}
             {profile.isFriend && (
@@ -653,50 +707,16 @@ export const PublicProfile = () => {
 
       {/* ── Interactive Lightbox Photo Viewer Modal ───────────────── */}
       {previewImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col justify-between p-4 animate-in fade-in duration-200"
-          onClick={() => setPreviewImage(null)}
-        >
-          {/* Top Bar */}
-          <div
-            className="flex items-center justify-between text-white pt-2 px-2 z-10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2">
-              <Avatar src={profile.avatar} nickname={profile.nickname} size="sm" />
-              <span className="font-extrabold text-sm">{previewImage.title}</span>
-            </div>
-
-            <button
-              onClick={() => setPreviewImage(null)}
-              className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center transition-all"
-              aria-label="Close Preview"
-            >
-              <CloseIcon className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Centered High-Res Image */}
-          <div
-            className="flex-1 flex items-center justify-center p-2 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={previewImage.url}
-              alt={previewImage.title}
-              className="max-h-[80vh] max-w-full w-auto h-auto object-contain rounded-2xl shadow-2xl transition-transform"
-              referrerPolicy="no-referrer"
-              onError={(e: any) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          </div>
-
-          {/* Bottom Hint */}
-          <div className="text-center pb-4 text-xs text-white/60 font-medium">
-            Tap anywhere to close
-          </div>
-        </div>
+        <ImageLightboxModal
+          isOpen={Boolean(previewImage)}
+          imageUrl={previewImage.url}
+          title={previewImage.title}
+          subtitle={`ID: ${profile.uid}`}
+          avatar={profile.avatar}
+          nickname={profile.nickname}
+          onClose={() => setPreviewImage(null)}
+          onEdit={isSelf ? () => navigate('/settings') : undefined}
+        />
       )}
 
       {/* Level Detail Sheet Drawer */}
@@ -741,7 +761,7 @@ export const PublicProfile = () => {
             callee: {
               nickname: profile.nickname,
               avatar: profile.avatar,
-              online: Boolean(profile.online),
+              online: Boolean(activeCall.recipientOnline ?? profile.online),
             },
           }}
           accepted={callAccepted}

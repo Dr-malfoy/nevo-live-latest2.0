@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   PiXBold as X,
   PiPaperPlaneRightFill as Send,
@@ -26,6 +27,7 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
   comments,
   onCommentAdded,
 }) => {
+  const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.user);
   const showToast = useUIStore((s) => s.showToast);
 
@@ -113,14 +115,37 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
                 const authorName = isCommentAuthorCurrent ? (currentUser.nickname || author?.nickname || 'User') : (author?.nickname || 'User');
                 const avatarUrl = isCommentAuthorCurrent ? (currentUser.avatar || author?.avatar) : author?.avatar;
                 const level = isCommentAuthorCurrent ? resolveLevel(currentUser) : resolveLevel(author);
+                const authorId = author?._id || (isCommentAuthorCurrent ? currentUser._id : (typeof c.userId === 'string' ? c.userId : undefined));
+
+                const handleOpenProfile = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onClose();
+                  if (isCommentAuthorCurrent) {
+                    navigate('/profile');
+                  } else if (authorId) {
+                    navigate(`/user/${authorId}`);
+                  }
+                };
 
                 return (
                   <div key={i} className="flex items-start gap-3 group">
-                    <Avatar src={avatarUrl} nickname={authorName} size="sm" />
+                    <div
+                      onClick={handleOpenProfile}
+                      className="cursor-pointer active:scale-95 transition-transform shrink-0"
+                      title={`View ${authorName}'s profile`}
+                    >
+                      <Avatar src={avatarUrl} nickname={authorName} size="sm" />
+                    </div>
                     <div className="flex-1 bg-surface-sunken/70 rounded-2xl p-3 border border-line/60">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-ink">{authorName}</span>
+                        <div
+                          onClick={handleOpenProfile}
+                          className="flex items-center gap-1.5 flex-wrap cursor-pointer group/name"
+                          title={`View ${authorName}'s profile`}
+                        >
+                          <span className="text-xs font-bold text-ink group-hover/name:text-accent-500 group-hover/name:underline transition-colors">
+                            {authorName}
+                          </span>
                           <VerifiedBadge verification={author?.verification} />
                           <LevelBadge level={level} size="sm" />
                         </div>

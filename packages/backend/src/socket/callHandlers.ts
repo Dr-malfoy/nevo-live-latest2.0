@@ -1,5 +1,6 @@
 import { Socket } from 'socket.io';
 import { callService } from '../services/call.service';
+import { Call } from '../models';
 
 /**
  * Call signaling events:
@@ -34,6 +35,22 @@ export const registerCallHandlers = (socket: Socket): void => {
     const res = socket.leave(`call:${callId}`);
     if (res && typeof res.catch === 'function') res.catch(() => {});
     if (socket.data.callRoomId === callId) socket.data.callRoomId = undefined;
+  });
+
+  /** Callee acknowledges invite and indicates ringing. Forward to initiator. */
+  socket.on('call:ringing', async ({ callId }) => {
+    try {
+      if (!callId) return;
+      const call = await Call.findById(callId).select('initiatorId status').lean();
+      if (call && call.initiatorId && (call.status === 'ringing' || call.status === 'active')) {
+        socket.to(`user:${call.initiatorId.toString()}`).emit('call:ringing', {
+          callId,
+          online: true,
+        });
+      }
+    } catch (err) {
+      console.warn('call:ringing error:', err);
+    }
   });
 
   socket.on('call:reject', async ({ callId }, ack) => {

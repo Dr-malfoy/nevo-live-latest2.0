@@ -15,7 +15,7 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  * the flag, and lastActiveAt for the online dot (requirement #3).
  */
 const CARD_FIELDS =
-  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds';
+  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds callPricePerMinute';
 
 /** A user counts as online if they were active in the last 5 minutes. */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -48,6 +48,7 @@ const decorate = (plain: any) => {
   const level = plain?.level && plain.level > 1 ? plain.level : Math.max(wealthLevel, liveLevel, 1);
   return {
     ...plain,
+    callPricePerMinute: typeof plain?.callPricePerMinute === 'number' ? plain.callPricePerMinute : 1000,
     wealthExp,
     liveStreamSeconds,
     liveStreamMinutes,
@@ -151,6 +152,10 @@ export const userService = {
     delete plain.following;
     delete plain.followers;
 
+    const activeStream = await LiveStream.findOne({ hostId: targetUserId, status: 'live' })
+      .select('_id title cover type viewerCount')
+      .lean();
+
     return {
       ...decorate(plain),
       ...stats,
@@ -161,6 +166,9 @@ export const userService = {
       isFollowedBy,
       /** Mutual follow (requirement #2: "Friends = Mutual Follow"). */
       isFriend: isFollowing && isFollowedBy,
+      isLive: Boolean(activeStream),
+      liveStreamId: activeStream ? activeStream._id.toString() : null,
+      liveStream: activeStream || null,
     };
   },
 
@@ -179,7 +187,7 @@ export const userService = {
     const followerIds = new Set((user.followers || []).map((id: any) => id.toString()));
     const friends = followingIds.filter((id) => followerIds.has(id)).length;
 
-    const visitors = await ProfileVisit.countDocuments({ profileId: userId });
+    const visitors = await ProfileVisit.countDocuments({ profileId: userId, seen: { $ne: true } });
 
     return {
       friends,
@@ -190,16 +198,21 @@ export const userService = {
   },
 
   /**
-   * Upsert a visit. Re-visiting bumps the timestamp instead of adding a row,
-   * so "Visitors" counts distinct people, not page views.
+   * Upsert a visit. Re-visiting bumps the timestamp and resets seen: false,
+   * so "Visitors" counts distinct people, not page views, and marks as new.
    */
   async recordVisit(visitorId: string, profileId: string) {
     if (visitorId === profileId) return;
     await ProfileVisit.updateOne(
       { visitorId, profileId },
-      { $set: { visitTime: new Date() }, $inc: { visitCount: 1 } },
+      { $set: { visitTime: new Date(), seen: false }, $inc: { visitCount: 1 } },
       { upsert: true }
     );
+  },
+
+  /** Clear all old visits for this profile so count is 0 and old visitors are removed. */
+  async clearVisitors(userId: string) {
+    await ProfileVisit.deleteMany({ profileId: userId });
   },
 
   /** Visitor list, most recent first, carrying `visitTime` for the "2h ago" label. */
@@ -221,6 +234,12 @@ export const userService = {
         visitTime: v.visitTime,
         visitCount: v.visitCount,
       }));
+
+    // Mark all existing visits as seen so the unread visitor count becomes 0
+    await ProfileVisit.updateMany(
+      { profileId: userId, seen: { $ne: true } },
+      { $set: { seen: true } }
+    ).catch(() => {});
 
     return { data, total };
   },

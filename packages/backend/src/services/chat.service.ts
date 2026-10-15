@@ -16,25 +16,248 @@ export const chatService = {
 
     let chat = await Chat.findOne({
       participants: { $all: pair },
-    }).populate('participants', 'uid nickname avatar level sellerType verification country');
+    }).populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
 
     if (!chat) {
       chat = await Chat.create({ participants: pair });
-      chat = await Chat.populate(chat, { path: 'participants', select: 'uid nickname avatar level sellerType verification country' });
+      chat = await Chat.populate(chat, { path: 'participants', select: 'uid nickname avatar level sellerType verification country callPricePerMinute role' });
     }
 
+    const otherDoc = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
+    let otherData = null;
+    if (otherDoc) {
+      const activeStream = await LiveStream.findOne({ hostId: otherDoc._id, status: 'live' })
+        .select('_id title cover type viewerCount')
+        .lean();
+      otherData = {
+        ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+        isLive: Boolean(activeStream),
+        liveStreamId: activeStream ? activeStream._id.toString() : null,
+        liveStream: activeStream || null,
+      };
+    }
+
+    if ((chat as any)._doc) (chat as any)._doc.other = otherData;
+    (chat as any).other = otherData;
     return chat;
   },
 
-  async getChatById(chatId: string, userId: string) {
+  async createGroupChat(userId: string, memberIds: string[], name?: string, avatar?: string): Promise<any> {
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      throw new AppError('At least one member is required to create a group chat', 400);
+    }
+
+    const creator = await User.findById(userId).select('uid nickname avatar');
+    if (!creator) throw new AppError('User not found', 404);
+
+    const validMemberIds = memberIds
+      .filter((id) => mongoose.isValidObjectId(id) && id.toString() !== userId)
+      .map((id) => id.toString());
+
+    const allParticipantIds = Array.from(new Set([userId, ...validMemberIds]));
+
+    if (allParticipantIds.length < 2) {
+      throw new AppError('At least 2 members are required to form a group', 400);
+    }
+
+    let groupName = name?.trim();
+    if (!groupName) {
+      const otherUsers = await User.find({ _id: { $in: validMemberIds.slice(0, 2) } }).select('nickname');
+      const names = [creator.nickname || 'You', ...otherUsers.map((u) => u.nickname || 'Friend')];
+      groupName = `${names.join(', ')} Group`;
+    }
+
+    const chat = await Chat.create({
+      participants: allParticipantIds,
+      type: 'group',
+      name: groupName,
+      avatar: avatar || '',
+      creator: userId as any,
+      admins: [userId as any],
+      lastMessage: `${creator.nickname || 'Someone'} created the group`,
+      lastMessageAt: new Date(),
+      lastMessageBy: userId as any,
+    });
+
+    // Initial system notice in group
+    await ChatMessage.create({
+      chatId: chat._id,
+      senderId: userId,
+      message: `${creator.nickname || 'Someone'} created the group "${groupName}"`,
+      kind: 'text',
+      status: 'sent',
+      delivered: true,
+      deliveredAt: new Date(),
+    });
+
+    const populated = await Chat.findById(chat._id)
+      .populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
+
+    try {
+      const io = getIO();
+      for (const mId of validMemberIds) {
+        io.to(`user:${mId}`).emit('chat:group-created', { chat: populated });
+      }
+    } catch {}
+
+    const otherData = {
+      _id: chat._id,
+      nickname: groupName,
+      avatar: avatar || '',
+      isGroup: true,
+      memberCount: allParticipantIds.length,
+      creator: userId,
+      admins: [userId],
+    };
+
+    return {
+      ...(populated ? populated.toObject() : chat.toObject()),
+      isGroup: true,
+      other: otherData,
+    };
+  },
+
+  async addGroupMembers(chatId: string, userId: string, memberIds: string[]): Promise<any> {
+    const chat = await Chat.findOne({ _id: chatId, participants: userId });
+    if (!chat) throw new AppError('Chat not found', 404);
+    if (chat.type !== 'group') throw new AppError('Not a group chat', 400);
+
+    const toAdd = memberIds.filter((id) => mongoose.isValidObjectId(id) && !chat.participants.some((p: any) => p.toString() === id.toString()));
+    if (toAdd.length === 0) return chat;
+
+    chat.participants.push(...(toAdd as any[]));
+    await chat.save();
+
+    const adder = await User.findById(userId).select('nickname');
+    const addedUsers = await User.find({ _id: { $in: toAdd } }).select('nickname');
+    const addedNames = addedUsers.map((u) => u.nickname).join(', ');
+
+    await ChatMessage.create({
+      chatId: chat._id,
+      senderId: userId,
+      message: `${adder?.nickname || 'Someone'} added ${addedNames || 'new members'} to the group`,
+      kind: 'text',
+      status: 'sent',
+      delivered: true,
+      deliveredAt: new Date(),
+    });
+
+    const populated = await Chat.findById(chat._id)
+      .populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
+
+    try {
+      const io = getIO();
+      for (const p of chat.participants) {
+        const pIdStr = p.toString();
+        if (pIdStr !== userId) {
+          io.to(`user:${pIdStr}`).emit('chat:member-added', { chatId: chat._id.toString(), chat: populated });
+        }
+      }
+    } catch {}
+
+    return populated;
+  },
+
+  async updateGroupChat(chatId: string, userId: string, updates: { name?: string; avatar?: string }): Promise<any> {
+    const chat = await Chat.findOne({ _id: chatId, participants: userId });
+    if (!chat) throw new AppError('Chat not found', 404);
+    if (chat.type !== 'group') throw new AppError('Not a group chat', 400);
+
+    const updater = await User.findById(userId).select('nickname');
+    const changes: string[] = [];
+
+    if (updates.name !== undefined && updates.name.trim() !== '') {
+      chat.name = updates.name.trim();
+      changes.push(`name to "${chat.name}"`);
+    }
+
+    if (updates.avatar !== undefined) {
+      chat.avatar = updates.avatar.trim();
+      changes.push('group photo');
+    }
+
+    if (changes.length > 0) {
+      await chat.save();
+
+      await ChatMessage.create({
+        chatId: chat._id,
+        senderId: userId,
+        message: `${updater?.nickname || 'Someone'} updated the group ${changes.join(' and ')}`,
+        kind: 'text',
+        status: 'sent',
+        delivered: true,
+        deliveredAt: new Date(),
+      });
+    }
+
+    const populated = await Chat.findById(chat._id)
+      .populate('participants', 'uid nickname avatar level sellerType verification country lastActiveAt callPricePerMinute role');
+
+    const formatted = {
+      ...(populated ? populated.toObject() : {}),
+      isGroup: true,
+      other: {
+        _id: chat._id,
+        nickname: chat.name || 'Group Chat',
+        avatar: chat.avatar || '',
+        isGroup: true,
+        memberCount: chat.participants?.length || 0,
+        creator: chat.creator,
+        admins: chat.admins,
+      },
+    };
+
+    try {
+      const io = getIO();
+      for (const p of chat.participants) {
+        io.to(`user:${p.toString()}`).emit('chat:group-updated', {
+          chatId: chat._id.toString(),
+          name: chat.name,
+          avatar: chat.avatar,
+          chat: formatted,
+        });
+      }
+    } catch {}
+
+    return formatted;
+  },
+
+  async getChatById(chatId: string, userId: string): Promise<any> {
     const chat = await Chat.findOne({ _id: chatId, participants: userId })
-      .populate('participants', 'uid nickname avatar level sellerType verification country lastActiveAt');
+      .populate('participants', 'uid nickname avatar level sellerType verification country lastActiveAt callPricePerMinute role');
     if (!chat) throw new AppError('Chat not found', 404);
 
-    const other = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
+    const isGroup = chat.type === 'group';
+    let otherData = null;
+
+    if (isGroup) {
+      otherData = {
+        _id: chat._id,
+        nickname: chat.name || 'Group Chat',
+        avatar: chat.avatar || '',
+        isGroup: true,
+        memberCount: chat.participants?.length || 0,
+        creator: chat.creator,
+        admins: chat.admins,
+      };
+    } else {
+      const otherDoc = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
+      if (otherDoc) {
+        const activeStream = await LiveStream.findOne({ hostId: otherDoc._id, status: 'live' })
+          .select('_id title cover type viewerCount')
+          .lean();
+        otherData = {
+          ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+          isLive: Boolean(activeStream),
+          liveStreamId: activeStream ? activeStream._id.toString() : null,
+          liveStream: activeStream || null,
+        };
+      }
+    }
     return {
       ...chat.toObject(),
-      other,
+      isGroup,
+      other: otherData,
     };
   },
 
@@ -45,13 +268,22 @@ export const chatService = {
 
     const total = await Chat.countDocuments({ participants: userId });
     let chats = await Chat.find({ participants: userId })
-      .populate('participants', 'uid nickname avatar level sellerType verification country role isAgent agencyId')
+      .populate('participants', 'uid nickname avatar level sellerType verification country role isAgent agencyId callPricePerMinute')
       .populate('lastMessageBy', 'uid nickname')
       .sort({ lastMessageAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
     const now = new Date();
+    // Get active live streams
+    const activeStreams = await LiveStream.find({ status: 'live' }).select('_id hostId title cover type viewerCount').lean();
+    const streamUserMap = new Map<string, any>();
+    for (const s of activeStreams) {
+      if (s.hostId) {
+        streamUserMap.set(s.hostId.toString(), s);
+      }
+    }
+
     // Get active stories & active notes for participants
     const activeStories = await Story.find({ expiresAt: { $gt: now } }).select('userId views createdAt').lean();
     const storyUserMap = new Map<string, { count: number; hasUnviewed: boolean }>();
@@ -103,18 +335,37 @@ export const chatService = {
 
         const otherStory = otherDoc ? storyUserMap.get(otherDoc._id.toString()) : undefined;
         const otherNote = otherDoc ? noteUserMap.get(otherDoc._id.toString()) : undefined;
+        const otherStream = otherDoc ? streamUserMap.get(otherDoc._id.toString()) : undefined;
 
-        const other = otherDoc ? {
-          ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
-          isFriend,
-          isFollowing,
-          isAgency,
-          category,
-          hasStory: Boolean(otherStory && otherStory.count > 0),
-          storyCount: otherStory ? otherStory.count : 0,
-          hasUnviewedStory: otherStory ? otherStory.hasUnviewed : false,
-          note: otherNote || null,
-        } : null;
+        const isGroup = chat.type === 'group';
+        let other: any = null;
+
+        if (isGroup) {
+          other = {
+            _id: chat._id,
+            nickname: chat.name || 'Group Chat',
+            avatar: chat.avatar || '',
+            isGroup: true,
+            memberCount: chat.participants?.length || 0,
+            creator: chat.creator,
+          };
+          category = 'friends';
+        } else if (otherDoc) {
+          other = {
+            ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+            isFriend,
+            isFollowing,
+            isAgency,
+            category,
+            hasStory: Boolean(otherStory && otherStory.count > 0),
+            storyCount: otherStory ? otherStory.count : 0,
+            hasUnviewedStory: otherStory ? otherStory.hasUnviewed : false,
+            note: otherNote || null,
+            isLive: Boolean(otherStream),
+            liveStreamId: otherStream ? otherStream._id.toString() : null,
+            liveStream: otherStream || null,
+          };
+        }
 
         // Find last message details to include delivery/seen status
         const lastMsg = await ChatMessage.findOne({ chatId: chat._id }).sort({ createdAt: -1 }).lean();
@@ -346,29 +597,36 @@ export const chatService = {
     chat.lastMessageBy = senderId as any;
     await chat.save();
 
-    // Real-time delivery to the other participant
-    if (recipientId) {
-      const recipientIdStr = recipientId.toString();
-      try {
-        getIO().to(`user:${recipientIdStr}`).emit('chat:message', {
-          chatId,
-          message: msg.toObject(),
-          senderId,
-        });
-      } catch {
-        // socket not initialized
-      }
+    // Real-time delivery to other participants (1:1 or group)
+    const otherParticipants = (chat.participants as any[])
+      .filter((p: any) => (p._id ? p._id.toString() : p.toString()) !== senderId);
 
-      // Send Mobile Push Notification
+    if (otherParticipants.length > 0) {
       try {
-        User.findById(senderId)
-          .select('nickname avatar uid')
-          .lean()
-          .then((sender: any) => {
-            const senderName = sender?.nickname || 'Someone';
+        const senderDoc = await User.findById(senderId).select('nickname avatar uid').lean();
+        const senderName = senderDoc?.nickname || 'Someone';
+
+        for (const p of otherParticipants) {
+          const recipientIdStr = (p._id ? p._id.toString() : p.toString());
+          try {
+            getIO().to(`user:${recipientIdStr}`).emit('chat:message', {
+              chatId,
+              message: msg.toObject(),
+              senderId,
+              senderInfo: {
+                nickname: senderName,
+                avatar: senderDoc?.avatar,
+              },
+            });
+          } catch {
+            // socket not initialized
+          }
+
+          // Push Notification
+          try {
             const displayBody =
               extras.kind === 'gift'
-                ? `🎁 Sent you ${extras.giftCount || 1} ${extras.giftName || 'gift'}`
+                ? `🎁 Sent ${extras.giftCount || 1} ${extras.giftName || 'gift'}`
                 : extras.kind === 'voice'
                 ? '🎤 Sent a voice message'
                 : extras.kind === 'image'
@@ -376,9 +634,9 @@ export const chatService = {
                 : text;
 
             pushNotificationService.sendToUser(recipientIdStr, {
-              title: senderName,
-              body: displayBody,
-              imageUrl: sender?.avatar || undefined,
+              title: chat.type === 'group' ? (chat.name || 'Group Chat') : senderName,
+              body: chat.type === 'group' ? `${senderName}: ${displayBody}` : displayBody,
+              imageUrl: senderDoc?.avatar || undefined,
               data: {
                 type: 'message',
                 chatId: String(chatId),
@@ -386,8 +644,8 @@ export const chatService = {
                 targetUrl: `/chat/${chatId}`,
               },
             }).catch(() => {});
-          })
-          .catch(() => {});
+          } catch {}
+        }
       } catch {}
     }
 

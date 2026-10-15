@@ -445,8 +445,8 @@ export const LiveStreamPage = () => {
 
       triggerGifts(gift.icon || (gift as any).animation || '🎁', gift.name, Math.min(quantity, 6));
 
-      const costCoins = (gift.priceDiamonds || 0) * quantity;
-      showToast(`Sent ${quantity}x ${gift.name}! (-${costCoins.toLocaleString()} Coins)`, 'success');
+      const costDiamonds = (gift.priceDiamonds || 0) * quantity;
+      showToast(`Sent ${quantity}x ${gift.name}! (-${costDiamonds.toLocaleString()} Diamonds)`, 'success');
       setShowGift(false);
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to send gift', 'error');

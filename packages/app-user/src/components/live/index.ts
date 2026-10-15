@@ -16,4 +16,6 @@ export { PKPanel } from './PKPanel';
 export { AudienceList } from './AudienceList';
 export { LiveSkeleton } from './LiveSkeleton';
 export { HostCameraPreview } from './HostCameraPreview';
+export { LiveToolsSheet } from './LiveToolsSheet';
+export type { LiveToolsSheetProps } from './LiveToolsSheet';
 export type { LiveRoomProps, RoomMessage, RoomNotification } from './types';

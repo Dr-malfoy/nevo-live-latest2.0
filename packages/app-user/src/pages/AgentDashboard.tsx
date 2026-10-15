@@ -30,6 +30,11 @@ import {
   PiSignOutFill as SignOut,
   PiBroadcastFill as BroadcastIcon,
   PiShieldCheckFill as ShieldCheck,
+  PiEyeFill as EyeIcon,
+  PiSlidersHorizontalBold as FilterIcon,
+  PiStarFill as StarIcon,
+  PiArrowSquareOutBold as ExternalLinkIcon,
+  PiCheckBold as CheckBold,
 } from 'react-icons/pi';
 import {
   agentApi,
@@ -50,6 +55,7 @@ import {
   type JoinRequestData,
   type AgencyItem,
 } from '../api';
+import { AgencyWelcomeBanner, BANNER_THEMES } from '../components/agency';
 import { optional } from '../api/pending';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import {
@@ -69,7 +75,7 @@ import { getMediaUrl } from '../lib/media';
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
 
-type Tab = 'make_money' | 'manage' | 'wallet' | 'data';
+type Tab = 'make_money' | 'users' | 'manage' | 'wallet' | 'data';
 type DataTab = 'overview' | 'host' | 'invite';
 
 export const AgentDashboard = () => {
@@ -92,11 +98,14 @@ export const AgentDashboard = () => {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestData[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequestData[]>([]);
   const [search, setSearch] = useState('');
+  const [userSort, setUserSort] = useState<'all' | 'coins' | 'diamonds' | 'level' | 'hours'>('all');
+  const [copiedCode, setCopiedCode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
   // Settings Modal State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'banner'>('general');
   const [agencyName, setAgencyName] = useState('');
   const [agencyDescription, setAgencyDescription] = useState('');
   const [agencyAvatar, setAgencyAvatar] = useState('');
@@ -106,6 +115,16 @@ export const AgentDashboard = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+
+  // Welcome Banner Customizer State
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
+  const [welcomeTitle, setWelcomeTitle] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [welcomeTheme, setWelcomeTheme] = useState('purple');
+  const [welcomeBadge, setWelcomeBadge] = useState('OFFICIAL HOST');
+  const [welcomeImage, setWelcomeImage] = useState('');
+  const [welcomeFloat, setWelcomeFloat] = useState(true);
+  const [uploadingWelcomeBg, setUploadingWelcomeBg] = useState(false);
 
   // Member Leave Agency Modal State
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -163,6 +182,16 @@ export const AgentDashboard = () => {
         setAgencyCover(ag.cover || '');
         setAgencyType(ag.type || 'public');
         setAgencyCommission(ag.commission ?? 10);
+
+        // Initialize welcome banner customizer
+        const wb = ag.welcomeBanner || {};
+        setWelcomeEnabled(wb.enabled !== false);
+        setWelcomeTitle(wb.title || '');
+        setWelcomeMessage(wb.message || '');
+        setWelcomeTheme(wb.theme || 'purple');
+        setWelcomeBadge(wb.badgeText || 'OFFICIAL HOST');
+        setWelcomeImage(wb.imageUrl || '');
+        setWelcomeFloat(wb.floatAnimation !== false);
       } else {
         setMyAgency(null);
       }
@@ -299,6 +328,60 @@ export const AgentDashboard = () => {
     setWalletModal('send_coins');
   };
 
+  // Copy Agency Code
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      showToast(`Agency code ${code} copied!`, 'success');
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      showToast('Failed to copy code', 'error');
+    }
+  };
+
+  // Call agency member directly (Voice / Video)
+  const handleStartCallWithMember = async (
+    memberId: string,
+    memberNickname: string,
+    memberAvatar: string | undefined,
+    type: 'audio' | 'video' = 'audio'
+  ) => {
+    if (!memberId) return;
+    const perm = await requestMediaPermissions(type);
+    if (!perm.granted) {
+      showToast(perm.error || 'Permission denied', 'error');
+      return;
+    }
+
+    try {
+      const { data } = await callApi.create([memberId], type);
+      if (data.success && data.data) {
+        setCall({
+          outgoing: {
+            callId: data.data.callId,
+            channel: data.data.channel,
+            type: data.data.type,
+            token: data.data.token,
+            callee: { nickname: memberNickname, avatar: memberAvatar },
+          },
+        });
+      } else {
+        showToast(data.error || 'Could not initiate call', 'error');
+      }
+    } catch {
+      showToast('Could not start call with member', 'error');
+    }
+  };
+
+  // Quick Send Coins or Diamonds to member
+  const handleQuickSend = (uid: string, type: 'send_coins' | 'send_diamonds' = 'send_coins') => {
+    setTargetIdInput(uid);
+    setTransferAmountInput('');
+    setTransferNote('');
+    setWalletModal(type);
+  };
+
   // Submit Quit / Leave Agency Request
   const handleRequestLeaveAgency = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,6 +476,15 @@ export const AgentDashboard = () => {
         cover: agencyCover.trim() || undefined,
         type: agencyType,
         commission: Number(agencyCommission),
+        welcomeBanner: {
+          enabled: welcomeEnabled,
+          title: welcomeTitle.trim() || undefined,
+          message: welcomeMessage.trim() || undefined,
+          theme: welcomeTheme,
+          badgeText: welcomeBadge.trim() || undefined,
+          imageUrl: welcomeImage.trim() || undefined,
+          floatAnimation: welcomeFloat,
+        },
       });
       if (res.data?.success) {
         showToast('Agency settings updated successfully', 'success');
@@ -510,7 +602,7 @@ export const AgentDashboard = () => {
   };
 
   const getHostUser = (h: any) => {
-    if (!h) return { _id: '', uid: '', nickname: 'Member', avatar: '', level: 1, earnings: 0 };
+    if (!h) return { _id: '', uid: '', nickname: 'Member', avatar: '', level: 1, earnings: 0, coins: 0, diamonds: 0 };
     const u = (typeof h === 'object' && h !== null && 'user' in h && h.user && typeof h.user === 'object')
       ? h.user
       : h;
@@ -521,21 +613,70 @@ export const AgentDashboard = () => {
       avatar: u?.avatar || h?.avatar || '',
       level: u?.level || h?.level || 1,
       earnings: Number(h?.earnings ?? h?.contribution ?? u?.coins ?? h?.coins ?? 0),
+      coins: Number(u?.coins ?? h?.coins ?? 0),
+      diamonds: Number(u?.diamonds ?? h?.diamonds ?? 0),
     };
   };
 
-  const filteredHosts = useMemo(() => {
+  const userStats = useMemo(() => {
+    if (!Array.isArray(hosts)) return { totalCoins: 0, totalDiamonds: 0, totalHours: 0, totalEarnings: 0, count: 0 };
+    return hosts.reduce(
+      (acc, h: any) => {
+        const u = getHostUser(h);
+        acc.totalCoins += u.coins;
+        acc.totalDiamonds += u.diamonds;
+        acc.totalEarnings += u.earnings;
+        acc.totalHours += Number(h?.liveHours || h?.durationHours || 0);
+        acc.count += 1;
+        return acc;
+      },
+      { totalCoins: 0, totalDiamonds: 0, totalHours: 0, totalEarnings: 0, count: 0 }
+    );
+  }, [hosts]);
+
+  const sortedAndFilteredHosts = useMemo(() => {
     if (!Array.isArray(hosts)) return [];
-    if (!search.trim()) return hosts;
-    const q = search.trim().toLowerCase();
-    return hosts.filter((h: any) => {
-      const u = getHostUser(h);
-      return (
-        u.nickname.toLowerCase().includes(q) ||
-        u.uid.toLowerCase().includes(q)
-      );
+    let list = hosts;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((h: any) => {
+        const u = getHostUser(h);
+        return (
+          u.nickname.toLowerCase().includes(q) ||
+          u.uid.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    return [...list].sort((a: any, b: any) => {
+      const uA = getHostUser(a);
+      const uB = getHostUser(b);
+      if (userSort === 'coins') return uB.coins - uA.coins;
+      if (userSort === 'diamonds') return uB.diamonds - uA.diamonds;
+      if (userSort === 'level') return uB.level - uA.level;
+      if (userSort === 'hours') {
+        const hA = Number((a as any)?.liveHours || (a as any)?.durationHours || 0);
+        const hB = Number((b as any)?.liveHours || (b as any)?.durationHours || 0);
+        return hB - hA;
+      }
+      return 0;
     });
-  }, [hosts, search]);
+  }, [hosts, search, userSort]);
+
+  const topStreamers = useMemo(() => {
+    if (!Array.isArray(hosts) || hosts.length === 0) return [];
+    return [...hosts]
+      .sort((a: any, b: any) => {
+        const uA = getHostUser(a);
+        const uB = getHostUser(b);
+        const scoreA = (uA.earnings || uA.coins) + uA.diamonds;
+        const scoreB = (uB.earnings || uB.coins) + uB.diamonds;
+        return scoreB - scoreA;
+      })
+      .slice(0, 5);
+  }, [hosts]);
+
+  const filteredHosts = sortedAndFilteredHosts;
 
   const rangeLabel = AGENT_RANGES.find((r) => r.key === range)?.label ?? 'Range';
 
@@ -643,11 +784,12 @@ export const AgentDashboard = () => {
 
           {/* Navigation Tabs (Only for Agency Owners / Agents) */}
           {isOwner && (
-            <div className="max-w-md mx-auto mt-4">
+            <div className="max-w-md mx-auto mt-4 overflow-x-auto no-scrollbar">
               <PillTabs
                 tabs={[
                   { key: 'make_money', label: 'Overview' },
-                  { key: 'manage', label: `Manage (${joinRequests.length + leaveRequests.length})` },
+                  { key: 'users', label: `My Users (${hosts.length})` },
+                  { key: 'manage', label: `Requests (${joinRequests.length + leaveRequests.length})` },
                   { key: 'wallet', label: 'Agent Wallet' },
                   { key: 'data', label: 'Analytics' },
                 ]}
@@ -896,72 +1038,378 @@ export const AgentDashboard = () => {
              Full administrative and management controls.
              ══════════════════════════════════════════════════════════════════════ */
           <>
-            {/* ── 1. Overview Tab ────────────────────────────────────────── */}
+            {/* ── 1. Full Agency Overview Tab ────────────────────────────── */}
             {tab === 'make_money' && (
-              <div className="space-y-3">
-                {/* Pending Requests Alert */}
+              <div className="space-y-3.5">
+                {/* Pending Requests Alert Banner */}
                 {(joinRequests.length > 0 || leaveRequests.length > 0) && (
                   <div
                     onClick={() => setTab('manage')}
-                    className="p-3 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition-colors shadow-2xs"
+                    className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 flex items-center justify-between cursor-pointer hover:shadow-xs transition-all"
                   >
-                    <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                    <div className="flex items-center gap-2.5 text-xs font-bold text-amber-900">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+                      </span>
                       <span>
-                        {joinRequests.length > 0 && `${joinRequests.length} Join Request(s)`}
-                        {joinRequests.length > 0 && leaveRequests.length > 0 && ' & '}
+                        Action Needed: {joinRequests.length > 0 && `${joinRequests.length} Join Request(s)`}
+                        {joinRequests.length > 0 && leaveRequests.length > 0 && ' • '}
                         {leaveRequests.length > 0 && `${leaveRequests.length} Quit Request(s)`}
                       </span>
                     </div>
-                    <span className="text-[11px] font-extrabold text-indigo-600 flex items-center gap-0.5">
-                      Review <ChevronRight className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-black text-indigo-700 bg-white/80 px-2.5 py-1 rounded-xl shadow-2xs flex items-center gap-0.5 border border-indigo-100">
+                      Review <ChevronRight className="w-3 h-3" />
                     </span>
                   </div>
                 )}
 
-                {/* Earnings & Members Stat Card */}
-                <SectionCard>
-                  <div className="flex items-stretch">
-                    <div className="flex-1">
-                      <p className="text-xs text-slate-500">Total Contribution</p>
-                      <p className="text-2xl font-black text-slate-900 tabular-nums">
-                        {(myAgency?.totalContribution || earnings?.earnedToday || 0).toLocaleString()}
-                      </p>
+                {/* Agency Brand & Level Hero Card */}
+                <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 rounded-3xl p-4 text-white shadow-md relative overflow-hidden border border-white/10">
+                  <div className="absolute top-0 right-0 w-44 h-44 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        src={getMediaUrl(myAgency?.avatar) || getMediaUrl(user?.avatar)}
+                        nickname={myAgency?.name || 'Agency'}
+                        size="lg"
+                        className="ring-2 ring-indigo-400/50 shadow-md shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="text-base font-black text-white truncate">
+                            {myAgency?.name || `${user?.nickname}'s Agency`}
+                          </h3>
+                          <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" title="Verified Agency" />
+                          <span className={`px-2 py-0.2 rounded-full text-[10px] font-black border ${
+                            myAgency?.type === 'private'
+                              ? 'bg-purple-500/30 text-purple-200 border-purple-400/40'
+                              : 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
+                          }`}>
+                            {myAgency?.type === 'private' ? 'Private' : 'Public'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <button
+                            onClick={() => myAgency?.code && handleCopyCode(myAgency.code)}
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-mono font-bold text-amber-300 transition-all border border-white/10"
+                            title="Copy Agency Code"
+                          >
+                            <span>Code: {myAgency?.code || 'AGENCY'}</span>
+                            {copiedCode ? <CheckBold className="w-3 h-3 text-emerald-400" /> : <CopyIcon className="w-3 h-3" />}
+                          </button>
+
+                          <span className="text-white/30">•</span>
+                          <span className="text-[11px] font-extrabold text-indigo-300 flex items-center gap-1">
+                            <Crown className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Level {myAgency?.level || 1}</span>
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-px bg-slate-200 mx-3" />
-                    <div className="flex-1">
-                      <p className="text-xs text-slate-500">Live Hours</p>
-                      <p className="text-2xl font-black text-slate-900 tabular-nums">
-                        {myAgency?.totalLiveHours || 0}h
-                      </p>
-                    </div>
+
+                    {myAgency?._id && (
+                      <button
+                        onClick={() => navigate(`/agency/${myAgency._id}`)}
+                        className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-xs border border-white/15 shadow-2xs flex items-center gap-1 shrink-0 transition-all"
+                        title="View Public Agency Profile"
+                      >
+                        <span>Public View</span>
+                        <ExternalLinkIcon className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Agency Level</p>
-                      <p className="text-sm font-extrabold text-indigo-600 mt-0.5">Lv.{myAgency?.level || 1}</p>
+                  {/* Level Progress Bar */}
+                  <div className="mt-4 pt-3 border-t border-white/10">
+                    <div className="flex items-center justify-between text-[11px] mb-1.5 font-bold">
+                      <span className="text-indigo-200 flex items-center gap-1">
+                        <span>Level Progress</span>
+                        <span className="text-white/40">→ Level {(myAgency?.level || 1) + 1}</span>
+                      </span>
+                      <span className="text-amber-300 font-black">{myAgency?.levelProgress || 0}%</span>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Total Members</p>
-                      <p className="text-sm font-extrabold text-slate-900 mt-0.5">{myAgency?.memberCount || hosts.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Commission</p>
-                      <p className="text-sm font-extrabold text-emerald-600 mt-0.5">{myAgency?.commission ?? 10}%</p>
+                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden p-0.5">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-400 via-indigo-400 to-purple-400 rounded-full transition-all duration-700 shadow-xs"
+                        style={{ width: `${Math.max(4, Math.min(100, myAgency?.levelProgress || 0))}%` }}
+                      />
                     </div>
                   </div>
+                </div>
+
+                {/* Comprehensive Full Overview Stats Grid (6 KPI cards) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkle className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Agency Key Performance Metrics</span>
+                    </h3>
+                    <button
+                      onClick={() => setTab('users')}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
+                    >
+                      <span>Manage Users ({hosts.length})</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Total Contribution Points */}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Contribution
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                          <Trophy className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                        {(myAgency?.totalContribution || earnings?.earnedToday || 0).toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Total points earned</p>
+                    </div>
+
+                    {/* Total Live Stream Hours */}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Live Stream
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                          <ClockIcon className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                        {myAgency?.totalLiveHours || 0}h
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Total broadcast time</p>
+                    </div>
+
+                    {/* Total Members Count */}
+                    <div
+                      onClick={() => setTab('users')}
+                      className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between cursor-pointer hover:border-indigo-300 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Total Users
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                          <Users className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <p className="text-xl font-black text-indigo-700 tracking-tight leading-none">
+                          {myAgency?.memberCount || hosts.length}
+                        </p>
+                        <span className="text-[10px] font-extrabold text-indigo-600">View All →</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Active streamers joined</p>
+                    </div>
+
+                    {/* Agency Commission */}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Commission
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                          <Crown className="w-3.5 h-3.5 text-purple-600" />
+                        </div>
+                      </div>
+                      <p className="text-xl font-black text-purple-700 tracking-tight leading-none">
+                        {myAgency?.commission ?? 10}%
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Host earnings share</p>
+                    </div>
+
+                    {/* Members Total Coins Circulation */}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider">
+                          Members Coins
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                          <Coins className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <p className="text-xl font-black text-amber-600 tracking-tight leading-none truncate">
+                        {userStats.totalCoins.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Held across members</p>
+                    </div>
+
+                    {/* Members Total Diamonds Circulation */}
+                    <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <span className="text-[11px] font-extrabold text-sky-700 uppercase tracking-wider">
+                          Members Diamonds
+                        </span>
+                        <div className="w-7 h-7 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                          <DiamondIcon className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                      <p className="text-xl font-black text-sky-700 tracking-tight leading-none truncate">
+                        {userStats.totalDiamonds.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">Held across members</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Owner's Wallet Balance Quick Card */}
+                <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100/60 rounded-3xl p-4 border border-amber-200 shadow-2xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-amber-600" />
+                      <h4 className="font-extrabold text-xs text-amber-900 uppercase tracking-wider">
+                        Agent Wallet Balance
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => setTab('wallet')}
+                      className="text-xs font-bold text-amber-800 hover:text-amber-950 flex items-center gap-0.5"
+                    >
+                      <span>Wallet Details</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/80 backdrop-blur-xs p-3 rounded-2xl border border-amber-200/60">
+                      <span className="text-[10px] font-extrabold text-amber-800 uppercase">Available Coins</span>
+                      <p className="text-lg font-black text-slate-900 mt-0.5 tabular-nums">
+                        {(user?.coins || 0).toLocaleString()}
+                      </p>
+                      <button
+                        onClick={() => setWalletModal('send_coins')}
+                        className="mt-2 w-full py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-[11px] shadow-2xs transition-all"
+                      >
+                        Send Coins
+                      </button>
+                    </div>
+
+                    <div className="bg-white/80 backdrop-blur-xs p-3 rounded-2xl border border-amber-200/60">
+                      <span className="text-[10px] font-extrabold text-sky-800 uppercase">Available Diamonds</span>
+                      <p className="text-lg font-black text-slate-900 mt-0.5 tabular-nums">
+                        {(user?.diamonds || 0).toLocaleString()}
+                      </p>
+                      <button
+                        onClick={() => setWalletModal('send_diamonds')}
+                        className="mt-2 w-full py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-[11px] shadow-2xs transition-all"
+                      >
+                        Send Diamonds
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top Agency Streamers Leaderboard Preview */}
+                <SectionCard
+                  title={`Top Streamers (${topStreamers.length})`}
+                  subtitle="Leaderboard of your highest achieving hosts"
+                  flush
+                >
+                  {topStreamers.length === 0 ? (
+                    <div className="p-5 text-center">
+                      <p className="text-xs text-slate-400">No streamers have joined your agency yet.</p>
+                      <button
+                        onClick={() => navigate('/agent/invite-hosts')}
+                        className="mt-3 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-2xs"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Invite Your First Host</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3 space-y-2">
+                      {topStreamers.map((h: any, idx: number) => {
+                        const member = getHostUser(h);
+                        const rankBadge =
+                          idx === 0
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : idx === 1
+                            ? 'bg-slate-200 text-slate-700 border-slate-300'
+                            : idx === 2
+                            ? 'bg-orange-100 text-orange-800 border-orange-300'
+                            : 'bg-slate-100 text-slate-500 border-slate-200';
+
+                        return (
+                          <div
+                            key={member._id || `top-${idx}`}
+                            className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 hover:bg-slate-100 border border-slate-200/70 transition-all"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs border ${rankBadge}`}>
+                                {idx + 1}
+                              </span>
+                              <Avatar src={getMediaUrl(member.avatar)} nickname={member.nickname} size="sm" />
+                              <div className="min-w-0">
+                                <p className="font-bold text-xs text-slate-900 truncate">{member.nickname}</p>
+                                <p className="text-[10px] text-slate-400 font-mono">ID: {member.uid} • Lv.{member.level}</p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <div className="flex items-center gap-1.5 justify-end">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
+                                  🪙 {member.coins.toLocaleString()}
+                                </span>
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-bold">
+                                  💎 {member.diamonds.toLocaleString()}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                                {Number((h as any)?.liveHours || (h as any)?.durationHours || 0).toFixed(1)}h streamed
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <button
+                        onClick={() => setTab('users')}
+                        className="w-full mt-2 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 font-bold text-xs flex items-center justify-center gap-1 transition-all"
+                      >
+                        <span>Open My Users Page ({hosts.length})</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </SectionCard>
 
                 {/* Six Quick Tool Shortcuts */}
-                <SectionCard title="Agent Tools">
+                <SectionCard title="Agency Management Toolkit">
                   <div className="grid grid-cols-3 gap-2.5">
                     <button
-                      onClick={() => navigate('/agent/invite-hosts')}
+                      onClick={() => setTab('users')}
                       className="flex flex-col items-center p-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100/70 border border-indigo-100 transition-all text-center"
                     >
-                      <UserPlus className="w-6 h-6 text-indigo-600 mb-1.5" />
+                      <Users className="w-6 h-6 text-indigo-600 mb-1.5" />
+                      <span className="text-xs font-bold text-slate-900">My Users</span>
+                    </button>
+
+                    <button
+                      onClick={() => navigate('/agent/invite-hosts')}
+                      className="flex flex-col items-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-100 transition-all text-center"
+                    >
+                      <UserPlus className="w-6 h-6 text-emerald-600 mb-1.5" />
                       <span className="text-xs font-bold text-slate-900">Add Host</span>
+                    </button>
+
+                    <button
+                      onClick={() => setTab('manage')}
+                      className="flex flex-col items-center p-3 rounded-2xl bg-purple-50 hover:bg-purple-100/70 border border-purple-100 transition-all text-center relative"
+                    >
+                      {(joinRequests.length > 0 || leaveRequests.length > 0) && (
+                        <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      )}
+                      <Lock className="w-6 h-6 text-purple-600 mb-1.5" />
+                      <span className="text-xs font-bold text-slate-900">Requests</span>
                     </button>
 
                     <button
@@ -981,34 +1429,320 @@ export const AgentDashboard = () => {
                     </button>
 
                     <button
-                      onClick={() => setWalletModal('convert')}
-                      className="flex flex-col items-center p-3 rounded-2xl bg-purple-50 hover:bg-purple-100/70 border border-purple-100 transition-all text-center"
-                    >
-                      <ExchangeIcon className="w-6 h-6 text-purple-600 mb-1.5" />
-                      <span className="text-xs font-bold text-slate-900">Convert</span>
-                    </button>
-
-                    <button
                       onClick={() => setShowSettingsModal(true)}
                       className="flex flex-col items-center p-3 rounded-2xl bg-slate-100 hover:bg-slate-200/70 border border-slate-200 transition-all text-center"
                     >
                       <Gear className="w-6 h-6 text-slate-700 mb-1.5" />
                       <span className="text-xs font-bold text-slate-900">Settings</span>
                     </button>
-
-                    <button
-                      onClick={() => navigate('/agency')}
-                      className="flex flex-col items-center p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-100 transition-all text-center"
-                    >
-                      <Buildings className="w-6 h-6 text-emerald-600 mb-1.5" />
-                      <span className="text-xs font-bold text-slate-900">Agencies</span>
-                    </button>
                   </div>
                 </SectionCard>
               </div>
             )}
 
-            {/* ── 2. Manage Tab ──────────────────────────────────────────── */}
+            {/* ── 2. Dedicated My Users Page Tab ─────────────────────────── */}
+            {tab === 'users' && (
+              <div className="space-y-3.5">
+                {/* Users Page Header Card */}
+                <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-2xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="text-base font-black text-slate-900">
+                        My Users & Streamers
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {hosts.length} registered host{hosts.length === 1 ? '' : 's'} under your agency
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/agent/invite-hosts')}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Add Host</span>
+                    </button>
+                  </div>
+
+                  {/* Users Aggregated Summary Grid */}
+                  <div className="grid grid-cols-4 gap-2 pt-3 border-t border-slate-100 text-center">
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Users</p>
+                      <p className="text-sm font-black text-slate-900 mt-0.5">{hosts.length}</p>
+                    </div>
+                    <div className="bg-amber-50/80 p-2 rounded-xl border border-amber-100">
+                      <p className="text-[10px] font-bold text-amber-700 uppercase">Coins</p>
+                      <p className="text-sm font-black text-amber-700 mt-0.5 truncate">
+                        {userStats.totalCoins >= 1_000_000
+                          ? `${(userStats.totalCoins / 1_000_000).toFixed(1)}M`
+                          : userStats.totalCoins.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-sky-50/80 p-2 rounded-xl border border-sky-100">
+                      <p className="text-[10px] font-bold text-sky-700 uppercase">Diamonds</p>
+                      <p className="text-sm font-black text-sky-700 mt-0.5 truncate">
+                        {userStats.totalDiamonds >= 1_000_000
+                          ? `${(userStats.totalDiamonds / 1_000_000).toFixed(1)}M`
+                          : userStats.totalDiamonds.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-100">
+                      <p className="text-[10px] font-bold text-emerald-700 uppercase">Stream</p>
+                      <p className="text-sm font-black text-emerald-700 mt-0.5">
+                        {userStats.totalHours.toFixed(0)}h
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Search & Sort Controls */}
+                <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-2xs space-y-2.5">
+                  <div className="relative">
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search users by nickname or UID..."
+                      className="w-full h-10 pl-9 pr-8 rounded-xl bg-slate-100 text-xs font-medium text-slate-900 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    {search && (
+                      <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter & Sort Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+                    <button
+                      onClick={() => setUserSort('all')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap ${
+                        userSort === 'all'
+                          ? 'bg-slate-950 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      All ({hosts.length})
+                    </button>
+                    <button
+                      onClick={() => setUserSort('coins')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                        userSort === 'coins'
+                          ? 'bg-amber-500 text-white shadow-2xs'
+                          : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                      }`}
+                    >
+                      <span>🪙 Top Coins</span>
+                    </button>
+                    <button
+                      onClick={() => setUserSort('diamonds')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                        userSort === 'diamonds'
+                          ? 'bg-sky-600 text-white shadow-2xs'
+                          : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200/60'
+                      }`}
+                    >
+                      <span>💎 Top Diamonds</span>
+                    </button>
+                    <button
+                      onClick={() => setUserSort('level')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                        userSort === 'level'
+                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60'
+                      }`}
+                    >
+                      <span>👑 Highest Level</span>
+                    </button>
+                    <button
+                      onClick={() => setUserSort('hours')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                        userSort === 'hours'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60'
+                      }`}
+                    >
+                      <span>⏱️ Live Hours</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Users List Cards */}
+                {sortedAndFilteredHosts.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-8 border border-slate-200/90 text-center shadow-2xs">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 mx-auto flex items-center justify-center text-2xl mb-3 border border-indigo-100">
+                      👥
+                    </div>
+                    <h4 className="text-sm font-black text-slate-900">
+                      {search ? 'No Matching Users Found' : 'No Users in Your Agency Yet'}
+                    </h4>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto mt-1 mb-4">
+                      {search
+                        ? 'Try searching with a different streamer nickname or user ID.'
+                        : 'Share your agency code with streamers or add them directly to start building your roster.'}
+                    </p>
+                    <button
+                      onClick={() => navigate('/agent/invite-hosts')}
+                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-2xs inline-flex items-center gap-1.5"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Invite Streamers Now</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {sortedAndFilteredHosts.map((h: any, idx: number) => {
+                      const member = getHostUser(h);
+                      const liveHours = Number((h as any)?.liveHours || (h as any)?.durationHours || 0);
+
+                      return (
+                        <div
+                          key={member._id || `user-row-${idx}`}
+                          className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-2xs transition-all hover:shadow-xs"
+                        >
+                          {/* User Header Info */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                onClick={() => member._id && navigate(`/user/${member._id}`)}
+                                className="relative cursor-pointer shrink-0"
+                              >
+                                <Avatar
+                                  src={getMediaUrl(member.avatar)}
+                                  nickname={member.nickname}
+                                  size="lg"
+                                  className="ring-2 ring-indigo-100 shadow-2xs"
+                                />
+                                <span className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-full bg-slate-900 text-amber-300 text-[9px] font-black border border-white">
+                                  Lv.{member.level}
+                                </span>
+                              </div>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <h4
+                                    onClick={() => member._id && navigate(`/user/${member._id}`)}
+                                    className="font-black text-sm text-slate-900 truncate cursor-pointer hover:text-indigo-600"
+                                  >
+                                    {member.nickname}
+                                  </h4>
+                                </div>
+                                <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                  UID: <strong className="text-slate-700">{member.uid}</strong>
+                                </p>
+                                {liveHours > 0 && (
+                                  <p className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
+                                    <ClockIcon className="w-3 h-3" />
+                                    <span>{liveHours.toFixed(1)}h broadcasted</span>
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Public Profile Link */}
+                            {member._id && (
+                              <button
+                                onClick={() => navigate(`/user/${member._id}`)}
+                                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 flex items-center justify-center transition-colors shrink-0"
+                                title="View Public Profile"
+                              >
+                                <EyeIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Coins and Diamonds Pill Display (Only for Agency Owner) */}
+                          <div className="grid grid-cols-2 gap-2 mt-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-amber-800 flex items-center gap-1">
+                                <span>🪙</span> Coins
+                              </span>
+                              <span className="text-xs font-black text-amber-700 tabular-nums">
+                                {member.coins.toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between border-l border-slate-200 pl-2">
+                              <span className="text-[10px] font-bold text-sky-800 flex items-center gap-1">
+                                <span>💎</span> Diamonds
+                              </span>
+                              <span className="text-xs font-black text-sky-700 tabular-nums">
+                                {member.diamonds.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action Toolbar for Agency Owner */}
+                          <div className="grid grid-cols-5 gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                            {/* 1. Chat */}
+                            <button
+                              onClick={async () => {
+                                if (!member._id) return;
+                                try {
+                                  const { data } = await chatApi.getOrCreateChat(member._id);
+                                  if (data.success && data.data?._id) navigate(`/chat/${data.data._id}`);
+                                } catch {
+                                  navigate(`/user/${member._id}`);
+                                }
+                              }}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 transition-all"
+                              title="Chat with Member"
+                            >
+                              <ChatIcon className="w-4 h-4 mb-0.5" />
+                              <span className="text-[9px] font-extrabold">Chat</span>
+                            </button>
+
+                            {/* 2. Voice Call */}
+                            <button
+                              onClick={() => handleStartCallWithMember(member._id, member.nickname, member.avatar, 'audio')}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 transition-all border border-emerald-100"
+                              title="Voice Call"
+                            >
+                              <Phone className="w-4 h-4 mb-0.5 text-emerald-600" />
+                              <span className="text-[9px] font-extrabold">Voice</span>
+                            </button>
+
+                            {/* 3. Video Call */}
+                            <button
+                              onClick={() => handleStartCallWithMember(member._id, member.nickname, member.avatar, 'video')}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 transition-all border border-purple-100"
+                              title="Video Call"
+                            >
+                              <Video className="w-4 h-4 mb-0.5 text-purple-600" />
+                              <span className="text-[9px] font-extrabold">Video</span>
+                            </button>
+
+                            {/* 4. Send Coins */}
+                            <button
+                              onClick={() => handleQuickSend(member.uid, 'send_coins')}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 transition-all border border-amber-100"
+                              title="Send Coins to Member"
+                            >
+                              <Coins className="w-4 h-4 mb-0.5 text-amber-600" />
+                              <span className="text-[9px] font-extrabold">+Coins</span>
+                            </button>
+
+                            {/* 5. Remove Member */}
+                            <button
+                              onClick={() => handleRemoveMember(member._id, member.nickname)}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 transition-all border border-red-100"
+                              title="Remove from Agency"
+                            >
+                              <TrashIcon className="w-4 h-4 mb-0.5 text-red-500" />
+                              <span className="text-[9px] font-extrabold">Remove</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 3. Manage Requests Tab ─────────────────────────────────── */}
             {tab === 'manage' && (
               <div className="space-y-3">
                 {/* Incoming Private Join Requests */}
@@ -1039,7 +1773,15 @@ export const AgentDashboard = () => {
                                     ID: {applicant.uid}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-purple-900 mt-0.5 leading-snug">
+                                <div className="flex items-center flex-wrap gap-1.5 mt-1">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100/80 text-amber-900 text-[10px] font-bold">
+                                    🪙 {(applicant.coins || 0).toLocaleString()} Coins
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-100/80 text-sky-900 text-[10px] font-bold">
+                                    💎 {(applicant.diamonds || 0).toLocaleString()} Diamonds
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-purple-900 mt-1 leading-snug">
                                   "{req.message || 'Requesting to join agency'}"
                                 </p>
                               </div>
@@ -1097,7 +1839,15 @@ export const AgentDashboard = () => {
                                     ID: {hostUser.uid}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-amber-900 mt-0.5">
+                                <div className="flex items-center flex-wrap gap-1.5 mt-1">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100/80 text-amber-900 text-[10px] font-bold">
+                                    🪙 {(hostUser.coins || 0).toLocaleString()} Coins
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-100/80 text-sky-900 text-[10px] font-bold">
+                                    💎 {(hostUser.diamonds || 0).toLocaleString()} Diamonds
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-amber-900 mt-1">
                                   Reason: {req.reason || 'Requested to leave'}
                                 </p>
                               </div>
@@ -1124,77 +1874,6 @@ export const AgentDashboard = () => {
                       })}
                     </div>
                   )}
-                </SectionCard>
-
-                {/* Agency Members Management List */}
-                <SectionCard
-                  title={`Agency Members (${hosts.length})`}
-                  subtitle="Manage and communicate with your streamers"
-                  flush
-                >
-                  <div className="p-3">
-                    <div className="relative mb-3">
-                      <input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search member by nickname or ID..."
-                        className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-100 text-xs font-medium text-slate-900 border border-slate-200 focus:bg-white focus:outline-none"
-                      />
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    </div>
-
-                    {filteredHosts.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">No members found.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {filteredHosts.map((h: any, idx: number) => {
-                          const member = getHostUser(h);
-                          return (
-                            <div
-                              key={member._id || `host-${idx}`}
-                              className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <Avatar src={getMediaUrl(member.avatar)} nickname={member.nickname} size="md" />
-                                <div className="min-w-0">
-                                  <p className="font-bold text-xs text-slate-900 truncate">{member.nickname}</p>
-                                  <p className="text-[10px] text-slate-500 font-mono">ID: {member.uid} • Lv.{member.level}</p>
-                                  <p className="text-[10px] text-emerald-700 font-bold mt-0.5">
-                                    Earned: {member.earnings.toLocaleString()} coins
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={async () => {
-                                    if (!member._id) return;
-                                    try {
-                                      const { data } = await chatApi.getOrCreateChat(member._id);
-                                      if (data.success && data.data?._id) navigate(`/chat/${data.data._id}`);
-                                    } catch {
-                                      navigate(`/user/${member._id}`);
-                                    }
-                                  }}
-                                  className="p-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
-                                  title="Chat"
-                                >
-                                  <ChatIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleRemoveMember(member._id, member.nickname)}
-                                  className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
-                                  title="Remove Member"
-                                >
-                                  <TrashIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                 </SectionCard>
               </div>
             )}
@@ -1363,171 +2042,397 @@ export const AgentDashboard = () => {
 
       {/* ── Agency Settings Modal ── */}
       {showSettingsModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base font-extrabold text-slate-900 mb-3">Agency Settings</h3>
-            <form onSubmit={handleSaveSettings} className="space-y-3.5">
-              {/* Agency Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Agency Name</label>
-                <input
-                  type="text"
-                  required
-                  value={agencyName}
-                  onChange={(e) => setAgencyName(e.target.value)}
-                  className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium focus:bg-white focus:outline-none"
-                />
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-extrabold text-slate-900">Agency Settings</h3>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
 
-              {/* Agency Logo */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700">Agency Logo</label>
-                  <label className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
-                    {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+            {/* Settings Tabs */}
+            <div className="flex border-b border-slate-200 mb-4 bg-slate-50 p-1 rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => setSettingsTab('general')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  settingsTab === 'general'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                General Info
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsTab('banner')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  settingsTab === 'banner'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span>Welcome Banner</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-extrabold flex items-center gap-0.5">
+                  <Sparkle className="w-2.5 h-2.5 text-amber-500" />
+                  <span>Design</span>
+                </span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSettings} className="space-y-4">
+              {settingsTab === 'general' ? (
+                <>
+                  {/* Agency Name */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Agency Name</label>
                     <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingLogo}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setUploadingLogo(true);
-                        try {
-                          const url = await uploadApi.upload(file, 'agency');
-                          setAgencyAvatar(url);
-                          showToast('Logo uploaded', 'success');
-                        } catch {
-                          showToast('Failed to upload logo', 'error');
-                        } finally {
-                          setUploadingLogo(false);
-                        }
-                      }}
-                      className="hidden"
+                      type="text"
+                      required
+                      value={agencyName}
+                      onChange={(e) => setAgencyName(e.target.value)}
+                      className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium focus:bg-white focus:outline-none"
                     />
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                    {agencyAvatar ? (
-                      <img src={getMediaUrl(agencyAvatar)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">Logo</div>
-                    )}
                   </div>
-                  <input
-                    type="text"
-                    value={agencyAvatar}
-                    onChange={(e) => setAgencyAvatar(e.target.value)}
-                    placeholder="https://... logo URL"
-                    className="flex-1 h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium"
-                  />
-                </div>
-              </div>
 
-              {/* Agency Cover Banner */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700">Cover Banner</label>
-                  <label className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
-                    {uploadingCover ? 'Uploading...' : 'Upload Banner'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingCover}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setUploadingCover(true);
-                        try {
-                          const url = await uploadApi.upload(file, 'agency');
-                          setAgencyCover(url);
-                          showToast('Cover uploaded', 'success');
-                        } catch {
-                          showToast('Failed to upload cover', 'error');
-                        } finally {
-                          setUploadingCover(false);
-                        }
-                      }}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                <div className="space-y-1.5">
-                  {agencyCover && (
-                    <div className="h-16 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                      <img src={getMediaUrl(agencyCover)} alt="" className="w-full h-full object-cover" />
+                  {/* Agency Logo */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700">Agency Logo</label>
+                      <label className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
+                        {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingLogo}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingLogo(true);
+                            try {
+                              const url = await uploadApi.upload(file, 'agency');
+                              setAgencyAvatar(url);
+                              showToast('Logo uploaded', 'success');
+                            } catch {
+                              showToast('Failed to upload logo', 'error');
+                            } finally {
+                              setUploadingLogo(false);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
-                  )}
-                  <input
-                    type="text"
-                    value={agencyCover}
-                    onChange={(e) => setAgencyCover(e.target.value)}
-                    placeholder="https://... cover URL"
-                    className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium"
-                  />
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                        {agencyAvatar ? (
+                          <img src={getMediaUrl(agencyAvatar)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">Logo</div>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={agencyAvatar}
+                        onChange={(e) => setAgencyAvatar(e.target.value)}
+                        placeholder="https://... logo URL"
+                        className="flex-1 h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Agency Cover Banner */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700">Cover Banner</label>
+                      <label className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
+                        {uploadingCover ? 'Uploading...' : 'Upload Banner'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingCover}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingCover(true);
+                            try {
+                              const url = await uploadApi.upload(file, 'agency');
+                              setAgencyCover(url);
+                              showToast('Cover uploaded', 'success');
+                            } catch {
+                              showToast('Failed to upload cover', 'error');
+                            } finally {
+                              setUploadingCover(false);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                    <div className="space-y-1.5">
+                      {agencyCover && (
+                        <div className="h-16 w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                          <img src={getMediaUrl(agencyCover)} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        value={agencyCover}
+                        onChange={(e) => setAgencyCover(e.target.value)}
+                        placeholder="https://... cover URL"
+                        className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Agency Type */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAgencyType('public')}
+                        className={`py-2 text-xs font-bold rounded-xl border ${agencyType === 'public' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200 text-slate-600'}`}
+                      >
+                        Public
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAgencyType('private')}
+                        className={`py-2 text-xs font-bold rounded-xl border ${agencyType === 'private' ? 'border-purple-500 bg-purple-50 text-purple-800' : 'border-slate-200 text-slate-600'}`}
+                      >
+                        Private
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Commission */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Commission ({agencyCommission}%)</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={agencyCommission}
+                      onChange={(e) => setAgencyCommission(Number(e.target.value))}
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
+                    <textarea
+                      value={agencyDescription}
+                      onChange={(e) => setAgencyDescription(e.target.value)}
+                      rows={2}
+                      className="w-full p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 resize-none font-medium"
+                    />
+                  </div>
+                </>
+              ) : (
+                /* ── Welcome Banner Customizer Tab ── */
+                <div className="space-y-4">
+                  {/* Live Floating Animated Preview */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                        <Sparkle className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Live Animated Preview</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">Seen by new members</span>
+                    </div>
+
+                    <div className="p-2 rounded-3xl bg-slate-100/80 border border-slate-200">
+                      <AgencyWelcomeBanner
+                        mode="preview"
+                        banner={{
+                          enabled: welcomeEnabled,
+                          title: welcomeTitle,
+                          message: welcomeMessage,
+                          theme: welcomeTheme,
+                          badgeText: welcomeBadge,
+                          imageUrl: welcomeImage,
+                          floatAnimation: welcomeFloat,
+                        }}
+                        agencyName={agencyName || myAgency?.name}
+                        agencyCode={myAgency?.code}
+                        agent={{
+                          nickname: user?.nickname,
+                          avatar: user?.avatar,
+                          uid: user?.uid,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Enable Switch & Float Animation Switch */}
+                  <div className="grid grid-cols-2 gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-xs font-bold text-slate-700">Enable Banner</span>
+                      <input
+                        type="checkbox"
+                        checked={welcomeEnabled}
+                        onChange={(e) => setWelcomeEnabled(e.target.checked)}
+                        className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                        <Sparkle className="w-3 h-3 text-amber-500" />
+                        <span>Float Animation</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={welcomeFloat}
+                        onChange={(e) => setWelcomeFloat(e.target.checked)}
+                        className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Banner Theme Gradient Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Banner Theme / Style</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {Object.entries(BANNER_THEMES).map(([key, t]) => {
+                        const isSelected = welcomeTheme === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setWelcomeTheme(key)}
+                            className={`p-2 rounded-2xl border text-left flex flex-col justify-between h-14 transition-all relative overflow-hidden ${
+                              isSelected
+                                ? 'border-indigo-600 ring-2 ring-indigo-500/30 shadow-xs'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className={`w-full h-3 rounded-md bg-gradient-to-r ${t.gradient}`} />
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-[10px] font-extrabold text-slate-800 truncate">{t.name}</span>
+                              {isSelected && <span className="text-[10px] text-indigo-600 font-black">✓</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Banner Title */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Welcome Title</label>
+                    <input
+                      type="text"
+                      value={welcomeTitle}
+                      onChange={(e) => setWelcomeTitle(e.target.value)}
+                      placeholder={`Welcome to ${agencyName || 'Our Agency'}! 🎉`}
+                      className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Badge Text */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Badge Text</label>
+                    <input
+                      type="text"
+                      value={welcomeBadge}
+                      onChange={(e) => setWelcomeBadge(e.target.value)}
+                      placeholder="OFFICIAL HOST / VIP STREAMER"
+                      maxLength={25}
+                      className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Welcome Message */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Welcome Message / Greeting Note</label>
+                    <textarea
+                      value={welcomeMessage}
+                      onChange={(e) => setWelcomeMessage(e.target.value)}
+                      rows={3}
+                      placeholder={`We are thrilled to welcome you to the ${agencyName || 'agency'} family! Broadcast, shine bright, and let's achieve great success together.`}
+                      className="w-full p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 resize-none font-medium focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Custom Background Image Upload */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700">Custom Banner Background (Optional)</label>
+                      <label className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer">
+                        {uploadingWelcomeBg ? 'Uploading...' : 'Upload Image'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingWelcomeBg}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingWelcomeBg(true);
+                            try {
+                              const url = await uploadApi.upload(file, 'agency');
+                              setWelcomeImage(url);
+                              showToast('Banner background uploaded', 'success');
+                            } catch {
+                              showToast('Failed to upload background', 'error');
+                            } finally {
+                              setUploadingWelcomeBg(false);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {welcomeImage && (
+                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                          <img src={getMediaUrl(welcomeImage)} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        value={welcomeImage}
+                        onChange={(e) => setWelcomeImage(e.target.value)}
+                        placeholder="https://... image URL (optional)"
+                        className="flex-1 h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 font-medium"
+                      />
+                      {welcomeImage && (
+                        <button
+                          type="button"
+                          onClick={() => setWelcomeImage('')}
+                          className="text-xs text-rose-500 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Agency Type */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAgencyType('public')}
-                    className={`py-2 text-xs font-bold rounded-xl border ${agencyType === 'public' ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-slate-200 text-slate-600'}`}
-                  >
-                    Public
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAgencyType('private')}
-                    className={`py-2 text-xs font-bold rounded-xl border ${agencyType === 'private' ? 'border-purple-500 bg-purple-50 text-purple-800' : 'border-slate-200 text-slate-600'}`}
-                  >
-                    Private
-                  </button>
-                </div>
-              </div>
-
-              {/* Commission */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Commission ({agencyCommission}%)</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={agencyCommission}
-                  onChange={(e) => setAgencyCommission(Number(e.target.value))}
-                  className="w-full accent-indigo-600"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
-                <textarea
-                  value={agencyDescription}
-                  onChange={(e) => setAgencyDescription(e.target.value)}
-                  rows={2}
-                  className="w-full p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-900 resize-none font-medium"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowSettingsModal(false)}
-                  className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
+                  className="flex-1 h-11 rounded-2xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 active:scale-95 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={savingSettings || uploadingLogo || uploadingCover}
-                  className="flex-1 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs disabled:opacity-50"
+                  disabled={savingSettings || uploadingLogo || uploadingCover || uploadingWelcomeBg}
+                  className="flex-1 h-11 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-500/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                 >
-                  {savingSettings ? 'Saving...' : 'Save Changes'}
+                  <CheckCircle className="w-4 h-4 text-white" />
+                  <span>{savingSettings ? 'Saving...' : 'Save Settings'}</span>
                 </button>
               </div>
             </form>

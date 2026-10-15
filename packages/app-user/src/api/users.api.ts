@@ -76,6 +76,10 @@ export const usersApi = {
   getVisitors: (id?: string, page = 1) =>
     client.get<ApiResponse<ProfileVisitor[]>>(`/users/${id || 'me'}/visitors`, { params: { page } }),
 
+  /** Clear visitor history so old ones are removed and count resets to 0. */
+  clearVisitors: (id?: string) =>
+    client.delete<ApiResponse<{ cleared: boolean }>>(`/users/${id || 'me'}/visitors`),
+
   /* ── Blacklist / Blocked Users ─────────────────────────────────── */
   getBlacklist: () => client.get<ApiResponse<UserPublic[]>>('/users/me/blacklist'),
   toggleBlockUser: (targetId: string) =>

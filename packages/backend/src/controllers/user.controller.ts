@@ -38,7 +38,7 @@ export const userController = {
   async getVisitors(req: Request, res: Response, next: NextFunction) {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const limit = parseInt(req.query.limit as string) || 100;
       const targetId = req.params.id || req.user!.userId;
 
       // A visitor list is private — only the profile owner may read it.
@@ -47,7 +47,32 @@ export const userController = {
       }
 
       const { data, total } = await userService.getVisitors(targetId, page, limit);
+
+      // Notify real-time listeners that visitor count has been read/reset to 0
+      try {
+        const { getIO } = await import('../socket');
+        getIO()?.to(`user:${targetId}`).emit('stats:visitors-cleared', { visitors: 0 });
+      } catch {}
+
       sendPaginated(res, data, total, page, limit);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /** Clear all old visitors for this user so old ones are removed. */
+  async clearVisitors(req: Request, res: Response, next: NextFunction) {
+    try {
+      const targetId = req.params.id || req.user!.userId;
+      if (targetId !== req.user!.userId) {
+        return sendError(res, 'You can only clear your own visitors', 403);
+      }
+      await userService.clearVisitors(targetId);
+      try {
+        const { getIO } = await import('../socket');
+        getIO()?.to(`user:${targetId}`).emit('stats:visitors-cleared', { visitors: 0 });
+      } catch {}
+      sendSuccess(res, { cleared: true }, 'Visitors cleared');
     } catch (error) {
       next(error);
     }
@@ -172,20 +197,22 @@ export const userController = {
     }
   },
 
-  /** PUT /api/users/me/call-price (#72) */
+  /** PUT /api/users/me/call-price */
   async setCallPrice(req: Request, res: Response, next: NextFunction) {
     try {
-      const { coinsPerMinute } = req.body;
-      if (!coinsPerMinute || typeof coinsPerMinute !== 'number' || coinsPerMinute < 10000) {
-        sendError(res, 'Call price must be at least 10,000 coins per minute', 400);
+      const { coinsPerMinute, priceCoins, callPricePerMinute } = req.body;
+      const raw = coinsPerMinute ?? priceCoins ?? callPricePerMinute;
+      const rate = typeof raw === 'number' ? Math.floor(raw) : parseInt(raw, 10);
+      if (isNaN(rate) || rate < 0) {
+        sendError(res, 'Call price must be a valid non-negative number of coins', 400);
         return;
       }
       const user = await User.findByIdAndUpdate(
         req.user!.userId,
-        { callPricePerMinute: coinsPerMinute },
+        { callPricePerMinute: rate },
         { new: true }
       );
-      sendSuccess(res, { coinsPerMinute: user?.callPricePerMinute || 10000 }, 'Call price updated');
+      sendSuccess(res, { coinsPerMinute: user?.callPricePerMinute ?? rate }, 'Call price updated');
     } catch (error) {
       next(error);
     }

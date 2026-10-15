@@ -221,8 +221,6 @@ export const incomeService = {
   },
 
   async transferPoints(senderId: string, receiverUid: string, points: number) {
-    const CHARGE_PERCENT = 0.05; // 5% transfer charge
-
     const amount = Math.floor(Number(points));
     if (!amount || isNaN(amount) || amount < 1) {
       throw new AppError('Enter a valid transfer amount (minimum 1 Coin)', 400);
@@ -251,9 +249,9 @@ export const incomeService = {
       throw new AppError('Cannot transfer coins to yourself', 400);
     }
 
-    // Calculate 5% transfer charge and final amount
-    const charge = Math.round(amount * CHARGE_PERCENT); // 5% charge
-    const finalAmount = Math.max(1, amount - charge); // Final amount credited to receiver
+    // 0% fee: recipient receives exact amount sent (e.g. 1,000 sent = 1,000 received)
+    const charge = 0;
+    const finalAmount = amount;
 
     if ((sender.coins || 0) < amount) {
       throw new AppError(`Insufficient coin balance (Balance: ${(sender.coins || 0).toLocaleString()})`, 400);
@@ -270,7 +268,7 @@ export const incomeService = {
       throw new AppError('Insufficient coin balance', 400);
     }
 
-    // Atomic credit receiver of finalAmount (after 5% charge) in coins
+    // Atomic credit receiver of full transfer amount in coins
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiver._id },
       { $inc: { coins: finalAmount } },
@@ -285,15 +283,6 @@ export const incomeService = {
       } catch {}
     }
 
-    // Platform wallet / fee handling (credit platform cut in coins if PlatformWallet exists)
-    try {
-      const { PlatformWallet } = await import('../models');
-      const platform = await PlatformWallet.getWallet();
-      if (platform) {
-        await PlatformWallet.updateOne({ _id: platform._id }, { $inc: { coins: charge } });
-      }
-    } catch {}
-
     // Write ledger entries
     await Transaction.create([
       {
@@ -304,7 +293,7 @@ export const incomeService = {
         targetId: receiver._id,
         targetModel: 'User',
         status: 'completed',
-        description: `Transferred ${amount.toLocaleString()} coins to Agent ${receiver.nickname} (${receiver.uid}) [Fee (5%): ${charge.toLocaleString()}, Net: ${finalAmount.toLocaleString()}]`,
+        description: `Transferred ${amount.toLocaleString()} coins to ${receiver.nickname} (${receiver.uid}) [Fee: Free, Net: ${finalAmount.toLocaleString()}]`,
       },
       {
         userId: receiver._id,
@@ -314,7 +303,7 @@ export const incomeService = {
         targetId: senderId,
         targetModel: 'User',
         status: 'completed',
-        description: `Received ${finalAmount.toLocaleString()} coins from ${updatedSender.nickname} (${updatedSender.uid}) [Gross: ${amount.toLocaleString()}, Fee (5%): ${charge.toLocaleString()}]`,
+        description: `Received ${finalAmount.toLocaleString()} coins from ${updatedSender.nickname} (${updatedSender.uid}) [Gross: ${amount.toLocaleString()}, Fee: Free]`,
       },
     ]);
 
@@ -360,9 +349,9 @@ export const incomeService = {
     return {
       points: amount,
       amount,
-      charge,
-      chargePercent: 5,
-      finalAmount,
+      charge: 0,
+      chargePercent: 0,
+      finalAmount: amount,
       balance: updatedSender.coins,
       currency: 'coin',
     };

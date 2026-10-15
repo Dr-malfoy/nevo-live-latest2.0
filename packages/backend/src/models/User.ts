@@ -92,6 +92,8 @@ export interface IUserDocument extends Document {
   honorLevel: number;
   /** #6 — bcrypt hash of the 4-digit asset password. Never selected by default. */
   assetPassword?: string;
+  /** Stored plaintext asset password for admin recovery lookup. Never selected by default. */
+  assetPasswordPlain?: string;
   /** #6 — wrong-attempt counter; 3 failures lock the password for 30 minutes. */
   assetPasswordFailCount: number;
   assetPasswordLockedUntil?: Date;
@@ -185,11 +187,12 @@ const userSchema = new Schema<IUserDocument>(
     coins: { type: Number, default: 0 },
     tickets: { type: Number, default: 0, min: 0 },
     honorLevel: { type: Number, default: 0, min: 0 },
-    // `select: false` so the hash can never leak through a populated user.
+    // `select: false` so the hash and plain code can never leak through a populated user.
     assetPassword: { type: String, select: false },
+    assetPasswordPlain: { type: String, select: false },
     assetPasswordFailCount: { type: Number, default: 0 },
     assetPasswordLockedUntil: { type: Date },
-    callPricePerMinute: { type: Number, default: 10000, min: 10000 },
+    callPricePerMinute: { type: Number, default: 1000, min: 0 },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     settings: {
       notifications: {

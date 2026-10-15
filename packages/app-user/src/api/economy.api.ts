@@ -263,7 +263,11 @@ export const securityApi = {
 
   /** #72 — host sets their own per-minute call price. */
   setCallPrice: (coinsPerMinute: number) =>
-    client.put<ApiResponse<{ coinsPerMinute: number }>>('/users/me/call-price', { coinsPerMinute }),
+    client.put<ApiResponse<{ coinsPerMinute: number }>>('/users/me/call-price', {
+      coinsPerMinute,
+      priceCoins: coinsPerMinute,
+      callPricePerMinute: coinsPerMinute,
+    }),
 
   getCallQuote: (hostId: string) =>
     client.get<ApiResponse<{ coinsPerMinute: number; balance: number; canCall: boolean; reason?: string }>>(

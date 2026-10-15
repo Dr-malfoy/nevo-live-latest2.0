@@ -34,10 +34,12 @@ import {
   PiSealCheck,
   PiBuildingsFill,
   PiArrowsLeftRightFill,
+  PiArrowsOutSimpleBold as ExpandIcon,
 } from 'react-icons/pi';
 import { useAuthStore, useSocketStore } from '../stores';
 import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge } from '../components/user';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
+import { ImageLightboxModal } from '../components/ui';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
 import { usersApi, notificationApi, agentApi } from '../api';
 import { countryLabel } from '../lib/countries';
@@ -92,6 +94,12 @@ export const Profile = () => {
   const [levelSheetTab, setLevelSheetTab] = useState<'wealth' | 'live'>('wealth');
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [previewImage, setPreviewImage] = useState<{
+    url: string;
+    title: string;
+    subtitle?: string;
+    onEdit?: () => void;
+  } | null>(null);
 
   const isAgent = Boolean(
     user?.role === 'agent' ||
@@ -187,6 +195,24 @@ export const Profile = () => {
     };
   }, [isAuthenticated, updateUser]);
 
+  // Sync visitor count when visitors are cleared / viewed
+  useEffect(() => {
+    const handleVisitorsCleared = () => {
+      setStats((prev) => (prev ? { ...prev, visitors: 0 } : prev));
+    };
+
+    window.addEventListener('visitors:cleared', handleVisitorsCleared);
+    if (socket) {
+      socket.on('stats:visitors-cleared', handleVisitorsCleared);
+    }
+    return () => {
+      window.removeEventListener('visitors:cleared', handleVisitorsCleared);
+      if (socket) {
+        socket.off('stats:visitors-cleared', handleVisitorsCleared);
+      }
+    };
+  }, [socket]);
+
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -236,13 +262,31 @@ export const Profile = () => {
     (user.diamonds && user.diamonds > 0)
   );
 
+  const coverMediaUrl = user.cover ? getMediaUrl(user.cover) : null;
+  const avatarMediaUrl = user.avatar ? getMediaUrl(user.avatar) : null;
+
   return (
     <div className="bg-surface-soft min-h-screen">
       {/* ── Cover Photo Banner ─────────────────────────────────── */}
       <div className="relative">
-        <div className="h-44 w-full overflow-hidden bg-wash relative group">
-          {user.cover ? (
-            <img src={getMediaUrl(user.cover)} alt="Cover photo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        <div
+          onClick={() => {
+            if (coverMediaUrl) {
+              setPreviewImage({
+                url: coverMediaUrl,
+                title: `${user.nickname}'s Cover Photo`,
+                subtitle: `ID: ${user.uid}`,
+                onEdit: () => setEditing(true),
+              });
+            } else {
+              setEditing(true);
+            }
+          }}
+          className="h-44 w-full overflow-hidden bg-wash relative group cursor-pointer"
+          title="Click to view cover in full ratio"
+        >
+          {coverMediaUrl ? (
+            <img src={coverMediaUrl} alt="Cover photo" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-purple-200 via-pink-100 to-rose-200 opacity-60" />
           )}
@@ -250,8 +294,11 @@ export const Profile = () => {
 
           {/* Edit cover button */}
           <button
-            onClick={() => setEditing(true)}
-            className="absolute right-3 bottom-3 h-8 px-3 rounded-full bg-black/40 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-transform shadow-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+            }}
+            className="absolute right-3 bottom-3 h-8 px-3 rounded-full bg-black/40 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-transform shadow-sm hover:bg-black/60"
           >
             <Camera className="w-3.5 h-3.5" />
             <span>{user.cover ? 'Change Cover' : 'Add Cover'}</span>
@@ -295,14 +342,31 @@ export const Profile = () => {
       {/* ── User Profile Header Card (Image 2 Design) ───────────────────────────── */}
       <div className="bg-wash px-4 pt-2 pb-4">
         <div className="w-full flex items-center gap-3 -mt-8 relative z-10">
-          {/* Avatar — tapping opens the editor */}
-          <button
-            onClick={() => setEditing(true)}
-            className="ring-4 ring-wash rounded-full shrink-0 bg-white shadow-md active:scale-95 transition-transform"
-            aria-label="Edit Avatar"
-          >
-            <Avatar src={user.avatar} nickname={user.nickname} size="xl" online />
-          </button>
+          {/* Avatar — tapping opens full original ratio preview */}
+          <div className="relative group shrink-0">
+            <button
+              onClick={() => {
+                if (avatarMediaUrl) {
+                  setPreviewImage({
+                    url: avatarMediaUrl,
+                    title: `${user.nickname}'s Profile Picture`,
+                    subtitle: `ID: ${user.uid}`,
+                    onEdit: () => setEditing(true),
+                  });
+                } else {
+                  setEditing(true);
+                }
+              }}
+              className="ring-4 ring-wash rounded-full shrink-0 bg-white shadow-md active:scale-95 transition-transform block relative overflow-hidden"
+              aria-label="View Profile Picture"
+              title="Click to view picture in original ratio"
+            >
+              <Avatar src={user.avatar} nickname={user.nickname} size="xl" online />
+              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full">
+                <ExpandIcon className="w-5 h-5 drop-shadow" />
+              </div>
+            </button>
+          </div>
 
           {/* User Details */}
           <div className="flex-1 min-w-0 pt-6">
@@ -598,6 +662,19 @@ export const Profile = () => {
         userLiveLevel={(user as any).liveLevel || 1}
         userLevel={user.level}
       />
+
+      {previewImage && (
+        <ImageLightboxModal
+          isOpen={Boolean(previewImage)}
+          imageUrl={previewImage.url}
+          title={previewImage.title}
+          subtitle={previewImage.subtitle}
+          avatar={user.avatar}
+          nickname={user.nickname}
+          onClose={() => setPreviewImage(null)}
+          onEdit={previewImage.onEdit}
+        />
+      )}
     </div>
   );
 };

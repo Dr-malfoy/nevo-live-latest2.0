@@ -10,10 +10,13 @@ import {
   PiUserFill as UserIcon,
   PiBankFill,
   PiWalletFill,
+  PiKeyFill,
+  PiLockKeyFill,
+  PiXBold,
 } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
 import { paymentApi } from '../api/payment.api';
-import { agencyApi } from '../api';
+import { agencyApi, securityApi } from '../api';
 import { useAuthStore } from '../stores';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import {
@@ -85,7 +88,26 @@ export const Withdraw = () => {
   const [requests, setRequests] = useState<any[]>([]);
   const [tab, setTab] = useState<'pending' | 'approved' | 'rejected' | 'paid'>('pending');
 
+  // Asset Password Flow State
+  const [assetPasswordState, setAssetPasswordState] = useState<{ isSet: boolean; lockedUntil?: string | null; failCount?: number } | null>(null);
+  const [showSetPinModal, setShowSetPinModal] = useState(false);
+  const [showEnterPinModal, setShowEnterPinModal] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [enteredPin, setEnteredPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+
   const linked = !!user?.agencyId;
+
+  const loadAssetPasswordState = async () => {
+    try {
+      const { data } = await securityApi.getAssetPasswordState();
+      if (data?.success && data?.data) {
+        setAssetPasswordState(data.data);
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     paymentApi.getMethods().then(({ data }: any) => {
@@ -97,6 +119,7 @@ export const Withdraw = () => {
       });
     }
     loadRequests();
+    loadAssetPasswordState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, linked]);
 
@@ -122,7 +145,7 @@ export const Withdraw = () => {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleInitiateWithdrawal = () => {
     if (!amount || parsedAmount <= 0) {
       setError('Please enter a valid withdrawal amount');
       return;
@@ -135,18 +158,98 @@ export const Withdraw = () => {
       setError('Please enter your recipient account number or wallet address');
       return;
     }
+
+    setError('');
+    setPinError('');
+
+    // If first time (asset password not set), show creation modal
+    if (!assetPasswordState?.isSet) {
+      setNewPin('');
+      setConfirmPin('');
+      setShowSetPinModal(true);
+    } else {
+      setEnteredPin('');
+      setShowEnterPinModal(true);
+    }
+  };
+
+  const executeWithdrawal = async (password: string) => {
     setSubmitting(true);
     setError('');
     try {
-      await paymentApi.createWithdrawal({ currency, amount: parsedAmount, method, accountNumber });
+      await paymentApi.createWithdrawal({
+        currency,
+        amount: parsedAmount,
+        method,
+        accountNumber,
+        assetPassword: password,
+      });
       setSuccess(true);
       setAmount('');
       setAccountNumber('');
+      setShowEnterPinModal(false);
+      setShowSetPinModal(false);
       loadRequests();
+      // Update local user balance in store
+      if (currency === 'diamond' && user) {
+        updateUser({ diamonds: Math.max(0, (user.diamonds || 0) - parsedAmount) } as any);
+      } else if (currency === 'coin' && user) {
+        updateUser({ coins: Math.max(0, (user.coins || 0) - parsedAmount) } as any);
+      }
+      return true;
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create withdrawal request');
+      const errMsg = err.response?.data?.error || 'Failed to create withdrawal request';
+      setPinError(errMsg);
+      setError(errMsg);
+      if (err.response?.data?.code === 'ASSET_PASSWORD_LOCKED') {
+        setAssetPasswordState((prev: any) => ({ ...prev, lockedUntil: new Date(Date.now() + 30 * 60 * 1000).toISOString() }));
+      }
+      return false;
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreatePinAndWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{4}$/.test(newPin)) {
+      setPinError('Asset password must be exactly 4 numeric digits');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinError('PINs do not match. Please enter the same 4-digit PIN in both fields.');
+      return;
+    }
+
+    setPinLoading(true);
+    setPinError('');
+    try {
+      await securityApi.setAssetPassword(newPin);
+      setAssetPasswordState({ isSet: true, failCount: 0 });
+      // Proceed directly to execute the withdrawal with the new PIN
+      const ok = await executeWithdrawal(newPin);
+      if (ok) {
+        setShowSetPinModal(false);
+      }
+    } catch (err: any) {
+      setPinError(err.response?.data?.error || 'Failed to set asset password');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  const handleVerifyPinAndWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{4}$/.test(enteredPin)) {
+      setPinError('Asset password must be exactly 4 numeric digits');
+      return;
+    }
+    setPinLoading(true);
+    setPinError('');
+    try {
+      await executeWithdrawal(enteredPin);
+    } finally {
+      setPinLoading(false);
     }
   };
 
@@ -486,7 +589,7 @@ export const Withdraw = () => {
             {/* ── Submit Button ─────────────────────────────────────── */}
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={handleInitiateWithdrawal}
               disabled={submitting || !amount || parsedAmount <= 0 || !accountNumber}
               className="w-full py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-black hover:bg-black text-white rounded-2xl font-black text-sm tracking-wide shadow-lg shadow-slate-900/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99] flex items-center justify-center gap-2"
             >
@@ -602,6 +705,174 @@ export const Withdraw = () => {
           </div>
         )}
       </div>
+
+      {/* ── Modal 1: Create Asset Password (First Time) ──────────── */}
+      {showSetPinModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+                  <PiKeyFill className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">Set Asset Password</h3>
+                  <p className="text-[11px] text-slate-500">First-time withdrawal security</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetPinModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+                aria-label="Close"
+              >
+                <PiXBold className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+              To safeguard your account and earnings, please create a <strong>4-digit numeric PIN</strong>. You will need this password every time you request a withdrawal.
+            </p>
+
+            {pinError && (
+              <div className="p-3 mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{pinError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreatePinAndWithdraw} className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  New 4-Digit Asset PIN
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full text-center text-2xl font-mono tracking-widest py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Confirm 4-Digit Asset PIN
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full text-center text-2xl font-mono tracking-widest py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={pinLoading || newPin.length !== 4 || confirmPin.length !== 4}
+                className="w-full py-3.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-md transition disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {pinLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Setting Password & Submitting...</span>
+                  </>
+                ) : (
+                  <span>Set Password & Withdraw</span>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal 2: Enter Asset Password (Subsequent Times) ──────── */}
+      {showEnterPinModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center shadow-xs">
+                  <PiLockKeyFill className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">Enter Asset Password</h3>
+                  <p className="text-[11px] text-slate-500">Security verification</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEnterPinModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+                aria-label="Close"
+              >
+                <PiXBold className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+              Enter your 4-digit asset password to authorize withdrawing{' '}
+              <strong>{parsedAmount.toLocaleString()} {currency}</strong> (≈ ৳{bdtValue.toLocaleString()} BDT).
+            </p>
+
+            {pinError && (
+              <div className="p-3 mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{pinError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyPinAndWithdraw} className="space-y-4">
+              <div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={enteredPin}
+                  onChange={(e) => setEnteredPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••"
+                  className="w-full text-center text-3xl font-mono tracking-widest py-3 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  autoFocus
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={pinLoading || enteredPin.length !== 4}
+                className="w-full py-3.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-md transition disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {pinLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Verifying PIN...</span>
+                  </>
+                ) : (
+                  <span>Confirm Withdrawal</span>
+                )}
+              </button>
+
+              <div className="pt-2 text-center border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEnterPinModal(false);
+                    navigate('/help?tab=ticket&category=Asset%20Password%20Recovery');
+                  }}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline flex items-center justify-center gap-1 mx-auto"
+                >
+                  Forgot Asset Password? Contact Admin
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

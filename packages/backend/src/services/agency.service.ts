@@ -472,7 +472,18 @@ export const agencyService = {
     }
 
     // Only Admin, Agency Owner, and Agency Members can see the full host roster and member details
-    const visibleMembers = userRelationship.canViewFullDetails ? memberContributions : [];
+    // But ONLY Agency Owner and Admin can see members' coins and diamonds! Non-owners cannot see them.
+    const isOwnerOrAdmin = userRelationship.isOwner || userRelationship.isAdmin;
+    const visibleMembers = userRelationship.canViewFullDetails
+      ? memberContributions.map((m: any) => {
+          if (isOwnerOrAdmin) {
+            return m;
+          }
+          // Strip coins, diamonds, and contribution for regular members and visitors
+          const { coins, diamonds, contribution, ...safeMember } = m;
+          return safeMember;
+        })
+      : [];
 
     return {
       _id: agency._id.toString(),
@@ -502,6 +513,15 @@ export const agencyService = {
       },
       members: visibleMembers,
       userRelationship,
+      welcomeBanner: {
+        enabled: agency.welcomeBanner?.enabled !== false,
+        title: agency.welcomeBanner?.title || `Welcome to ${agency.name}! 🎉`,
+        message: agency.welcomeBanner?.message || `We are thrilled to welcome you to the ${agency.name} family! Broadcast, shine bright, and let's achieve great success together.`,
+        imageUrl: agency.welcomeBanner?.imageUrl || '',
+        theme: agency.welcomeBanner?.theme || 'purple',
+        badgeText: agency.welcomeBanner?.badgeText || 'OFFICIAL HOST',
+        floatAnimation: agency.welcomeBanner?.floatAnimation !== false,
+      },
       createdAt: agency.createdAt,
     };
   },
@@ -765,6 +785,15 @@ export const agencyService = {
       cover?: string;
       type?: 'public' | 'private';
       commission?: number;
+      welcomeBanner?: {
+        enabled?: boolean;
+        title?: string;
+        message?: string;
+        imageUrl?: string;
+        theme?: string;
+        badgeText?: string;
+        floatAnimation?: boolean;
+      };
     }
   ) {
     const agency = await Agency.findOne({ agentId });
@@ -787,6 +816,18 @@ export const agencyService = {
     }
     if (typeof data.commission === 'number' && data.commission >= 0 && data.commission <= 100) {
       agency.commission = data.commission;
+    }
+    if (data.welcomeBanner && typeof data.welcomeBanner === 'object') {
+      const current = agency.welcomeBanner || {};
+      agency.welcomeBanner = {
+        enabled: data.welcomeBanner.enabled !== undefined ? Boolean(data.welcomeBanner.enabled) : (current.enabled ?? true),
+        title: typeof data.welcomeBanner.title === 'string' ? data.welcomeBanner.title.trim() : (current.title || ''),
+        message: typeof data.welcomeBanner.message === 'string' ? data.welcomeBanner.message.trim() : (current.message || ''),
+        imageUrl: typeof data.welcomeBanner.imageUrl === 'string' ? data.welcomeBanner.imageUrl.trim() : (current.imageUrl || ''),
+        theme: typeof data.welcomeBanner.theme === 'string' ? data.welcomeBanner.theme.trim() : (current.theme || 'purple'),
+        badgeText: typeof data.welcomeBanner.badgeText === 'string' ? data.welcomeBanner.badgeText.trim() : (current.badgeText || 'OFFICIAL HOST'),
+        floatAnimation: data.welcomeBanner.floatAnimation !== undefined ? Boolean(data.welcomeBanner.floatAnimation) : (current.floatAnimation ?? true),
+      };
     }
 
     await agency.save();
@@ -1441,6 +1482,22 @@ export const agencyService = {
 
     if (!agency) return null;
 
+    // Check if requesting user is agency owner or admin
+    const isOwnerOrAdmin =
+      agency.agentId?._id?.toString() === userId ||
+      agency.agentId?.toString() === userId ||
+      user.role === 'admin' ||
+      (user as any).isAdmin === true;
+
+    // If not owner or admin, remove coins and diamonds of members from hosts
+    if (!isOwnerOrAdmin && Array.isArray(agency.hosts)) {
+      agency.hosts = agency.hosts.map((h: any) => {
+        if (!h || typeof h !== 'object') return h;
+        const { coins, diamonds, ...safeHost } = h;
+        return safeHost;
+      });
+    }
+
     const memberCount = agency.hosts?.length || 0;
     const levelInfo = calculateAgencyLevel(agency.totalContribution || 0, agency.totalLiveHours || 0);
 
@@ -1450,6 +1507,15 @@ export const agencyService = {
       level: Math.max(agency.level || 1, levelInfo.level),
       levelProgress: levelInfo.progress,
       nextThreshold: levelInfo.nextThreshold,
+      welcomeBanner: {
+        enabled: agency.welcomeBanner?.enabled !== false,
+        title: agency.welcomeBanner?.title || `Welcome to ${agency.name}! 🎉`,
+        message: agency.welcomeBanner?.message || `We are thrilled to welcome you to the ${agency.name} family! Broadcast, shine bright, and let's achieve great success together.`,
+        imageUrl: agency.welcomeBanner?.imageUrl || '',
+        theme: agency.welcomeBanner?.theme || 'purple',
+        badgeText: agency.welcomeBanner?.badgeText || 'OFFICIAL HOST',
+        floatAnimation: agency.welcomeBanner?.floatAnimation !== false,
+      },
     };
   },
 

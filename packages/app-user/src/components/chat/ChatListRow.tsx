@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   PiBellSlashFill as BellOff,
   PiBellFill as Bell,
@@ -13,14 +14,18 @@ import {
   PiUserPlusFill as FollowersIcon,
   PiWalletFill as WalletIcon,
   PiSealCheckFill as VerifiedBadgeIcon,
+  PiUsersThreeFill as UsersGroup,
 } from 'react-icons/pi';
 import { Avatar } from '../user';
 import { LevelBadge } from '../user/LevelBadge';
 import { flagEmoji } from '../../lib/countries';
 import { timeAgo } from '../../lib/time';
+import { getMediaUrl } from '../../lib/media';
 
 export interface ChatRow {
   _id: string;
+  name?: string;
+  avatar?: string;
   category?: 'all' | 'following' | 'friends' | 'strangers' | 'agency' | 'system';
   officialKey?: string;
   other?: {
@@ -30,7 +35,11 @@ export interface ChatRow {
     level?: number;
     country?: string;
     online?: boolean;
+    isGroup?: boolean;
+    memberCount?: number;
+    isLive?: boolean;
     liveStreamId?: string | null;
+    liveStream?: any;
     verification?: { verified?: boolean };
     isFriend?: boolean;
     isFollowing?: boolean;
@@ -75,6 +84,7 @@ export const ChatListRow = ({
   onLongPress,
   onOpenStory,
 }: ChatListRowProps) => {
+  const navigate = useNavigate();
   const [offset, setOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -84,7 +94,9 @@ export const ChatListRow = ({
   const hasMoved = useRef(false);
 
   const other = chat.other || {};
-  const isOfficial = Boolean(chat.type === 'system' || other.isOfficial || chat.officialKey);
+  const isGroup = Boolean(chat.type === 'group' || other.isGroup);
+  const groupAvatar = other.avatar || chat.avatar;
+  const isOfficial = !isGroup && Boolean(chat.type === 'system' || other.isOfficial || chat.officialKey);
   const unread = chat.unread || 0;
   const isMine = Boolean(chat.lastMessageSenderId && currentUserId && chat.lastMessageSenderId === currentUserId);
 
@@ -290,18 +302,53 @@ export const ChatListRow = ({
           isOfficial ? 'bg-gradient-to-r from-blue-50/20 via-white to-white' : ''
         }`}
       >
-        {/* Avatar: Official custom icon OR user avatar with story ring */}
+        {/* Avatar: Official custom icon OR live stream indicator OR user avatar with story ring */}
         <div
           className="relative shrink-0"
           onClick={(e) => {
-            if (other.hasStory && other._id && onOpenStory) {
+            if ((other.isLive || other.liveStreamId) && (other.liveStreamId || other.liveStream?._id)) {
+              e.stopPropagation();
+              navigate(`/live/${other.liveStreamId || other.liveStream?._id}`);
+            } else if (other.hasStory && other._id && onOpenStory) {
               e.stopPropagation();
               onOpenStory(other._id);
             }
           }}
+          title={other.isLive ? '🔴 LIVE NOW! Tap to join live stream' : undefined}
         >
-          {isOfficial ? (
+          {isGroup ? (
+            groupAvatar ? (
+              <div className="relative shrink-0 w-12 h-12 rounded-2xl overflow-hidden shadow-md shadow-purple-500/20 ring-2 ring-white">
+                <img
+                  src={getMediaUrl(groupAvatar)}
+                  alt={other.nickname || chat.name || 'Group'}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 ring-2 ring-white">
+                <UsersGroup className="w-6 h-6 text-white" />
+              </div>
+            )
+          ) : isOfficial ? (
             renderOfficialAvatar()
+          ) : other.isLive || other.liveStreamId ? (
+            <div className="relative group/live cursor-pointer transition-transform active:scale-95">
+              <span className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-amber-400 opacity-75 blur-xs animate-pulse" />
+              <div className="relative p-[2.5px] rounded-full bg-gradient-to-tr from-rose-600 via-pink-500 to-rose-400 shadow-md ring-2 ring-rose-500/40">
+                <Avatar
+                  src={other.avatar}
+                  nickname={other.nickname || '?'}
+                  size="md"
+                  online={other.online}
+                  className="ring-2 ring-white"
+                />
+              </div>
+              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-[0.5px] rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-pink-600 text-white text-[8px] font-black uppercase tracking-wider shadow-md flex items-center gap-0.5 border border-white select-none animate-pulse">
+                <span className="w-1 h-1 rounded-full bg-white animate-ping" />
+                <span>LIVE</span>
+              </span>
+            </div>
           ) : other.hasStory ? (
             <div
               className={`p-[2.5px] rounded-full transition-transform active:scale-95 ${
@@ -333,8 +380,22 @@ export const ChatListRow = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0 mb-1">
             <span className="font-bold text-[15px] text-slate-900 truncate group-hover:text-rose-600 transition-colors">
-              {other.nickname || (isOfficial ? 'Official Notice' : 'User')}
+              {other.nickname || chat.name || (isGroup ? 'Group Chat' : isOfficial ? 'Official Notice' : 'User')}
             </span>
+
+            {isGroup && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full shrink-0">
+                <UsersGroup className="w-2.5 h-2.5" />
+                <span>Group • {other.memberCount || 2}</span>
+              </span>
+            )}
+
+            {(other.isLive || other.liveStreamId) && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full shrink-0 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                <span>LIVE</span>
+              </span>
+            )}
 
             {isOfficial ? (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200/70 px-1.5 py-0.2 rounded-md shrink-0">

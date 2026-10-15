@@ -83,12 +83,12 @@ router.put('/user-info', authenticate, async (req, res, next) => {
 // User — create withdrawal request (through linked agent)
 router.post('/withdraw', authenticate, requireNidVerified, async (req, res, next) => {
   try {
-    const { currency, amount, method, accountNumber } = req.body;
+    const { currency, amount, method, accountNumber, assetPassword } = req.body;
     if (!currency || !amount || !method || !accountNumber) {
       sendError(res, 'Missing required fields: currency, amount, method, accountNumber', 400);
       return;
     }
-    const request = await paymentService.createWithdrawalRequest(req.user!.userId, { currency, amount, method, accountNumber });
+    const request = await paymentService.createWithdrawalRequest(req.user!.userId, { currency, amount, method, accountNumber, assetPassword });
     sendSuccess(res, request, 'Withdrawal request created', 201);
   } catch (e) { next(e); }
 });

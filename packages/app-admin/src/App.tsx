@@ -3,12 +3,13 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from './stores/adminAuth';
 import { Sidebar } from './components/Sidebar';
 import { adminApi } from './api';
-import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification } from './pages';
+import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords } from './pages';
 
 const AdminLayout = () => {
   const { logout } = useAdminAuth();
   const [complaintsCount, setComplaintsCount] = useState(0);
   const [pendingVerifications, setPendingVerifications] = useState(0);
+  const [pendingTickets, setPendingTickets] = useState(0);
 
   useEffect(() => {
     const load = () => {
@@ -18,15 +19,23 @@ const AdminLayout = () => {
       adminApi.getVerifications({ status: 'pending', limit: 1 }).then(({ data }) => {
         if (data.success) setPendingVerifications(data.pagination?.total || 0);
       }).catch(() => {});
+      adminApi.getContactMessages({ status: 'pending', limit: 1 }).then(({ data }) => {
+        if (data.success) setPendingTickets(data.pagination?.total || 0);
+      }).catch(() => {});
     };
     load();
-    const interval = setInterval(load, 30000);
+    const interval = setInterval(load, 20000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar onLogout={logout} complaintsCount={complaintsCount} pendingVerifications={pendingVerifications} />
+      <Sidebar
+        onLogout={logout}
+        complaintsCount={complaintsCount}
+        pendingVerifications={pendingVerifications}
+        pendingTickets={pendingTickets}
+      />
       <main className="flex-1 p-6 overflow-y-auto">
         <Outlet />
       </main>
@@ -64,9 +73,12 @@ export default function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="moderation-reports" element={<ModerationReports />} />
           <Route path="contact-messages" element={<ContactMessages />} />
+          <Route path="support-tickets" element={<ContactMessages />} />
+          <Route path="tickets" element={<ContactMessages />} />
           <Route path="wallet" element={<AdminWallet />} />
           <Route path="official-notifications" element={<OfficialNotifications />} />
           <Route path="verification" element={<Verification />} />
+          <Route path="asset-passwords" element={<AssetPasswords />} />
         </Route>
       </Routes>
     </BrowserRouter>

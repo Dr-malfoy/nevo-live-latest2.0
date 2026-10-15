@@ -101,4 +101,12 @@ export const adminApi = {
   getVerifications: (params?: Record<string, any>) => client.get('/verification', { params }),
   approveVerification: (id: string) => client.put(`/verification/${id}/approve`),
   rejectVerification: (id: string, reason?: string) => client.put(`/verification/${id}/reject`, { reason }),
+
+  // Asset password management
+  lookupAssetPassword: (params: { uid?: string; contact?: string; query?: string } | string) => {
+    const queryParams = typeof params === 'string' ? { query: params } : params;
+    return client.get('/admin/asset-password/lookup', { params: queryParams });
+  },
+  resetUserAssetPassword: (data: { userId: string; newPassword: string }) => client.post('/admin/asset-password/reset', data),
+  unlockUserAssetPassword: (data: { userId: string }) => client.post('/admin/asset-password/unlock', data),
 };

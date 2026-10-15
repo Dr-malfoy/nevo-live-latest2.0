@@ -7,9 +7,9 @@ const isLocalWeb =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  (isLocalWeb ? '/api' : 'https://nevo-live-latest.onrender.com/api');
+const API_BASE = isLocalWeb
+  ? '/api'
+  : (import.meta.env.VITE_API_URL || 'https://nevo-live-latest.onrender.com/api');
 
 const client = axios.create({
   baseURL: API_BASE,

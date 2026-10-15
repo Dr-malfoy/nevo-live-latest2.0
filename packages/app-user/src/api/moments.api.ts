@@ -35,4 +35,7 @@ export const momentsApi = {
 
   recordView: (id: string) =>
     client.post<ApiResponse<{ viewCount: number }>>(`/moments/${id}/view`),
+
+  getLikes: (id: string) =>
+    client.get<ApiResponse<any[]>>(`/moments/${id}/likes`),
 };

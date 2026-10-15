@@ -1,131 +1,261 @@
 import { useState } from 'react';
-import { PiPhoneFill as Phone } from 'react-icons/pi';
+import { motion } from 'framer-motion';
+import {
+  PiPhoneCallFill as PhoneCall,
+  PiSparkleFill as Sparkles,
+  PiCheckBold as Check,
+  PiInfoBold as Info,
+  PiArrowRightBold as ArrowRight,
+  PiTrendUpBold as TrendingUp,
+  PiChatsCircleFill as ChatIcon,
+  PiUserFill as UserIcon,
+} from 'react-icons/pi';
 import { securityApi } from '../api/economy.api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
-import { ScreenHeader, SectionCard } from '../components/common';
+import { ScreenHeader } from '../components/common';
 import { CoinIcon } from '../components/ui/CurrencyIcon';
 
-/**
- * 1-to-1 call price — requirement #72.
- *
- * The host picks a per-minute price. The floor is 10,000 coins and the server
- * enforces it too (BACKEND-GUIDE.md §4.2) — this screen only saves the host
- * a round-trip.
- */
-
-const MINIMUM = 10_000;
-const PRESETS = [10_000, 15_000, 20_000, 50_000];
+const PRESETS = [500, 1_000, 2_000, 5_000, 10_000, 20_000];
 
 export const CallPrice = () => {
   const { user, updateUser } = useAuthStore();
   const showToast = useUIStore((s) => s.showToast);
 
-  const current = (user as any)?.callPricePerMinute ?? MINIMUM;
+  const current = (user as any)?.callPricePerMinute ?? 1_000;
   const [price, setPrice] = useState(String(current));
   const [saving, setSaving] = useState(false);
 
   const value = parseInt(price, 10) || 0;
-  const tooLow = value > 0 && value < MINIMUM;
-  const canSave = value >= MINIMUM && value !== current && !saving;
+  const canSave = value >= 0 && value !== current && !saving;
 
-  const save = async () => {
+  // Host receives 100% of coins billed
+  const hostCutPerMin = value;
+
+  const save = async (targetValue?: number) => {
+    const valToSave = typeof targetValue === 'number' ? targetValue : value;
+    if (valToSave < 0) {
+      showToast('Please enter a valid coin amount', 'info');
+      return;
+    }
     setSaving(true);
     try {
-      const res = await optional(securityApi.setCallPrice(value));
+      const res = await optional(securityApi.setCallPrice(valToSave));
       if (res === null) {
-        showToast('Call pricing is not connected yet', 'info');
+        showToast('Call pricing service is currently offline', 'error');
         return;
       }
       if (res.success) {
-        updateUser({ ...(user as any), callPricePerMinute: value } as any);
-        showToast('Call price updated', 'success');
+        updateUser({ ...(user as any), callPricePerMinute: valToSave } as any);
+        showToast(`Call rate updated to ${valToSave.toLocaleString()} Coins / min`, 'success');
       } else {
-        showToast(res.error || 'Could not save', 'error');
+        showToast(res.error || 'Could not save call rate', 'error');
       }
     } catch (err: any) {
-      showToast(err.response?.data?.error || 'Could not save', 'error');
+      showToast(err.response?.data?.error || 'Failed to update call rate', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-surface-soft pb-8">
-      <ScreenHeader title="1:1 Call Price" />
+    <div className="min-h-screen bg-slate-950 text-white pb-12 select-none overflow-x-hidden">
+      <ScreenHeader title="1:1 Call Rate Settings" />
 
-      <div className="px-3 pt-3 space-y-3">
-        <SectionCard>
-          <div className="flex items-center gap-3 mb-4">
-            <span className="w-11 h-11 rounded-2xl bg-[#E9F9EE] text-[#22A45D] flex items-center justify-center">
-              <Phone className="w-5 h-5" />
-            </span>
+      <main className="max-w-md mx-auto px-4 pt-4 space-y-4">
+        {/* Hero Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-3xl p-5 bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-950 border border-amber-500/30 shadow-[0_8px_32px_rgba(245,158,11,0.15)] backdrop-blur-xl"
+        >
+          <div className="absolute top-0 right-0 -mr-8 -mt-8 w-36 h-36 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-center gap-3.5 mb-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+              <PhoneCall className="w-6 h-6" />
+            </div>
             <div>
-              <p className="font-bold text-ink">Per-minute price</p>
-              <p className="text-xs text-ink-muted">Minimum {MINIMUM.toLocaleString()} coins</p>
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-lg font-black tracking-tight text-white">Your Per-Minute Rate</h2>
+                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+              </div>
+              <p className="text-xs text-slate-400">Charge callers in Coins whenever they call you</p>
             </div>
           </div>
 
-          <div className="flex items-center h-12 px-4 rounded-xl bg-surface-sunken border border-transparent focus-within:bg-white focus-within:border-accent-500 transition-colors">
-            <CoinIcon className="w-5 h-5 text-coin shrink-0" />
-            <input
-              value={price}
-              onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))}
-              inputMode="numeric"
-              className="flex-1 min-w-0 ml-2 bg-transparent text-ink focus:outline-none tabular-nums"
-            />
-            <span className="text-sm text-ink-muted shrink-0">/ min</span>
+          {/* Price Input Box */}
+          <div className="mt-4">
+            <label className="text-[11px] font-bold text-amber-300/90 uppercase tracking-wider block mb-1.5">
+              Charge Per Minute (Coins)
+            </label>
+            <div className="relative flex items-center h-14 px-4 rounded-2xl bg-black/60 border-2 border-amber-500/40 focus-within:border-amber-400 focus-within:shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all">
+              <CoinIcon className="w-7 h-7 text-amber-400 shrink-0 drop-shadow" />
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))}
+                inputMode="numeric"
+                placeholder="1000"
+                className="flex-1 min-w-0 ml-3 bg-transparent text-2xl font-black text-white focus:outline-none tabular-nums placeholder-white/20"
+              />
+              <span className="text-xs font-bold text-amber-400/90 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-full shrink-0">
+                Coins / min
+              </span>
+            </div>
           </div>
 
-          {tooLow && (
-            <p className="text-xs text-role-host mt-2">
-              The minimum is {MINIMUM.toLocaleString()} coins per minute.
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2 mt-3">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setPrice(String(preset))}
-                className={`h-9 px-3.5 rounded-full text-sm font-medium transition-colors ${
-                  value === preset ? 'bg-black text-white' : 'bg-surface-sunken text-ink-soft'
-                }`}
-              >
-                {preset.toLocaleString()}
-              </button>
-            ))}
+          {/* Quick Preset Chips */}
+          <div className="mt-3.5">
+            <p className="text-[11px] font-medium text-slate-400 mb-2">Quick Presets:</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setPrice(String(preset))}
+                  className={`h-9 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                    value === preset
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/30 scale-[1.02]'
+                      : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
+                  }`}
+                >
+                  <CoinIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{preset.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
+          {/* Save Button */}
           <button
-            onClick={save}
+            type="button"
+            onClick={() => save()}
             disabled={!canSave}
-            className="w-full h-12 mt-5 btn-primary disabled:opacity-40"
+            className="w-full h-12 mt-5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-[0.98] text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-amber-500/25 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center gap-2"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? (
+              <span className="inline-block animate-spin mr-1">⏳</span>
+            ) : (
+              <Check className="w-5 h-5 stroke-[2]" />
+            )}
+            <span>{saving ? 'Updating Rate...' : value === current ? 'Current Rate Active' : 'Save New Call Rate'}</span>
           </button>
-        </SectionCard>
+        </motion.div>
 
-        <SectionCard title="How billing works">
-          <ul className="text-sm text-ink-soft space-y-2 leading-relaxed list-disc list-inside">
-            <li>A caller needs at least one minute's worth of coins before the call starts.</li>
-            <li>The first minute is charged immediately when you accept.</li>
-            <li>
-              Time is rounded <strong>up</strong> — a 2 min 30 s call bills 3 minutes.
-            </li>
-            <li>When the caller runs out of coins the call ends automatically.</li>
-          </ul>
-
-          <div className="mt-3 p-3 rounded-xl bg-surface-sunken">
-            <p className="text-[13px] text-ink-soft leading-relaxed">
-              At <strong>{(value || MINIMUM).toLocaleString()}</strong> coins per minute, a 3-minute
-              call earns you{' '}
-              <strong className="tabular-nums">{((value || MINIMUM) * 3).toLocaleString()}</strong>{' '}
-              coins.
-            </p>
+        {/* Live Preview Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="rounded-3xl p-4 bg-slate-900/80 border border-slate-800 shadow-md space-y-3"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Live Preview For Other Users</h3>
           </div>
-        </SectionCard>
-      </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            {/* Profile badge preview */}
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 mb-2">
+                <UserIcon className="w-3.5 h-3.5 text-sky-400" />
+                <span>On Your Profile</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-amber-400/40 text-amber-300 text-xs font-black shadow-xs">
+                <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
+                <span>{value.toLocaleString()} Coins / min</span>
+              </div>
+            </div>
+
+            {/* Messenger header preview */}
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 mb-2">
+                <ChatIcon className="w-3.5 h-3.5 text-emerald-400" />
+                <span>In Messenger Header</span>
+              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-bold">
+                <CoinIcon className="w-3 h-3 text-amber-400" />
+                <span>{value.toLocaleString()} / min</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Earnings Calculation Breakdown */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="rounded-3xl p-4 bg-slate-900/80 border border-slate-800 shadow-md space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Estimated Call Earnings</h3>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              Host Share 60%
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <span className="text-[11px] text-slate-400 font-medium block">5-Minute Call</span>
+              <p className="text-lg font-black text-amber-400 mt-0.5 flex items-center justify-center gap-1">
+                <CoinIcon className="w-4 h-4 text-amber-400" />
+                <span>{(hostCutPerMin * 5).toLocaleString()}</span>
+              </p>
+              <span className="text-[10px] text-slate-500">Billed: {(value * 5).toLocaleString()}</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <span className="text-[11px] text-slate-400 font-medium block">15-Minute Call</span>
+              <p className="text-lg font-black text-amber-400 mt-0.5 flex items-center justify-center gap-1">
+                <CoinIcon className="w-4 h-4 text-amber-400" />
+                <span>{(hostCutPerMin * 15).toLocaleString()}</span>
+              </p>
+              <span className="text-[10px] text-slate-500">Billed: {(value * 15).toLocaleString()}</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <span className="text-[11px] text-slate-400 font-medium block">30-Minute Call</span>
+              <p className="text-lg font-black text-amber-400 mt-0.5 flex items-center justify-center gap-1">
+                <CoinIcon className="w-4 h-4 text-amber-400" />
+                <span>{(hostCutPerMin * 30).toLocaleString()}</span>
+              </p>
+              <span className="text-[10px] text-slate-500">Billed: {(value * 30).toLocaleString()}</span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
+              <span className="text-[11px] text-slate-400 font-medium block">60-Minute Call</span>
+              <p className="text-lg font-black text-emerald-400 mt-0.5 flex items-center justify-center gap-1">
+                <CoinIcon className="w-4 h-4 text-amber-400" />
+                <span>{(hostCutPerMin * 60).toLocaleString()}</span>
+              </p>
+              <span className="text-[10px] text-slate-500">Billed: {(value * 60).toLocaleString()}</span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* How It Works Explainer */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="rounded-3xl p-4 bg-slate-900/60 border border-slate-800/80 space-y-2.5 text-xs text-slate-400 leading-relaxed"
+        >
+          <div className="flex items-center gap-1.5 font-bold text-slate-300">
+            <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>How Call Billing & Earnings Work</span>
+          </div>
+          <ul className="space-y-1.5 list-disc list-inside">
+            <li>Callers must have enough Coins in their balance to start the call.</li>
+            <li>Coins are deducted per minute automatically while the call is connected.</li>
+            <li>Earnings are credited directly to your Coin balance when the call ends.</li>
+            <li>If a caller runs out of coins during the call, the call automatically disconnects.</li>
+          </ul>
+        </motion.div>
+      </main>
     </div>
   );
 };
