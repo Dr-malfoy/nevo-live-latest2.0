@@ -15,6 +15,7 @@ import {
   PiSparkleFill as Sparkles,
   PiCompassFill as Compass,
   PiPlanetFill as Planet,
+  PiCrownFill as Crown,
 } from 'react-icons/pi';
 import { useSocketStore, useAuthStore } from '../stores';
 import { callApi } from '../api';
@@ -70,7 +71,26 @@ export const Match = () => {
   const [error, setError] = useState('');
   const [searchElapsed, setSearchElapsed] = useState(0);
   const [tickerIndex, setTickerIndex] = useState(0);
+  const [showSubModal, setShowSubModal] = useState(false);
   const activeCallRef = useRef<string>('');
+
+  const matchSub = currentUser?.matchSubscription;
+  const isSubActive = Boolean(
+    matchSub?.active &&
+    matchSub?.expiresAt &&
+    new Date(matchSub.expiresAt) > new Date()
+  );
+  const filterMatchesRemaining = matchSub?.filterMatchesRemaining ?? 0;
+  const freeCallsRemaining = matchSub?.freeCallsRemaining ?? 0;
+  const hasFilterQuota = isSubActive && filterMatchesRemaining > 0;
+
+  const handleGenderSelect = (gender: GenderFilter) => {
+    if (gender !== 'all' && !hasFilterQuota) {
+      setShowSubModal(true);
+      return;
+    }
+    setGenderFilter(gender);
+  };
 
   // Search timer & rotating dynamic ticker
   useEffect(() => {
@@ -93,6 +113,11 @@ export const Match = () => {
   const startSearching = useCallback(async () => {
     setError('');
 
+    if (genderFilter !== 'all' && !hasFilterQuota) {
+      setShowSubModal(true);
+      return;
+    }
+
     // Pre-flight check media permissions
     const perm = await requestMediaPermissions(callType);
     if (!perm.granted) {
@@ -104,8 +129,17 @@ export const Match = () => {
     setCallAccepted(false);
     activeCallRef.current = '';
     setPhase('searching');
-    joinMatch(callType, genderFilter);
-  }, [joinMatch, callType, genderFilter]);
+    joinMatch(callType, genderFilter, (res: any) => {
+      if (res && !res.success) {
+        setPhase('idle');
+        if (res.needSubscription) {
+          setShowSubModal(true);
+        } else {
+          setError(res.error || 'Failed to join match queue');
+        }
+      }
+    });
+  }, [joinMatch, callType, genderFilter, hasFilterQuota]);
 
   const stopAndLeave = useCallback(() => {
     leaveMatch();
@@ -287,6 +321,56 @@ export const Match = () => {
             </div>
           </div>
 
+          {/* 1:1 VIP Subscription Status / Upsell Banner */}
+          {isSubActive ? (
+            <div className="w-full rounded-2xl bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-pink-500/15 border border-amber-400/40 p-3.5 backdrop-blur-xl flex items-center justify-between shadow-[0_4px_20px_rgba(245,158,11,0.15)]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-pink-500 flex items-center justify-center text-white shadow-md shrink-0">
+                  <Crown className="w-5 h-5 text-amber-100" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-amber-300">1:1 VIP Active</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-200 border border-amber-400/30 font-bold">1 Week</span>
+                  </div>
+                  <p className="text-[11px] text-white/70 font-medium">
+                    <span className="text-white font-bold">{filterMatchesRemaining}</span> filter matches · <span className="text-white font-bold">{freeCallsRemaining}</span> free calls
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/store?category=subscription')}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold text-white transition-all shrink-0"
+              >
+                Store
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => navigate('/store?category=subscription')}
+              className="w-full rounded-2xl bg-gradient-to-r from-purple-900/40 via-pink-900/30 to-amber-900/40 border border-purple-400/30 hover:border-pink-400/50 p-3.5 backdrop-blur-xl flex items-center justify-between shadow-lg cursor-pointer group transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform shrink-0">
+                  <Crown className="w-5 h-5 text-amber-300" />
+                </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-pink-300">1:1 VIP Pass</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-bold border border-pink-500/30">Store</span>
+                  </div>
+                  <p className="text-[11px] text-white/60 font-medium">
+                    100 gender filters & 5 free 1m calls/week
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center text-xs font-bold text-pink-400 group-hover:translate-x-0.5 transition-transform shrink-0">
+                Get ➔
+              </div>
+            </div>
+          )}
+
           {/* 1. Gender Filter Card (Boy / Girl / All) */}
           <div className="rounded-3xl bg-white/[0.04] backdrop-blur-2xl p-4 border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.5)] space-y-3">
             <div className="flex items-center justify-between px-1">
@@ -305,13 +389,19 @@ export const Match = () => {
               {/* BOY FILTER */}
               <button
                 type="button"
-                onClick={() => setGenderFilter('male')}
+                onClick={() => handleGenderSelect('male')}
                 className={`relative flex flex-col items-center justify-center py-3.5 px-2 rounded-2xl font-bold transition-all border ${
                   genderFilter === 'male'
                     ? 'bg-gradient-to-b from-blue-600/90 to-indigo-700/90 text-white border-blue-400/80 shadow-[0_0_24px_rgba(59,130,246,0.55)] scale-[1.03]'
                     : 'bg-white/[0.04] text-white/70 border-white/10 hover:bg-white/[0.08] hover:text-white'
                 }`}
               >
+                {!hasFilterQuota && (
+                  <span className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-400/90 text-[8px] font-black text-slate-950 shadow">
+                    <Crown className="w-2.5 h-2.5" />
+                    <span>VIP</span>
+                  </span>
+                )}
                 <div
                   className={`w-9 h-9 rounded-xl flex items-center justify-center mb-1.5 transition-all ${
                     genderFilter === 'male'
@@ -328,13 +418,19 @@ export const Match = () => {
               {/* GIRL FILTER */}
               <button
                 type="button"
-                onClick={() => setGenderFilter('female')}
+                onClick={() => handleGenderSelect('female')}
                 className={`relative flex flex-col items-center justify-center py-3.5 px-2 rounded-2xl font-bold transition-all border ${
                   genderFilter === 'female'
                     ? 'bg-gradient-to-b from-pink-600/90 to-rose-700/90 text-white border-pink-400/80 shadow-[0_0_24px_rgba(244,63,94,0.55)] scale-[1.03]'
                     : 'bg-white/[0.04] text-white/70 border-white/10 hover:bg-white/[0.08] hover:text-white'
                 }`}
               >
+                {!hasFilterQuota && (
+                  <span className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-400/90 text-[8px] font-black text-slate-950 shadow">
+                    <Crown className="w-2.5 h-2.5" />
+                    <span>VIP</span>
+                  </span>
+                )}
                 <div
                   className={`w-9 h-9 rounded-xl flex items-center justify-center mb-1.5 transition-all ${
                     genderFilter === 'female'
@@ -368,7 +464,7 @@ export const Match = () => {
                   <AllGendersIcon className="w-5 h-5" />
                 </div>
                 <span className="text-xs font-extrabold tracking-wide">All</span>
-                <span className="text-[9px] text-white/50 font-medium mt-0.5">Everyone</span>
+                <span className="text-[9px] text-emerald-400 font-bold mt-0.5">Everyone</span>
               </button>
             </div>
           </div>
@@ -617,6 +713,90 @@ export const Match = () => {
           onClose={handleCallClose}
         />
       )}
+
+      {/* ── 4. 1:1 SUBSCRIPTION REQUIRED MODAL ── */}
+      <AnimatePresence>
+        {showSubModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm rounded-3xl bg-[#120e24] border border-purple-500/40 p-6 text-center shadow-[0_20px_60px_rgba(168,85,247,0.4)] overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-36 h-36 bg-pink-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-36 h-36 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
+
+              <button
+                type="button"
+                onClick={() => setShowSubModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-3 bg-gradient-to-tr from-amber-400 via-pink-500 to-purple-600 p-0.5 shadow-xl flex items-center justify-center">
+                <div className="w-full h-full rounded-[14px] bg-[#120e24] flex items-center justify-center">
+                  <Crown className="w-8 h-8 text-amber-300 drop-shadow-[0_2px_10px_rgba(251,191,36,0.6)]" />
+                </div>
+              </div>
+
+              <span className="inline-block px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-pink-500/20 border border-amber-400/40 text-[11px] font-black text-amber-300 uppercase tracking-wider mb-2">
+                1:1 Subscription VIP
+              </span>
+
+              <h3 className="text-xl font-black text-white tracking-tight mb-2">
+                Gender Filter Requires Pass
+              </h3>
+              <p className="text-xs text-white/70 leading-relaxed mb-4">
+                To filter matchmaking specifically by <span className="text-pink-300 font-bold">Boy</span> or <span className="text-pink-300 font-bold">Girl</span>, you need the <span className="text-amber-300 font-bold">1:1 Subscription Card</span> from the Store.
+              </p>
+
+              {/* Benefits list */}
+              <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-3.5 space-y-2 mb-5 text-left text-xs">
+                <div className="flex items-center gap-2 text-white/90">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>100 Filter Matches</strong> per week</span>
+                </div>
+                <div className="flex items-center gap-2 text-white/90">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>5 Free Calls</strong> (1st full minute free)</span>
+                </div>
+                <div className="flex items-center gap-2 text-white/90">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span>Active for <strong>7 days (1 Week)</strong></span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSubModal(false);
+                    navigate('/store?category=subscription');
+                  }}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-pink-500 to-purple-600 text-white font-extrabold text-sm shadow-[0_8px_25px_rgba(236,72,153,0.4)] active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Crown className="w-4 h-4 text-amber-200" />
+                  <span>Get 1:1 Pass in Store</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGenderFilter('all');
+                    setShowSubModal(false);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs transition-all"
+                >
+                  Match Everyone for Free
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

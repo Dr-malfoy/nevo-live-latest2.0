@@ -16,6 +16,7 @@ import {
   PiPackageFill as PackageIcon,
   PiCrownFill as Crown,
   PiArrowRightBold as ArrowRight,
+  PiPhoneCallFill as PhoneCall,
 } from 'react-icons/pi';
 import { storeApi, type BagItem, type StoreCategory } from '../api/economy.api';
 import { optional } from '../api/pending';
@@ -32,6 +33,7 @@ interface CategoryOption {
 
 const CATEGORY_OPTIONS: CategoryOption[] = [
   { key: 'all', label: 'All Items', Icon: PackageIcon },
+  { key: 'subscription', label: '1:1 Pass', Icon: PhoneCall },
   { key: 'badge', label: 'Badges', Icon: Medal },
   { key: 'avatar_frame', label: 'Avatar Frames', Icon: Sparkles },
   { key: 'ride', label: 'Rides', Icon: Car },
@@ -399,7 +401,12 @@ export const Bag = () => {
 
                   {/* Thumbnail Container */}
                   <div className="relative aspect-square w-full rounded-xl bg-gradient-to-br from-surface-soft to-surface-sunken flex items-center justify-center p-3 mb-2">
-                    {isEmoji ? (
+                    {item.category === 'subscription' ? (
+                      <div className="w-full h-full rounded-xl bg-gradient-to-tr from-purple-700 via-pink-600 to-rose-500 flex flex-col items-center justify-center text-white">
+                        <PhoneCall className="w-8 h-8 mb-1 drop-shadow" />
+                        <span className="text-[10px] font-black uppercase tracking-wider">1:1 Pass</span>
+                      </div>
+                    ) : isEmoji ? (
                       <span className="text-4xl select-none drop-shadow-sm">{rawSrc}</span>
                     ) : rawSrc ? (
                       <img
@@ -429,31 +436,41 @@ export const Bag = () => {
                     </div>
                   </div>
 
-                  {/* Equip / Unequip Button */}
+                  {/* Equip / Unequip or Action Button */}
                   <div className="mt-3">
-                    <button
-                      onClick={(e) => handleToggleEquip(item, e)}
-                      disabled={isToggling}
-                      className={`w-full py-1.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 ${
-                        isEquipped
-                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200'
-                          : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm'
-                      }`}
-                    >
-                      {isToggling ? (
-                        <Loading size="sm" />
-                      ) : isEquipped ? (
-                        <>
-                          <CloseIcon className="w-3 h-3" />
-                          <span>Unequip</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckIcon className="w-3 h-3" />
-                          <span>Equip</span>
-                        </>
-                      )}
-                    </button>
+                    {item.category === 'subscription' ? (
+                      <button
+                        onClick={() => navigate('/match')}
+                        className="w-full py-1.5 px-3 rounded-xl text-xs font-black bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-sm flex items-center justify-center gap-1 active:scale-95"
+                      >
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        <span>Go to Match</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => handleToggleEquip(item, e)}
+                        disabled={isToggling}
+                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 ${
+                          isEquipped
+                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200'
+                            : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm'
+                        }`}
+                      >
+                        {isToggling ? (
+                          <Loading size="sm" />
+                        ) : isEquipped ? (
+                          <>
+                            <CloseIcon className="w-3 h-3" />
+                            <span>Unequip</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckIcon className="w-3 h-3" />
+                            <span>Equip</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               );

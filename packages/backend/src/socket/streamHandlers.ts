@@ -39,6 +39,52 @@ const getUserProfile = async (userId?: string) => {
   };
 };
 
+export interface StreamGifter {
+  userId: string;
+  nickname: string;
+  avatar: string;
+  totalGifts: number;
+}
+
+export interface StreamSpeaker {
+  userId: string;
+  nickname: string;
+  avatar: string;
+  isMuted: boolean;
+  approvedAt: Date;
+}
+
+// In-memory stream tracking for live sessions
+const streamGiftersMap = new Map<string, Map<string, StreamGifter>>();
+const streamSpeakersMap = new Map<string, Map<string, StreamSpeaker>>();
+
+const getTopGifters = (streamId: string): StreamGifter[] => {
+  const gifters = streamGiftersMap.get(streamId);
+  if (!gifters) return [];
+  return Array.from(gifters.values())
+    .sort((a, b) => b.totalGifts - a.totalGifts)
+    .slice(0, 5);
+};
+
+const getSpeakers = (streamId: string): StreamSpeaker[] => {
+  const speakers = streamSpeakersMap.get(streamId);
+  if (!speakers) return [];
+  return Array.from(speakers.values());
+};
+
+export const cleanupStreamUser = (streamId: string, userId: string) => {
+  const speakers = streamSpeakersMap.get(streamId);
+  if (speakers && speakers.has(userId)) {
+    speakers.delete(userId);
+    try {
+      getIO().to(`stream:${streamId}`).emit('stream:speakers-update', {
+        streamId,
+        speakers: getSpeakers(streamId),
+      });
+    } catch {}
+  }
+};
+
 export const registerStreamHandlers = (socket: Socket): void => {
   socket.on('stream:join', async ({ streamId }) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel, isVip, diamonds, coins } = await getUserProfile(socket.data.user?.userId);
@@ -61,13 +107,26 @@ export const registerStreamHandlers = (socket: Socket): void => {
       viewerCount: count,
       peerSocketId: socket.id,
     });
+
+    // Provide the current Top 5 gifters and active speakers to the user
+    socket.emit('stream:top-gifters', {
+      streamId,
+      topGifters: getTopGifters(streamId),
+    });
+    socket.emit('stream:speakers-update', {
+      streamId,
+      speakers: getSpeakers(streamId),
+    });
   });
 
   socket.on('stream:leave', async ({ streamId }) => {
     socket.leave(`stream:${streamId}`);
     // Idempotent per-viewer decrement so closing/leaving is reflected in the count.
     const userId = socket.data.user?.userId;
-    if (userId) await streamService.leaveStream(streamId, userId).catch(() => {});
+    if (userId) {
+      await streamService.leaveStream(streamId, userId).catch(() => {});
+      cleanupStreamUser(streamId, userId);
+    }
 
     const currentStream = await LiveStream.findById(streamId).select('viewerCount').lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
@@ -120,6 +179,8 @@ export const registerStreamHandlers = (socket: Socket): void => {
       const userId = socket.data.user?.userId;
       if (!userId || !streamId) return;
       await streamService.endStream(streamId, userId);
+      streamSpeakersMap.delete(streamId);
+      streamGiftersMap.delete(streamId);
       if (typeof ack === 'function') ack?.({ success: true });
     } catch {
       if (typeof ack === 'function') ack?.({ success: false });
@@ -143,6 +204,27 @@ export const registerStreamHandlers = (socket: Socket): void => {
 
   socket.on('stream:gift', async ({ streamId, gift, count }) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(socket.data.user?.userId);
+    if (!streamId) return;
+
+    // Track total gift value for ranking in this stream
+    if (userId) {
+      if (!streamGiftersMap.has(streamId)) {
+        streamGiftersMap.set(streamId, new Map());
+      }
+      const gifters = streamGiftersMap.get(streamId)!;
+      const existing = gifters.get(userId) || {
+        userId,
+        nickname,
+        avatar,
+        totalGifts: 0,
+      };
+      const giftValue = (Number(gift?.priceDiamonds) || Number(gift?.priceCoins) || 1) * (Number(count) || 1);
+      existing.totalGifts += giftValue;
+      existing.nickname = nickname;
+      existing.avatar = avatar;
+      gifters.set(userId, existing);
+    }
+
     // Emit to the whole room (including sender) so the sender sees their own
     // gift message + burst, and the host sees the gift.
     getIO().to(`stream:${streamId}`).emit('stream:gift-received', {
@@ -155,6 +237,141 @@ export const registerStreamHandlers = (socket: Socket): void => {
       gift,
       count,
     });
+
+    // Broadcast updated Top 5 gifters to the room
+    getIO().to(`stream:${streamId}`).emit('stream:top-gifters', {
+      streamId,
+      topGifters: getTopGifters(streamId),
+    });
+  });
+
+  // Viewer requests microphone access from the host
+  socket.on('stream:mic:request', async ({ streamId }) => {
+    try {
+      const userId = socket.data.user?.userId;
+      if (!userId || !streamId) return;
+
+      const stream = await LiveStream.findById(streamId).select('hostId').lean();
+      if (!stream) return;
+
+      const profile = await getUserProfile(userId);
+
+      // Emit to the stream room (host handles this)
+      getIO().to(`stream:${streamId}`).emit('stream:mic:requested', {
+        streamId,
+        hostId: stream.hostId.toString(),
+        requester: {
+          userId,
+          nickname: profile.nickname,
+          avatar: profile.avatar,
+          level: profile.level,
+        },
+      });
+    } catch (err) {
+      console.error('[streamHandlers] stream:mic:request error:', err);
+    }
+  });
+
+  // Host responds to the mic request (accept or decline)
+  socket.on('stream:mic:respond', async ({ streamId, requesterUserId, approved }) => {
+    try {
+      const hostUserId = socket.data.user?.userId;
+      if (!hostUserId || !streamId || !requesterUserId) return;
+
+      const stream = await LiveStream.findById(streamId).select('hostId').lean();
+      if (!stream || stream.hostId.toString() !== hostUserId) {
+        return; // Only stream host can approve or decline
+      }
+
+      if (approved) {
+        if (!streamSpeakersMap.has(streamId)) {
+          streamSpeakersMap.set(streamId, new Map());
+        }
+        const speakers = streamSpeakersMap.get(streamId)!;
+        const profile = await getUserProfile(requesterUserId);
+
+        speakers.set(requesterUserId, {
+          userId: requesterUserId,
+          nickname: profile.nickname,
+          avatar: profile.avatar,
+          isMuted: false,
+          approvedAt: new Date(),
+        });
+
+        // Notify the viewer directly and the room
+        getIO().to(`user:${requesterUserId}`).emit('stream:mic:response', {
+          streamId,
+          approved: true,
+          message: 'The host accepted your speak request!',
+        });
+
+        getIO().to(`stream:${streamId}`).emit('stream:speakers-update', {
+          streamId,
+          speakers: getSpeakers(streamId),
+        });
+
+        // Broadcast announcement in chat
+        getIO().to(`stream:${streamId}`).emit('stream:chat-received', {
+          userId: 'system',
+          nickname: 'System',
+          avatar: '',
+          message: `🎙️ ${profile.nickname} has been approved to speak!`,
+        });
+      } else {
+        // Declined
+        getIO().to(`user:${requesterUserId}`).emit('stream:mic:response', {
+          streamId,
+          approved: false,
+          message: 'The host declined your speak request.',
+        });
+      }
+    } catch (err) {
+      console.error('[streamHandlers] stream:mic:respond error:', err);
+    }
+  });
+
+  // Speaker toggles their microphone mute/unmute
+  socket.on('stream:mic:toggle', async ({ streamId, isMuted }) => {
+    const userId = socket.data.user?.userId;
+    if (!userId || !streamId) return;
+
+    const speakers = streamSpeakersMap.get(streamId);
+    if (speakers && speakers.has(userId)) {
+      const sp = speakers.get(userId)!;
+      sp.isMuted = !!isMuted;
+      speakers.set(userId, sp);
+
+      getIO().to(`stream:${streamId}`).emit('stream:speakers-update', {
+        streamId,
+        speakers: getSpeakers(streamId),
+      });
+    }
+  });
+
+  // Host mutes or removes speaker from microphone
+  socket.on('stream:mic:kick', async ({ streamId, targetUserId }) => {
+    const currentUserId = socket.data.user?.userId;
+    if (!currentUserId || !streamId || !targetUserId) return;
+
+    const stream = await LiveStream.findById(streamId).select('hostId').lean();
+    if (!stream || (stream.hostId.toString() !== currentUserId && currentUserId !== targetUserId)) {
+      return;
+    }
+
+    const speakers = streamSpeakersMap.get(streamId);
+    if (speakers) {
+      speakers.delete(targetUserId);
+
+      getIO().to(`user:${targetUserId}`).emit('stream:mic:kicked', {
+        streamId,
+        message: 'You have left the microphone.',
+      });
+
+      getIO().to(`stream:${streamId}`).emit('stream:speakers-update', {
+        streamId,
+        speakers: getSpeakers(streamId),
+      });
+    }
   });
 
   socket.on('stream:highlight', async ({ streamId, message }, ack) => {

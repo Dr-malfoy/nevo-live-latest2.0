@@ -8,6 +8,8 @@ interface BottomToolbarProps {
   videoEnabled: boolean;
   cameraOn: boolean;
   micOn: boolean;
+  isSpeaker?: boolean;
+  micRequestPending?: boolean;
   isFollowing: boolean;
   likeCount: number;
   onLike: () => void;
@@ -15,9 +17,9 @@ interface BottomToolbarProps {
   onShare: () => void;
   onToggleCamera: () => void;
   onToggleMic: () => void;
+  onRequestMic?: () => void;
   onSwitchCamera: () => void;
   onToggleFilters: () => void;
-  onToggleStickers?: () => void;
   onLeave: () => void;
   onEnd: () => void;
   onChatSend: (message: string) => void;
@@ -50,6 +52,8 @@ export const BottomToolbar = ({
   videoEnabled,
   cameraOn,
   micOn,
+  isSpeaker = false,
+  micRequestPending = false,
   isFollowing,
   likeCount,
   onLike,
@@ -57,6 +61,7 @@ export const BottomToolbar = ({
   onShare,
   onToggleCamera,
   onToggleMic,
+  onRequestMic,
   onSwitchCamera,
   onToggleFilters,
   onLeave,
@@ -81,9 +86,29 @@ export const BottomToolbar = ({
         <RoundBtn label="Menu" onClick={onOpenMenu || (() => {})}>
           <Grid className="w-5 h-5 text-white/90" />
         </RoundBtn>
-        <RoundBtn label={micOn ? 'Mute' : 'Unmute'} onClick={() => onToggleMic()} active={!micOn} activeClass="text-red-400">
-          {micOn ? <Mic className="w-5 h-5 text-white/90" /> : <MicOff className="w-5 h-5 text-white/90" />}
-        </RoundBtn>
+
+        {isHost || isSpeaker ? (
+          <RoundBtn
+            label={micOn ? 'Mute' : 'Unmute'}
+            onClick={() => onToggleMic()}
+            active={!micOn}
+            activeClass="text-red-400"
+          >
+            {micOn ? <Mic className="w-5 h-5 text-emerald-400" /> : <MicOff className="w-5 h-5 text-white/90" />}
+          </RoundBtn>
+        ) : (
+          <RoundBtn
+            label={micRequestPending ? 'Requested' : 'Request Mic'}
+            onClick={() => {
+              if (onRequestMic) onRequestMic();
+            }}
+            active={micRequestPending}
+            activeClass="text-amber-400 animate-pulse border-amber-400"
+          >
+            <Mic className={`w-5 h-5 ${micRequestPending ? 'text-amber-400' : 'text-white/90'}`} />
+          </RoundBtn>
+        )}
+
         {isHost && videoEnabled && (
           <RoundBtn label="Switch Camera" onClick={onSwitchCamera}>
              <FlipHorizontal className="w-5 h-5 text-white/90" />

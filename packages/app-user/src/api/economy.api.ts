@@ -20,7 +20,8 @@ export type StoreCategory =
   | 'profile_card'
   | 'avatar_frame'
   | 'party_theme'
-  | 'chat_bubble';
+  | 'chat_bubble'
+  | 'subscription';
 
 export interface StoreItem {
   _id: string;

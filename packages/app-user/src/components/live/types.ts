@@ -53,6 +53,18 @@ export interface LiveRoomProps {
   onHostClick?: (host: UserPublic) => void;
   likeCount: number;
   onLike: () => void;
+  /** Top 5 Gifter Showcase & Co-speaker seats */
+  topGifters?: import('./TopGifterSeats').TopGifterItem[];
+  speakers?: import('./TopGifterSeats').LiveSpeakerItem[];
+  isSpeaker?: boolean;
+  micRequestPending?: boolean;
+  onRequestMic?: () => void;
+  onMuteSpeaker?: (userId: string, isMuted: boolean) => void;
+  onKickSpeaker?: (userId: string) => void;
+  pendingMicRequester?: import('./MicRequestBanner').MicRequester | null;
+  onAcceptMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
+  onDeclineMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
+  onOpenGiftToUser?: (userId: string) => void;
   /** Host camera enhancements */
   filterCss?: string;
   activeFilterId?: string;

@@ -19,8 +19,11 @@ export interface LiveToolsSheetProps {
   videoEnabled?: boolean;
   cameraOn?: boolean;
   micOn?: boolean;
+  isSpeaker?: boolean;
+  micRequestPending?: boolean;
   onToggleCamera?: () => void;
   onToggleMic?: () => void;
+  onRequestMic?: () => void;
   onSwitchCamera?: () => void;
   onToggleFilters?: () => void;
   onOpenGift?: () => void;
@@ -45,8 +48,11 @@ export const LiveToolsSheet = ({
   videoEnabled = true,
   cameraOn = true,
   micOn = true,
+  isSpeaker = false,
+  micRequestPending = false,
   onToggleCamera,
   onToggleMic,
+  onRequestMic,
   onSwitchCamera,
   onToggleFilters,
   onOpenGift,
@@ -114,6 +120,22 @@ export const LiveToolsSheet = ({
 
   // Viewer quick controls
   const viewerControlTools: ToolItem[] = [
+    {
+      id: 'viewer_mic',
+      label: isSpeaker ? (micOn ? 'Mic ON' : 'Mic OFF') : (micRequestPending ? 'Requested' : 'Request Mic'),
+      Icon: isSpeaker ? (micOn ? Mic : MicOff) : Mic,
+      badge: isSpeaker ? (micOn ? 'ON' : 'OFF') : (micRequestPending ? 'WAIT' : 'MIC'),
+      badgeColor: isSpeaker ? (micOn ? 'bg-emerald-500' : 'bg-red-500') : (micRequestPending ? 'bg-amber-500' : 'bg-pink-500'),
+      active: isSpeaker ? micOn : micRequestPending,
+      onClick: () => {
+        if (isSpeaker) {
+          if (onToggleMic) onToggleMic();
+        } else {
+          onClose();
+          if (onRequestMic) onRequestMic();
+        }
+      },
+    },
     ...(onOpenGift ? [{
       id: 'send_gift',
       label: 'Send Gift',

@@ -758,12 +758,14 @@ export const PublicProfile = () => {
             channel: activeCall.channel,
             type: activeCall.type,
             token: activeCall.token,
+            isFreeMinuteApplied: activeCall.isFreeMinuteApplied,
             callee: {
               nickname: profile.nickname,
               avatar: profile.avatar,
               online: Boolean(activeCall.recipientOnline ?? profile.online),
             },
           }}
+          isFreeMinuteApplied={activeCall.isFreeMinuteApplied}
           accepted={callAccepted}
           coinsPerMinute={activeCall.coinsPerMinute}
           isAudience={true}

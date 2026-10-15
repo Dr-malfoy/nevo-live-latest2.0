@@ -13,6 +13,8 @@ import { LiveSkeleton } from './LiveSkeleton';
 import { HostCameraPreview } from './HostCameraPreview';
 import { FilterPicker } from './FilterPicker';
 import { LiveToolsSheet } from './LiveToolsSheet';
+import { TopGifterSeats } from './TopGifterSeats';
+import { MicRequestBanner } from './MicRequestBanner';
 import type { LiveRoomProps } from './types';
 
 export const LiveRoom = ({
@@ -45,6 +47,17 @@ export const LiveRoom = ({
   onHostClick,
   likeCount,
   onLike,
+  topGifters = [],
+  speakers = [],
+  isSpeaker = false,
+  micRequestPending = false,
+  onRequestMic,
+  onMuteSpeaker,
+  onKickSpeaker,
+  pendingMicRequester = null,
+  onAcceptMicRequest,
+  onDeclineMicRequest,
+  onOpenGiftToUser,
   filterCss,
   activeFilterId,
   onSelectFilter,
@@ -224,6 +237,29 @@ export const LiveRoom = ({
         onHostClick={onHostClick}
       />
 
+      {/* Host Mic Request Popup Banner */}
+      {isHost && pendingMicRequester && onAcceptMicRequest && onDeclineMicRequest && (
+        <MicRequestBanner
+          requester={pendingMicRequester}
+          onAccept={onAcceptMicRequest}
+          onDecline={onDeclineMicRequest}
+        />
+      )}
+
+      {/* Top 5 Gifter Showcase & Co-speaker Seats (5 Vertical Slots on the Right) */}
+      <TopGifterSeats
+        topGifters={topGifters}
+        speakers={speakers}
+        currentUserId={user?._id}
+        isHost={isHost}
+        onViewProfile={(uid) => {
+          if (onHostClick) onHostClick({ _id: uid, nickname: '', avatar: '' } as any);
+        }}
+        onOpenGiftToUser={onOpenGiftToUser || onOpenGift}
+        onMuteSpeaker={onMuteSpeaker}
+        onKickSpeaker={onKickSpeaker}
+      />
+
       <CommentOverlay messages={messages} currentUserId={user?._id} />
 
       <BottomToolbar
@@ -231,6 +267,9 @@ export const LiveRoom = ({
         videoEnabled={videoEnabled}
         cameraOn={cameraOn}
         micOn={micOn}
+        isSpeaker={isSpeaker}
+        micRequestPending={micRequestPending}
+        onRequestMic={onRequestMic}
         isFollowing={isFollowing}
         likeCount={likeCount}
         onLike={handleLike}
@@ -259,6 +298,9 @@ export const LiveRoom = ({
         videoEnabled={videoEnabled}
         cameraOn={cameraOn}
         micOn={micOn}
+        isSpeaker={isSpeaker}
+        micRequestPending={micRequestPending}
+        onRequestMic={onRequestMic}
         onToggleCamera={onToggleCamera}
         onToggleMic={onToggleMic}
         onSwitchCamera={onSwitchCamera}

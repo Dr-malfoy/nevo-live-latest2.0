@@ -18,4 +18,8 @@ export { LiveSkeleton } from './LiveSkeleton';
 export { HostCameraPreview } from './HostCameraPreview';
 export { LiveToolsSheet } from './LiveToolsSheet';
 export type { LiveToolsSheetProps } from './LiveToolsSheet';
+export { TopGifterSeats } from './TopGifterSeats';
+export type { TopGifterItem, LiveSpeakerItem } from './TopGifterSeats';
+export { MicRequestBanner } from './MicRequestBanner';
+export type { MicRequester } from './MicRequestBanner';
 export type { LiveRoomProps, RoomMessage, RoomNotification } from './types';

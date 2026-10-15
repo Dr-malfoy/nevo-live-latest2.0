@@ -21,7 +21,7 @@ interface SocketState {
   leaveRoom: (room: string) => void;
   joinCallRoom: (callId: string) => void;
   leaveCallRoom: (callId: string) => void;
-  joinMatch: (type: string, gender?: 'male' | 'female' | 'all') => void;
+  joinMatch: (type: string, gender?: 'male' | 'female' | 'all', ack?: (res: any) => void) => void;
   leaveMatch: () => void;
 }
 
@@ -76,8 +76,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     get().socket?.emit('call:leave-room', { callId });
   },
 
-  joinMatch: (type, gender = 'all') => {
-    get().socket?.emit('match:join', { type, gender });
+  joinMatch: (type, gender = 'all', ack) => {
+    get().socket?.emit('match:join', { type, gender }, ack);
   },
 
   leaveMatch: () => {

@@ -2,7 +2,7 @@ import { Server as HTTPServer } from 'http';
 import { Server } from 'socket.io';
 import { env } from '../config/env';
 import { verifyToken } from '../utils/jwt';
-import { registerStreamHandlers } from './streamHandlers';
+import { registerStreamHandlers, cleanupStreamUser } from './streamHandlers';
 import { registerRoomHandlers, broadcastViewerCount } from './roomHandlers';
 import { registerChatHandlers } from './chatHandlers';
 import { registerCallHandlers } from './callHandlers';
@@ -96,6 +96,7 @@ export const initSocket = (httpServer: HTTPServer): Server => {
         if (room.startsWith('stream:')) {
           const streamId = room.slice('stream:'.length);
           if (userId && streamId) {
+            cleanupStreamUser(streamId, userId);
             streamService.leaveStream(streamId, userId).then(async () => {
               const currentStream = await import('../models').then(m => m.LiveStream.findById(streamId).select('viewerCount').lean());
               const count = Math.max(0, currentStream?.viewerCount ?? 0);

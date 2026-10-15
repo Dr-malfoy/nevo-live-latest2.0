@@ -12,6 +12,8 @@ export interface CallSession {
   coinsPerMinute?: number;
   /** True if the 1:1 call recipient is currently connected to socket */
   recipientOnline?: boolean;
+  /** True if caller has 1:1 Subscription and first 1 minute is free */
+  isFreeMinuteApplied?: boolean;
 }
 
 export interface CallParticipant {
@@ -39,6 +41,8 @@ export interface CallQuote {
   canCall: boolean;
   reason?: string;
   minBalance: number;
+  hasFreeCall?: boolean;
+  freeCallsRemaining?: number;
   hostNickname?: string;
   hostAvatar?: string;
 }

@@ -224,6 +224,7 @@ export const callService = {
       participantCount: participants.length,
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,
+      isFreeMinuteApplied,
       recipientOnline,
     };
   },
@@ -523,9 +524,16 @@ export const callService = {
       }
 
       if (call.totalCoins <= 0) {
-        // Nothing was charged — apply the minimum 1-minute charge
-        // if the call actually started (startedAt is set)
+        // Nothing was charged — check if free minute was applied
         if (call.startedAt && call.audienceId) {
+          if (call.isFreeMinuteApplied) {
+            // Free 1st minute under 1:1 subscription! No coins deducted
+            call.minutesBilled = 1;
+            call.totalCoins = 0;
+            await call.save();
+            return { totalCoins: 0, hostEarning: 0, isFree: true };
+          }
+
           const chargedCoins = call.coinsPerMinute;
 
           // Deduct from audience

@@ -1517,6 +1517,7 @@ export const ChatThread = () => {
             token: data.data.token,
             callee: { nickname: other.nickname, avatar: other.avatar, online: isOnline },
             coinsPerMinute: data.data.coinsPerMinute || quoteRes.data?.coinsPerMinute || other.callPricePerMinute || 1000,
+            isFreeMinuteApplied: data.data.isFreeMinuteApplied,
           },
         });
       }

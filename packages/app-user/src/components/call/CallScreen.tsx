@@ -37,6 +37,7 @@ interface CallScreenProps {
     initiatorId: string;
     token: string;
     initiator: { nickname: string; avatar?: string } | null;
+    isFreeMinuteApplied?: boolean;
   };
   /** Outgoing call — caller dials and waits. */
   outgoing?: {
@@ -45,6 +46,7 @@ interface CallScreenProps {
     type: 'audio' | 'video';
     token: string;
     callee?: { nickname: string; avatar?: string; online?: boolean } | null;
+    isFreeMinuteApplied?: boolean;
   };
   /** True when the callee accepted (server emits `call:accept`) — caller stops ringing. */
   accepted?: boolean;
@@ -55,6 +57,8 @@ interface CallScreenProps {
   coinsPerMinute?: number;
   /** Whether the current user is the paying audience member. */
   isAudience?: boolean;
+  /** Whether 1st minute free (1:1 Subscription VIP) is applied */
+  isFreeMinuteApplied?: boolean;
 }
 
 interface RosterEntry extends CallParticipant {
@@ -76,6 +80,7 @@ export const CallScreen = ({
   onClose,
   coinsPerMinute = 0,
   isAudience = false,
+  isFreeMinuteApplied,
 }: CallScreenProps) => {
   const {
     joined,
@@ -138,7 +143,11 @@ export const CallScreen = ({
   const callIdRef = useRef<string>('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && (
+  const freeMinuteActive = Boolean(
+    isFreeMinuteApplied ?? (incoming?.isFreeMinuteApplied || outgoing?.isFreeMinuteApplied)
+  );
+
+  const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && !(freeMinuteActive && elapsed < 60) && (
     isLowBalance ||
     (currentUser?.coins != null && currentUser.coins < coinsPerMinute * 2)
   );
@@ -635,14 +644,28 @@ export const CallScreen = ({
 
             {/* Pricing badge if call is paid */}
             {coinsPerMinute > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-500/15 border border-amber-400/40 rounded-full text-xs font-black text-amber-300 shadow-md"
-              >
-                <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
-                <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
-              </motion.div>
+              <div className="flex flex-col items-center gap-1.5">
+                {freeMinuteActive && elapsed < 60 ? (
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: [1, 1.04, 1], opacity: 1 }}
+                    transition={{ duration: 1.8, repeat: Infinity }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 border border-emerald-400/50 rounded-full text-xs font-black text-emerald-300 shadow-md"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-300 animate-spin" style={{ animationDuration: '4s' }} />
+                    <span>1st Min FREE (1:1 VIP) · {60 - elapsed}s</span>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-500/15 border border-amber-400/40 rounded-full text-xs font-black text-amber-300 shadow-md"
+                  >
+                    <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
+                  </motion.div>
+                )}
+              </div>
             )}
           </div>
 
@@ -788,14 +811,25 @@ export const CallScreen = ({
           {/* Right: Coins Billing & Roster */}
           <div className="flex items-center gap-2 pointer-events-auto">
             {coinsPerMinute > 0 && (
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/25 backdrop-blur-2xl border border-amber-400/50 text-xs font-black text-amber-300 shadow-lg"
-              >
-                <CoinIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="tabular-nums font-mono">{isAudience ? '-' : '+'}{coinsPerMinute.toLocaleString()}/min</span>
-              </motion.div>
+              freeMinuteActive && elapsed < 60 ? (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-600/30 to-teal-600/30 backdrop-blur-2xl border border-emerald-400/60 text-xs font-black text-emerald-300 shadow-lg animate-pulse"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                  <span className="tabular-nums font-mono">1st Min FREE ({60 - elapsed}s)</span>
+                </motion.div>
+              ) : (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/25 backdrop-blur-2xl border border-amber-400/50 text-xs font-black text-amber-300 shadow-lg"
+                >
+                  <CoinIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="tabular-nums font-mono">{isAudience ? '-' : '+'}{coinsPerMinute.toLocaleString()}/min</span>
+                </motion.div>
+              )
             )}
 
             {roster.length > 2 && (

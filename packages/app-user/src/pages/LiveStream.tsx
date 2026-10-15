@@ -7,7 +7,7 @@ import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
 import { ReportModal } from '../components/report/ReportModal';
 import { LiveRoom } from '../components/live';
-import type { RoomMessage, RoomNotification } from '../components/live';
+import type { RoomMessage, RoomNotification, TopGifterItem, LiveSpeakerItem, MicRequester } from '../components/live';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { useAgora } from '../hooks/useAgora';
 import { useFollow } from '../hooks/useFollow';
@@ -43,6 +43,12 @@ export const LiveStreamPage = () => {
   const [notifications, setNotifications] = useState<RoomNotification[]>([]);
   const [likeCount, setLikeCount] = useState(0);
   const [giftBurst, setGiftBurst] = useState<{ id: string; gift: GiftType; count: number; nickname: string } | null>(null);
+  const [topGifters, setTopGifters] = useState<TopGifterItem[]>([]);
+  const [speakers, setSpeakers] = useState<LiveSpeakerItem[]>([]);
+  const [isSpeaker, setIsSpeaker] = useState(false);
+  const [micRequestPending, setMicRequestPending] = useState(false);
+  const [pendingMicRequester, setPendingMicRequester] = useState<MicRequester | null>(null);
+  const [customGiftReceiverId, setCustomGiftReceiverId] = useState<string | null>(null);
   const burstTimer = useRef<ReturnType<typeof setTimeout>>();
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
   const sendingGiftRef = useRef(false);
@@ -344,6 +350,46 @@ export const LiveStreamPage = () => {
       }
     };
 
+    const onTopGifters = (data: any) => {
+      if (data?.topGifters) {
+        setTopGifters(data.topGifters);
+      }
+    };
+    const onSpeakersUpdate = (data: any) => {
+      if (data?.speakers) {
+        setSpeakers(data.speakers);
+        const myId = userRef.current?._id;
+        const meAsSpeaker = data.speakers.find((s: any) => s.userId === myId);
+        if (meAsSpeaker) {
+          setIsSpeaker(true);
+          setMicRequestPending(false);
+        } else if (!isHostRef.current) {
+          setIsSpeaker(false);
+        }
+      }
+    };
+    const onMicRequested = (data: any) => {
+      if (isHostRef.current && data?.requester) {
+        setPendingMicRequester(data.requester);
+      }
+    };
+    const onMicResponse = (data: any) => {
+      setMicRequestPending(false);
+      if (data?.approved) {
+        setIsSpeaker(true);
+        showToast(data.message || 'The host accepted your speak request!', 'success');
+        toggleMic(true).catch(() => {});
+      } else {
+        setIsSpeaker(false);
+        showToast(data.message || 'The host declined your speak request.', 'info');
+      }
+    };
+    const onMicKicked = (data: any) => {
+      setIsSpeaker(false);
+      toggleMic(false).catch(() => {});
+      showToast(data.message || 'You left the microphone.', 'info');
+    };
+
     socket.on('stream:chat-received', onChat);
     socket.on('stream:gift-received', onGift);
     socket.on('stream:ended', onEnded);
@@ -352,6 +398,11 @@ export const LiveStreamPage = () => {
     socket.on('stream:viewer-joined', onViewerJoined);
     socket.on('stream:viewer-left', onViewerLeft);
     socket.on('stream:viewer-count', onViewerCount);
+    socket.on('stream:top-gifters', onTopGifters);
+    socket.on('stream:speakers-update', onSpeakersUpdate);
+    socket.on('stream:mic:requested', onMicRequested);
+    socket.on('stream:mic:response', onMicResponse);
+    socket.on('stream:mic:kicked', onMicKicked);
 
     return () => {
       leaveRoom(`stream:${id}`);
@@ -363,6 +414,11 @@ export const LiveStreamPage = () => {
       socket.off('stream:viewer-joined', onViewerJoined);
       socket.off('stream:viewer-left', onViewerLeft);
       socket.off('stream:viewer-count', onViewerCount);
+      socket.off('stream:top-gifters', onTopGifters);
+      socket.off('stream:speakers-update', onSpeakersUpdate);
+      socket.off('stream:mic:requested', onMicRequested);
+      socket.off('stream:mic:response', onMicResponse);
+      socket.off('stream:mic:kicked', onMicKicked);
     };
   }, [socket, id]);
 
@@ -385,14 +441,71 @@ export const LiveStreamPage = () => {
     }
   }, [socket, id]);
 
+  const handleRequestMic = useCallback(() => {
+    if (!socket || !id) return;
+    setMicRequestPending(true);
+    socket.emit('stream:mic:request', { streamId: id });
+    showToast('Mic request sent to the host', 'info');
+  }, [socket, id, showToast]);
+
+  const handleAcceptMicRequest = useCallback((requester: MicRequester) => {
+    if (!socket || !id) return;
+    socket.emit('stream:mic:respond', {
+      streamId: id,
+      requesterUserId: requester.userId,
+      approve: true,
+    });
+    setPendingMicRequester(null);
+    showToast(`Accepted mic request from ${requester.nickname}`, 'success');
+  }, [socket, id, showToast]);
+
+  const handleDeclineMicRequest = useCallback((requester: MicRequester) => {
+    if (!socket || !id) return;
+    socket.emit('stream:mic:respond', {
+      streamId: id,
+      requesterUserId: requester.userId,
+      approve: false,
+    });
+    setPendingMicRequester(null);
+    showToast(`Declined mic request from ${requester.nickname}`, 'info');
+  }, [socket, id, showToast]);
+
+  const handleMuteSpeaker = useCallback((targetUserId: string, targetMuted: boolean) => {
+    if (userRef.current && targetUserId === userRef.current._id) {
+      toggleMic(!targetMuted).catch(() => {});
+      if (socket && id) {
+        socket.emit('stream:mic:toggle', { streamId: id, isMuted: targetMuted });
+      }
+    }
+  }, [socket, id, toggleMic]);
+
+  const handleKickSpeaker = useCallback((targetUserId: string) => {
+    if (!socket || !id || !isHostRef.current) return;
+    socket.emit('stream:mic:kick', { streamId: id, targetUserId });
+    showToast('Removed speaker from microphone', 'info');
+  }, [socket, id, showToast]);
+
+  const handleToggleMic = useCallback(async () => {
+    const nextState = !micOn;
+    await toggleMic(nextState);
+    if (socket && id && (isSpeaker || isHost)) {
+      socket.emit('stream:mic:toggle', { streamId: id, isMuted: !nextState });
+    }
+  }, [micOn, toggleMic, socket, id, isSpeaker, isHost]);
+
+  const handleOpenGiftToUser = useCallback((targetUserId: string) => {
+    setCustomGiftReceiverId(targetUserId);
+    setShowGift(true);
+  }, []);
+
   const handleSendGift = async (gift: GiftType, quantity: number) => {
     // Block double-send while a request is in flight
     if (sendingGiftRef.current) return;
     sendingGiftRef.current = true;
-    const receiverId = giftReceiverId;
+    const receiverId = customGiftReceiverId || giftReceiverId;
     if (!receiverId) {
       sendingGiftRef.current = false;
-      showToast('Host unavailable', 'error');
+      showToast('Recipient unavailable', 'error');
       return;
     }
     if (user && receiverId === user._id) {
@@ -519,11 +632,14 @@ export const LiveStreamPage = () => {
         onLeave={handleLeave}
         onEnd={handleEndStream}
         onToggleCamera={toggleCamera}
-        onToggleMic={toggleMic}
+        onToggleMic={handleToggleMic}
         onSwitchCamera={switchCamera}
         onFollowToggle={handleFollowToggle}
         onChatSend={handleChat}
-        onOpenGift={() => setShowGift(true)}
+        onOpenGift={() => {
+          setCustomGiftReceiverId(null);
+          setShowGift(true);
+        }}
         onReport={() => setShowReport(true)}
         onHostClick={(h) => {
           navigatingAwayRef.current = true;
@@ -531,6 +647,17 @@ export const LiveStreamPage = () => {
         }}
         likeCount={likeCount}
         onLike={handleLike}
+        topGifters={topGifters}
+        speakers={speakers}
+        isSpeaker={isHost || isSpeaker}
+        micRequestPending={micRequestPending}
+        onRequestMic={handleRequestMic}
+        onMuteSpeaker={handleMuteSpeaker}
+        onKickSpeaker={handleKickSpeaker}
+        pendingMicRequester={pendingMicRequester}
+        onAcceptMicRequest={handleAcceptMicRequest}
+        onDeclineMicRequest={handleDeclineMicRequest}
+        onOpenGiftToUser={handleOpenGiftToUser}
         filterCss={activeFilter.css !== 'none' ? activeFilter.css : undefined}
         activeFilterId={activeFilter.id}
         onSelectFilter={handleSelectFilter}
@@ -539,8 +666,15 @@ export const LiveStreamPage = () => {
       />
 
       {/* Gift Modal */}
-      <Modal isOpen={showGift} onClose={() => setShowGift(false)} title="Send a Gift">
-        <GiftPanel receiverId={giftReceiverId} onSend={handleSendGift} />
+      <Modal
+        isOpen={showGift}
+        onClose={() => {
+          setShowGift(false);
+          setCustomGiftReceiverId(null);
+        }}
+        title="Send a Gift"
+      >
+        <GiftPanel receiverId={customGiftReceiverId || giftReceiverId} onSend={handleSendGift} />
       </Modal>
 
       {/* Report Modal */}

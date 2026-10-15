@@ -87,6 +87,15 @@ export interface User {
   hostBadgeAssignedAt?: string;
   hostBadgeExpiresAt?: string;
   equippedBadge?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
+  matchSubscription?: {
+    active: boolean;
+    startDate?: string;
+    expiresAt?: string;
+    filterMatchesRemaining: number;
+    totalFilterMatches: number;
+    freeCallsRemaining: number;
+    totalFreeCalls: number;
+  };
   verification?: VerificationState;
   following: string[];
   followers: string[];
