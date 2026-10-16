@@ -202,7 +202,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
     });
   });
 
-  socket.on('stream:gift', async ({ streamId, gift, count }) => {
+  socket.on('stream:gift', async ({ streamId, gift, count, receiverId }) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(socket.data.user?.userId);
     if (!streamId) return;
 
@@ -236,6 +236,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
       liveLevel,
       gift,
       count,
+      receiverId,
     });
 
     // Broadcast updated Top 5 gifters to the room

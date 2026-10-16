@@ -306,6 +306,35 @@ export const LiveStreamPage = () => {
           triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
         }
       }
+
+      // Show top gift notification banner card for EVERYONE in the live room (auto-dismiss 5s)
+      const senderName = isSelf ? 'You' : (msg?.nickname || 'Someone');
+      const isRecipient = Boolean(
+        userRef.current && (
+          (msg?.receiverId && userRef.current._id === msg.receiverId) ||
+          (!msg?.receiverId && isHostRef.current)
+        )
+      );
+
+      const notifText = isSelf
+        ? `You sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
+        : isRecipient
+          ? `${senderName} sent you ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
+          : `${senderName} sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`;
+
+      const notifId = `${Date.now()}-${Math.random()}`;
+      setNotifications((prev) => [
+        ...prev.slice(-4),
+        {
+          id: notifId,
+          kind: 'gift',
+          text: notifText,
+          avatar: msg?.avatar,
+        },
+      ]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }, 5000);
     };
     const onEnded = () => {
       showToast('Stream has ended', 'info');
@@ -314,17 +343,22 @@ export const LiveStreamPage = () => {
     };
     const onLike = () => setLikeCount((c) => c + 1);
     const onGiftNotif = (notif: any) => {
-      // In-room toast when the host receives a gift
+      // In-room toast when direct personal notification arrives
       if (notif?.type === 'gift') {
         const msg = notif.message || 'You received a gift!';
-        const notifId = `${Date.now()}-${Math.random()}`;
-        setNotifications((prev) => [
-          ...prev.slice(-4),
-          { id: notifId, kind: 'gift', text: msg, avatar: notif.data?.senderAvatar },
-        ]);
-        setTimeout(() => {
-          setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-        }, 5000);
+        setNotifications((prev) => {
+          // Avoid duplicate banner if onGift already displayed it
+          const exists = prev.some((p) => p.text.includes(msg) || msg.includes(p.text));
+          if (exists) return prev;
+          const notifId = `${Date.now()}-${Math.random()}`;
+          setTimeout(() => {
+            setNotifications((curr) => curr.filter((n) => n.id !== notifId));
+          }, 5000);
+          return [
+            ...prev.slice(-4),
+            { id: notifId, kind: 'gift', text: msg, avatar: notif.data?.senderAvatar },
+          ];
+        });
       }
     };
 
@@ -567,7 +601,7 @@ export const LiveStreamPage = () => {
           updateUser({ coins: data.data.senderBalance });
         }
       }
-      if (socket && id) socket.emit('stream:gift', { streamId: id, gift, count: quantity });
+      if (socket && id) socket.emit('stream:gift', { streamId: id, gift, count: quantity, receiverId });
       gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
       // Optimistic local gift message for the sender
       const currentUser = userRef.current;
