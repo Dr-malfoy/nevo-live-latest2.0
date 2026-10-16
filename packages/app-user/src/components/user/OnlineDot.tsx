@@ -1,6 +1,6 @@
 interface OnlineDotProps {
   online?: boolean;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   /** Draw a white ring — for dots sitting on an avatar rather than in text. */
   ringed?: boolean;
   className?: string;
@@ -15,8 +15,8 @@ export const OnlineDot = ({ online, size = 'sm', ringed = false, className = '' 
     role="img"
     aria-label={online ? 'Online' : 'Offline'}
     title={online ? 'Online' : 'Offline'}
-    className={`inline-block rounded-full shrink-0
-      ${size === 'sm' ? 'w-2 h-2' : 'w-3 h-3'}
+    className={`inline-block rounded-full shrink-0 z-20 shadow-xs
+      ${size === 'sm' ? 'w-2 h-2' : size === 'lg' ? 'w-4 h-4' : 'w-3 h-3'}
       ${online ? 'bg-status-online' : 'bg-status-offline'}
       ${ringed ? 'ring-2 ring-white' : ''}
       ${className}`}

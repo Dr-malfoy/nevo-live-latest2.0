@@ -26,11 +26,12 @@ export const authController = {
   async verifyOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const { phone, code, idToken, purpose } = req.body;
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
       if (purpose === 'signup') {
         const result = await authService.verifyOtpOnly(phone, code, 'signup');
         sendSuccess(res, result, 'Phone number verified successfully');
       } else {
-        const result = await authService.verifyOtpAndLogin(phone, code, idToken, purpose || 'login');
+        const result = await authService.verifyOtpAndLogin(phone, code, idToken, purpose || 'login', deviceId);
         sendSuccess(res, result, 'Login successful');
       }
     } catch (error) {
@@ -42,7 +43,8 @@ export const authController = {
     try {
       const identifier = req.body.phone || req.body.identifier || req.body.email;
       const { password } = req.body;
-      const result = await authService.loginWithPassword(identifier, password);
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
+      const result = await authService.loginWithPassword(identifier, password, deviceId);
       sendSuccess(res, result, 'Login successful');
     } catch (error) {
       next(error);
@@ -52,7 +54,8 @@ export const authController = {
   async googleLogin(req: Request, res: Response, next: NextFunction) {
     try {
       const { idToken } = req.body;
-      const result = await authService.loginWithGoogle(idToken);
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
+      const result = await authService.loginWithGoogle(idToken, deviceId);
       sendSuccess(res, result, 'Login successful');
     } catch (error) {
       next(error);
@@ -62,7 +65,8 @@ export const authController = {
   async facebookLogin(req: Request, res: Response, next: NextFunction) {
     try {
       const { idToken, accessToken } = req.body;
-      const result = await authService.loginWithFacebook(idToken, accessToken);
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
+      const result = await authService.loginWithFacebook(idToken, accessToken, deviceId);
       sendSuccess(res, result, 'Facebook login successful');
     } catch (error) {
       next(error);
@@ -91,7 +95,8 @@ export const authController = {
 
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await authService.register(req.body);
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
+      const result = await authService.register({ ...req.body, deviceId: req.body.deviceId || deviceId });
       sendSuccess(res, result, 'Registration successful', 201);
     } catch (error) {
       next(error);

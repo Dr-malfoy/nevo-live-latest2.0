@@ -61,6 +61,7 @@ export { WithdrawAccount, IWithdrawAccountDocument } from './WithdrawAccount';
 // ── Referral (§4.4) ─────────────────────────────────────────────────
 export { ReferralTemplate, IReferralTemplateDocument } from './ReferralTemplate';
 export { ReferralClaim, IReferralClaimDocument } from './ReferralClaim';
+export { ReferralRecord, IReferralRecordDocument } from './ReferralRecord';
 
 // ── Agent analytics (§4.7) ──────────────────────────────────────────
 export { HostApplication, IHostApplicationDocument } from './HostApplication';

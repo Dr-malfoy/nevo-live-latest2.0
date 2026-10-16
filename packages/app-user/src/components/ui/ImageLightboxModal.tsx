@@ -7,6 +7,7 @@ import {
   PiDownloadSimpleBold as DownloadIcon,
 } from 'react-icons/pi';
 import { Avatar } from '../user';
+import { getOriginalMediaUrl } from '../../lib/media';
 
 interface ImageLightboxModalProps {
   isOpen: boolean;
@@ -32,14 +33,24 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [ratioLabel, setRatioLabel] = useState<string>('');
   const [isZoomed, setIsZoomed] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState<string>(() => getOriginalMediaUrl(imageUrl));
+  const [hasTriedFallback, setHasTriedFallback] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!isOpen) {
       setDimensions(null);
       setRatioLabel('');
       setIsZoomed(false);
+      setIsLoading(true);
+      setHasTriedFallback(false);
       return;
     }
+
+    const highRes = getOriginalMediaUrl(imageUrl);
+    setCurrentSrc(highRes);
+    setIsLoading(true);
+    setHasTriedFallback(false);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -48,11 +59,12 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, imageUrl, onClose]);
 
   if (!isOpen || !imageUrl) return null;
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    setIsLoading(false);
     const img = e.currentTarget;
     const w = img.naturalWidth;
     const h = img.naturalHeight;
@@ -75,10 +87,19 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
     }
   };
 
+  const handleImageError = () => {
+    if (!hasTriedFallback && currentSrc !== imageUrl) {
+      setHasTriedFallback(true);
+      setCurrentSrc(imageUrl);
+    } else {
+      setIsLoading(false);
+    }
+  };
+
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     const a = document.createElement('a');
-    a.href = imageUrl;
+    a.href = currentSrc || imageUrl;
     a.download = `photo_${Date.now()}`;
     a.target = '_blank';
     a.rel = 'noreferrer';
@@ -169,20 +190,26 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
 
       {/* ── Image Display (Preserves 100% Original Ratio Without Cropping) ── */}
       <div
-        className="flex-1 flex items-center justify-center p-2 sm:p-4 overflow-auto no-scrollbar"
+        className="flex-1 flex items-center justify-center p-2 sm:p-4 overflow-auto no-scrollbar relative"
         onClick={(e) => e.stopPropagation()}
       >
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="w-10 h-10 rounded-full border-3 border-white/20 border-t-white animate-spin drop-shadow" />
+          </div>
+        )}
         <div className="relative flex items-center justify-center max-w-full max-h-full">
           <img
-            src={imageUrl}
+            src={currentSrc}
             alt={title}
             onLoad={handleImageLoad}
+            onError={handleImageError}
             onClick={() => setIsZoomed(!isZoomed)}
-            className={`transition-all duration-300 rounded-xl shadow-2xl object-contain select-none ${
+            className={`transition-all duration-300 rounded-xl sm:rounded-2xl shadow-2xl object-contain select-none ${
               isZoomed
                 ? 'scale-125 sm:scale-150 cursor-zoom-out max-h-none max-w-none'
-                : 'max-h-[82vh] max-w-[95vw] w-auto h-auto cursor-zoom-in'
-            }`}
+                : 'max-h-[82vh] max-w-[95vw] w-auto h-auto min-w-[min(280px,85vw)] cursor-zoom-in'
+            } ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
             referrerPolicy="no-referrer"
           />
         </div>

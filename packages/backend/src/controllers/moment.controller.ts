@@ -4,7 +4,7 @@ import { sendSuccess, sendPaginated, sendError } from '../utils/response';
 import { getIO } from '../socket';
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
-const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes exp sellerType verification diamonds coins noble isVip';
+const USER_FIELDS = 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes exp sellerType verification diamonds coins noble isVip equippedBadge hostBadge hasPurchasedDiamonds equipped role';
 
 const decorateUser = (plain: any) => {
   if (!plain) return plain;

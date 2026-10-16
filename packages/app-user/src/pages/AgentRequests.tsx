@@ -104,6 +104,17 @@ export const AgentRequests = () => {
   };
 
   useEffect(() => {
+    const t = params.get('tab') as Tab;
+    if (t && (t === 'recharge' || t === 'withdraw') && t !== tab) {
+      setTab(t);
+    }
+    const s = params.get('status') as StatusFilter;
+    if (s && (s === 'all' || s === 'pending' || s === 'completed' || s === 'rejected') && s !== status) {
+      setStatus(s);
+    }
+  }, [params, tab, status]);
+
+  useEffect(() => {
     loadData();
   }, [tab, status]);
 

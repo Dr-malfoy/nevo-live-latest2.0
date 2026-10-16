@@ -8,13 +8,49 @@ import type { ApiResponse, UserPublic } from '../types';
 
 /* ── Referral (#25, #26, #27, #30, #58) — §4.4 ────────────────────── */
 
+export interface ReferralMilestone {
+  count: number;
+  title: string;
+  reward: string;
+  coins?: number;
+  unlocked: boolean;
+  perk?: string;
+}
+
+export interface ReferralInviteeItem {
+  _id: string;
+  inviteeId?: string;
+  uid: string;
+  nickname: string;
+  avatar?: string;
+  status: 'pending' | 'valid' | 'invalid';
+  invalidReason?: string | null;
+  isDuplicateDevice: boolean;
+  otpVerified: boolean;
+  watchTimeMinutes: number;
+  hasDay2Login: boolean;
+  step1Paid: boolean;
+  step2Paid: boolean;
+  coinsEarned: number;
+  createdAt: string;
+}
+
 export interface ReferralSummary {
   myId: string;
   maxReward: number;
   claimed: number;
+  totalEarned?: number;
   inviteeCount: number;
+  validInviteeCount?: number;
+  pendingInviteeCount?: number;
+  invalidInviteeCount?: number;
   availableToday: number;
   perInvite: number;
+  isVip?: boolean;
+  hasLifetimeCommission?: boolean;
+  lifetimeCommissionPercent?: number;
+  milestones?: ReferralMilestone[];
+  invitees?: ReferralInviteeItem[];
 }
 
 export interface ReferralTemplate {

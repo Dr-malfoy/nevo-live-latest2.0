@@ -93,15 +93,21 @@ export const pushNotificationService = {
         } else if ((data.type === 'follower' || data.type === 'friend_request' || data.type === 'friend_request_accepted') && data.senderId && handlers.onNavigate) {
           handlers.onNavigate(`/user/${data.senderId}`);
         } else if (data.type === 'live_started' && data.streamId && handlers.onNavigate) {
-          handlers.onNavigate(`/stream/${data.streamId}`);
+          handlers.onNavigate(`/live/${data.streamId}`);
         } else if ((data.type === 'live_started' || data.type === 'party') && data.roomId && handlers.onNavigate) {
           handlers.onNavigate(`/party/${data.roomId}`);
-        } else if ((data.type === 'gift' || data.type === 'recharge' || data.type === 'coin_transfer' || data.type === 'withdrawal') && handlers.onNavigate) {
+        } else if (data.type === 'withdrawal' && handlers.onNavigate) {
+          const isAgent = data.role === 'agent' || data.isAgent;
+          handlers.onNavigate(isAgent ? '/agent/requests?tab=withdraw' : '/withdraw');
+        } else if (data.type === 'recharge' && handlers.onNavigate) {
+          const isAgent = data.role === 'agent' || data.isAgent;
+          handlers.onNavigate(isAgent ? '/agent/requests?tab=recharge' : '/wallet');
+        } else if ((data.type === 'gift' || data.type === 'coin_transfer') && handlers.onNavigate) {
           handlers.onNavigate('/wallet');
         } else if (data.type && data.type.startsWith('agency') && handlers.onNavigate) {
           handlers.onNavigate('/my-agency');
         } else if (data.type === 'system' && handlers.onNavigate) {
-          handlers.onNavigate('/notifications/official');
+          handlers.onNavigate('/official-notifications');
         }
       });
 

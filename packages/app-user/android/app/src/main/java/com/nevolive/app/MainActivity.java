@@ -15,11 +15,39 @@ import com.google.firebase.messaging.FirebaseMessaging;
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
     private static Bundle pendingCallBundle = null;
+    private static String pendingNotificationUrl = null;
+
+    public class NativeCallBridge {
+        @android.webkit.JavascriptInterface
+        public void stopRingtone() {
+            Log.d(TAG, "NativeCallBridge: stopRingtone invoked from JavaScript");
+            CallRingtoneManager.stop();
+            dismissCallNotification();
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getPendingNotificationUrl() {
+            String url = pendingNotificationUrl;
+            pendingNotificationUrl = null;
+            Log.d(TAG, "NativeCallBridge: getPendingNotificationUrl returned: " + url);
+            return url != null ? url : "";
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         handleWindowFlags();
+
+        // Register Javascript interface to allow WebView to control ringtone & read deep links
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().addJavascriptInterface(new NativeCallBridge(), "NevoNativeBridge");
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "Could not add NevoNativeBridge: " + e.getMessage());
+        }
+
         handleIntent(getIntent());
 
         try {
@@ -47,6 +75,12 @@ public class MainActivity extends BridgeActivity {
         setIntent(intent);
         handleWindowFlags();
         handleIntent(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        CallRingtoneManager.stop();
     }
 
     private void handleWindowFlags() {
@@ -84,14 +118,26 @@ public class MainActivity extends BridgeActivity {
                 pendingCallBundle = bundle;
             }
 
-            // Dismiss system notification since user is entering the app
-            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            if (notificationManager != null) {
-                notificationManager.cancel(NevoFirebaseMessagingService.CALL_NOTIFICATION_ID);
+            boolean autoAccept = "accept".equals(intent.getStringExtra("callAction")) ||
+                                 "com.nevolive.app.ACCEPT_CALL".equals(action);
+
+            // If user explicitly tapped Accept from notification button, stop ringtone and dismiss notification immediately
+            if (autoAccept) {
+                CallRingtoneManager.stop();
+                dismissCallNotification();
             }
 
             dispatchPendingCallToWebView();
         }
+    }
+
+    private void dismissCallNotification() {
+        try {
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                notificationManager.cancel(NevoFirebaseMessagingService.CALL_NOTIFICATION_ID);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void handleNotificationTapIntent(Intent intent) {
@@ -99,31 +145,68 @@ public class MainActivity extends BridgeActivity {
         String targetUrl = intent.getStringExtra("targetUrl");
         String chatId = intent.getStringExtra("chatId");
         String streamId = intent.getStringExtra("streamId");
+        String roomId = intent.getStringExtra("roomId");
         String senderId = intent.getStringExtra("senderId");
         String type = intent.getStringExtra("type");
+        String role = intent.getStringExtra("role");
+        String title = intent.getStringExtra("title");
+        String body = intent.getStringExtra("body");
 
         if (targetUrl == null || targetUrl.isEmpty()) {
             if (chatId != null && !chatId.isEmpty()) {
                 targetUrl = "/chat/" + chatId;
             } else if (streamId != null && !streamId.isEmpty()) {
-                targetUrl = "/stream/" + streamId;
+                targetUrl = "/live/" + streamId;
+            } else if (roomId != null && !roomId.isEmpty()) {
+                targetUrl = "/party/" + roomId;
             } else if (senderId != null && !senderId.isEmpty()) {
                 targetUrl = "/user/" + senderId;
+            } else if ("withdrawal".equalsIgnoreCase(type)) {
+                boolean isAgentReq = "agent".equalsIgnoreCase(role) ||
+                        (title != null && title.toLowerCase().contains("request")) ||
+                        (body != null && body.toLowerCase().contains("requested"));
+                targetUrl = isAgentReq ? "/agent/requests?tab=withdraw" : "/withdraw";
+            } else if ("recharge".equalsIgnoreCase(type)) {
+                boolean isAgentReq = "agent".equalsIgnoreCase(role) ||
+                        (title != null && title.toLowerCase().contains("request")) ||
+                        (body != null && body.toLowerCase().contains("requested"));
+                targetUrl = isAgentReq ? "/agent/requests?tab=recharge" : "/wallet";
+            } else if ("gift".equalsIgnoreCase(type) || "coin_received".equalsIgnoreCase(type) || "coin_transfer".equalsIgnoreCase(type)) {
+                targetUrl = "/wallet";
+            } else if (type != null && type.startsWith("agency")) {
+                targetUrl = "/my-agency";
+            } else if ("system".equalsIgnoreCase(type)) {
+                targetUrl = "/official-notifications";
             }
         }
 
         if (targetUrl != null && !targetUrl.isEmpty()) {
+            pendingNotificationUrl = targetUrl;
             final String url = targetUrl;
             final String notifType = type != null ? type : "";
+            Log.d(TAG, "Notification tap received. Target URL: " + url + ", Type: " + notifType);
+
+            // Set both in window, localStorage, and fire custom event
             String js = String.format(
-                    "window.dispatchEvent(new CustomEvent('nativeNotificationTap', { detail: { targetUrl: '%s', type: '%s' } }));",
+                    "try {" +
+                    "  window.__PENDING_NOTIFICATION_URL__ = '%s';" +
+                    "  localStorage.setItem('nevo_pending_tap_url', '%s');" +
+                    "  window.dispatchEvent(new CustomEvent('nativeNotificationTap', { detail: { targetUrl: '%s', type: '%s' } }));" +
+                    "} catch (e) { console.warn('Tap dispatch error', e); }",
+                    url.replace("'", "\\'"),
+                    url.replace("'", "\\'"),
                     url.replace("'", "\\'"),
                     notifType.replace("'", "\\'")
             );
+
             dispatchJs(js);
             if (getBridge() != null && getBridge().getWebView() != null) {
-                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 600);
+                // Multi-stage retry for cold start timing
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 300);
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 800);
                 getBridge().getWebView().postDelayed(() -> dispatchJs(js), 1500);
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 2500);
+                getBridge().getWebView().postDelayed(() -> dispatchJs(js), 3500);
             }
         }
     }
@@ -142,7 +225,9 @@ public class MainActivity extends BridgeActivity {
         boolean autoAccept = "accept".equals(action) || "com.nevolive.app.ACCEPT_CALL".equals(action);
 
         String js = String.format(
-                "window.dispatchEvent(new CustomEvent('nativeIncomingCall', { detail: { callId: '%s', channel: '%s', type: '%s', initiatorName: '%s', initiatorAvatar: '%s', token: '%s', coinsPerMinute: %s, autoAccept: %b } }));",
+                "try {" +
+                "  window.dispatchEvent(new CustomEvent('nativeIncomingCall', { detail: { callId: '%s', channel: '%s', type: '%s', initiatorName: '%s', initiatorAvatar: '%s', token: '%s', coinsPerMinute: %s, autoAccept: %b } }));" +
+                "} catch (e) { console.warn('Incoming call dispatch error', e); }",
                 callId, channel, callType,
                 initiatorName.replace("'", "\\'"),
                 initiatorAvatar.replace("'", "\\'"),
@@ -154,8 +239,10 @@ public class MainActivity extends BridgeActivity {
         // Attempt dispatch immediately, and retry for cold start timing
         dispatchJs(js);
         if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 500);
-            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 1200);
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 300);
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 800);
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 1500);
+            getBridge().getWebView().postDelayed(() -> dispatchJs(js), 2500);
         }
 
         // Clean up pending bundle to prevent duplicate/stale call triggers

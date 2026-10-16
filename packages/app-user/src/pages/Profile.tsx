@@ -43,7 +43,7 @@ import { ImageLightboxModal } from '../components/ui';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
 import { usersApi, notificationApi, agentApi } from '../api';
 import { countryLabel } from '../lib/countries';
-import { getMediaUrl } from '../lib/media';
+import { getMediaUrl, getOriginalMediaUrl } from '../lib/media';
 import { calculateWealthLevel, calculateLiveLevel } from '../lib/userLevels';
 import type { ProfileStats } from '../types';
 
@@ -281,7 +281,7 @@ export const Profile = () => {
           onClick={() => {
             if (coverMediaUrl) {
               setPreviewImage({
-                url: coverMediaUrl,
+                url: getOriginalMediaUrl(coverMediaUrl),
                 title: `${user.nickname}'s Cover Photo`,
                 subtitle: `ID: ${user.uid}`,
                 onEdit: () => setEditing(true),
@@ -356,7 +356,7 @@ export const Profile = () => {
               onClick={() => {
                 if (avatarMediaUrl) {
                   setPreviewImage({
-                    url: avatarMediaUrl,
+                    url: getOriginalMediaUrl(avatarMediaUrl),
                     title: `${user.nickname}'s Profile Picture`,
                     subtitle: `ID: ${user.uid}`,
                     onEdit: () => setEditing(true),
@@ -365,12 +365,12 @@ export const Profile = () => {
                   setEditing(true);
                 }
               }}
-              className="ring-4 ring-wash rounded-full shrink-0 bg-white shadow-md active:scale-95 transition-transform block relative overflow-hidden"
+              className="ring-4 ring-wash rounded-full shrink-0 bg-white shadow-md active:scale-95 transition-transform block relative"
               aria-label="View Profile Picture"
               title="Click to view picture in original ratio"
             >
               <Avatar src={user.avatar} nickname={user.nickname} size="xl" online />
-              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full">
+              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full pointer-events-none">
                 <ExpandIcon className="w-5 h-5 drop-shadow" />
               </div>
             </button>

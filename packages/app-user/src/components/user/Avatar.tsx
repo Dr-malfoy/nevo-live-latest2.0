@@ -25,12 +25,12 @@ const sizes = {
 };
 
 const dotOffset = {
-  xs: '-bottom-0 -right-0',
-  sm: '-bottom-0 -right-0',
+  xs: 'bottom-0 right-0',
+  sm: 'bottom-0 right-0',
   md: 'bottom-0 right-0',
   lg: 'bottom-0.5 right-0.5',
-  xl: 'bottom-1 right-1',
-  '2xl': 'bottom-1.5 right-1.5',
+  xl: 'bottom-0.5 right-0.5',
+  '2xl': 'bottom-1 right-1',
 };
 
 export const Avatar = ({
@@ -78,13 +78,13 @@ export const Avatar = ({
   }
 
   return (
-    <div className={`relative shrink-0 ${className}`} onClick={onClick}>
+    <div className={`relative shrink-0 overflow-visible ${className}`} onClick={onClick}>
       {inner}
       <OnlineDot
         online={online}
-        size={size === 'xs' || size === 'sm' ? 'sm' : 'md'}
+        size={size === 'xs' || size === 'sm' ? 'sm' : size === 'xl' || size === '2xl' ? 'lg' : 'md'}
         ringed
-        className={`absolute ${dotOffset[size]}`}
+        className={`absolute z-20 ${dotOffset[size]}`}
       />
     </div>
   );

@@ -15,7 +15,22 @@ const client = axios.create({
   baseURL: API_BASE,
 });
 
+export function getDeviceId(): string {
+  if (typeof window === 'undefined') return '';
+  let id = localStorage.getItem('app_device_id');
+  if (!id) {
+    id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem('app_device_id', id);
+  }
+  return id;
+}
+
 client.interceptors.request.use((config) => {
+  const deviceId = getDeviceId();
+  if (deviceId) {
+    config.headers['X-Device-Id'] = deviceId;
+  }
+
   const stored = localStorage.getItem('auth-storage');
   if (stored) {
     try {

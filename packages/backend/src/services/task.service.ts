@@ -2,6 +2,7 @@ import { TaskConfig, TaskProgress, User, UserInventory, StoreItem, TaskGroup } f
 import { AppError } from '../middleware/errorHandler';
 import { getBangladeshDayBounds } from '../utils/date';
 import { getIO } from '../socket';
+import { referralService } from './referral.service';
 
 const DEFAULT_TASKS = [
   // ── Daily Missions (Coins rewards) ──────────────────────────────────
@@ -315,6 +316,10 @@ export const taskService = {
 
   async recordProgress(userId: string, metric: string, increment: number = 1) {
     if (increment <= 0) return;
+
+    if (metric === 'live_watch_minutes') {
+      referralService.onUserWatchTime(userId, increment).catch(() => {});
+    }
 
     const { dateKey } = getBangladeshDayBounds();
     const matchingConfigs = await TaskConfig.find({ metric, isActive: true });

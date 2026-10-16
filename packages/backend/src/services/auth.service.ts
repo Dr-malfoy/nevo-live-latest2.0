@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 import { verifyIdToken } from '../config/firebase';
 import { otpService, SendOtpServiceResult } from './otp.service';
 import { normalizePhoneNumber, getPhoneSearchVariants } from '../utils/phone.util';
+import { referralService } from './referral.service';
 
 const generateUid = async (): Promise<string> => {
   const count = await User.countDocuments();
@@ -75,7 +76,7 @@ export const authService = {
     return otpService.verifyOtp({ rawPhone: phone, code, purpose });
   },
 
-  async verifyOtpAndLogin(phone: string, code?: string, idToken?: string, purpose: OtpPurpose = 'login') {
+  async verifyOtpAndLogin(phone: string, code?: string, idToken?: string, purpose: OtpPurpose = 'login', deviceId?: string) {
     let verifiedPhone = phone;
 
     if (code) {
@@ -102,6 +103,7 @@ export const authService = {
         phone: targetPhone,
         nickname: `User${uid.slice(-4)}`,
         avatar: '',
+        deviceId: deviceId || undefined,
       });
     }
 
@@ -110,6 +112,7 @@ export const authService = {
     }
 
     await ensureAgentRole(user);
+    await referralService.onUserLogin(user._id.toString(), deviceId).catch(() => {});
 
     const token = signToken({
       userId: user._id.toString(),
@@ -122,7 +125,7 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithPassword(identifier: string, password: string) {
+  async loginWithPassword(identifier: string, password: string, deviceId?: string) {
     const raw = (identifier || '').trim();
     console.log(`[Auth] Login attempt — identifier: ${raw}`);
     if (!raw) {
@@ -175,6 +178,7 @@ export const authService = {
     }
 
     console.log(`[Auth] Login SUCCESS — uid: ${user.uid}, role: ${user.role}`);
+    await referralService.onUserLogin(user._id.toString(), deviceId).catch(() => {});
     const token = signToken({
       userId: user._id.toString(),
       uid: user.uid,
@@ -186,7 +190,7 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithGoogle(idToken: string) {
+  async loginWithGoogle(idToken: string, deviceId?: string) {
     const decoded = await verifyIdToken(idToken);
     if (!decoded) throw new AppError('Firebase auth unavailable — check FIREBASE_SERVICE_ACCOUNT', 503);
     const googleId = decoded.uid;
@@ -195,6 +199,11 @@ export const authService = {
 
     let user = await User.findOne({ googleId });
 
+    let avatar = decoded.picture || '';
+    if (avatar && /googleusercontent\.com|ggpht\.com/i.test(avatar)) {
+      avatar = avatar.replace(/=[sw]\d+.*$/i, '=s0');
+    }
+
     if (!user) {
       const uid = await generateUid();
       user = await User.create({
@@ -202,13 +211,17 @@ export const authService = {
         phone: `google_${googleId}`,
         googleId,
         nickname: name,
-        avatar: decoded.picture || '',
+        avatar,
       });
+    } else if (user.avatar && /googleusercontent\.com|ggpht\.com/i.test(user.avatar) && /=[sw]\d+.*$/i.test(user.avatar)) {
+      user.avatar = user.avatar.replace(/=[sw]\d+.*$/i, '=s0');
+      await user.save().catch(() => {});
     }
 
     if (user.isBanned) throw new AppError('Account is banned', 403);
 
     await ensureAgentRole(user);
+    await referralService.onUserLogin(user._id.toString(), deviceId).catch(() => {});
 
     const token = signToken({
       userId: user._id.toString(),
@@ -221,7 +234,7 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithFacebook(idToken?: string, accessToken?: string) {
+  async loginWithFacebook(idToken?: string, accessToken?: string, deviceId?: string) {
     let facebookId: string = '';
     let email: string = '';
     let name: string = 'Facebook User';
@@ -277,16 +290,19 @@ export const authService = {
         email: email || undefined,
         nickname: name,
         avatar,
+        deviceId: deviceId || undefined,
       });
     } else if (!user.facebookId) {
       user.facebookId = facebookId;
       if (!user.avatar && avatar) user.avatar = avatar;
+      if (deviceId && !user.deviceId) user.deviceId = deviceId;
       await user.save();
     }
 
     if (user.isBanned) throw new AppError('Account is banned', 403);
 
     await ensureAgentRole(user);
+    await referralService.onUserLogin(user._id.toString(), deviceId).catch(() => {});
 
     const token = signToken({
       userId: user._id.toString(),
@@ -311,6 +327,7 @@ export const authService = {
       });
     }
     await ensureAgentRole(user);
+    await referralService.onUserLogin(user._id.toString()).catch(() => {});
     const token = signToken({
       userId: user._id.toString(),
       uid: user.uid,
@@ -394,6 +411,7 @@ export const authService = {
           avatar?: string;
           verificationToken?: string;
           code?: string;
+          deviceId?: string;
         },
     nicknameParam?: string,
     passwordParam?: string,
@@ -544,6 +562,10 @@ export const authService = {
       }
     }
 
+    const userDeviceId = (typeof phoneOrParams === 'object' && phoneOrParams !== null && phoneOrParams.deviceId)
+      ? String(phoneOrParams.deviceId).trim()
+      : undefined;
+
     const uid = await generateUid();
     const data: any = {
       uid,
@@ -556,11 +578,22 @@ export const authService = {
       birthday: birthday || undefined,
       invitedBy: invitedById,
       avatar: '',
+      deviceId: userDeviceId,
     };
 
     data.password = await hashPassword(password);
 
     const user = await User.create(data);
+
+    if (invitedById) {
+      await referralService.recordReferralOnSignup({
+        invitee: user,
+        inviterId: invitedById,
+        inviteCode: cleanInvite,
+        deviceId: userDeviceId,
+        otpVerified: Boolean(normalizedPhone),
+      }).catch((err) => console.error('[Referral] Error recording signup referral:', err));
+    }
 
     const token = signToken({
       userId: user._id.toString(),

@@ -26,7 +26,7 @@ import java.util.Map;
 
 public class NevoFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "NevoPushService";
-    public static final String CALL_CHANNEL_ID = "nevo_calls";
+    public static final String CALL_CHANNEL_ID = "nevo_calls_v2";
     public static final String NOTIFICATION_CHANNEL_ID = "nevo_notifications";
     public static final int CALL_NOTIFICATION_ID = 9001;
 
@@ -103,10 +103,13 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
         Log.d(TAG, "Handling incoming " + callType + " call from: " + initiatorName + ", callId: " + callId);
 
-        // Wake screen
+        // 1. Start native phone call ringtone on STREAM_RING immediately
+        CallRingtoneManager.start(this);
+
+        // 2. Wake screen
         wakeScreen(this);
 
-        // Create Call Notification Channel with HIGH importance & call ringtone
+        // 3. Create Call Notification Channel with HIGH importance & call ringtone
         createCallNotificationChannel();
 
         // Intent to launch MainActivity when tapped or answered
@@ -203,6 +206,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
     private void handleCallCancelled(String callId) {
         Log.d(TAG, "Call cancelled for callId: " + callId);
+        CallRingtoneManager.stop();
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
             notificationManager.cancel(CALL_NOTIFICATION_ID);
@@ -224,15 +228,27 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
             if (chatId != null && !chatId.isEmpty()) {
                 targetUrl = "/chat/" + chatId;
             } else if (streamId != null && !streamId.isEmpty()) {
-                targetUrl = "/stream/" + streamId;
+                targetUrl = "/live/" + streamId;
             } else if (roomId != null && !roomId.isEmpty()) {
                 targetUrl = "/party/" + roomId;
             } else if (senderId != null && !senderId.isEmpty()) {
                 targetUrl = "/user/" + senderId;
-            } else if ("gift".equalsIgnoreCase(type) || "recharge".equalsIgnoreCase(type) || "withdrawal".equalsIgnoreCase(type)) {
+            } else if ("withdrawal".equalsIgnoreCase(type)) {
+                boolean isAgentReq = "agent".equalsIgnoreCase(data != null ? data.get("role") : null) ||
+                        (title != null && title.toLowerCase().contains("request")) ||
+                        (body != null && body.toLowerCase().contains("requested"));
+                targetUrl = isAgentReq ? "/agent/requests?tab=withdraw" : "/withdraw";
+            } else if ("recharge".equalsIgnoreCase(type)) {
+                boolean isAgentReq = "agent".equalsIgnoreCase(data != null ? data.get("role") : null) ||
+                        (title != null && title.toLowerCase().contains("request")) ||
+                        (body != null && body.toLowerCase().contains("requested"));
+                targetUrl = isAgentReq ? "/agent/requests?tab=recharge" : "/wallet";
+            } else if ("gift".equalsIgnoreCase(type) || "coin_received".equalsIgnoreCase(type) || "coin_transfer".equalsIgnoreCase(type)) {
                 targetUrl = "/wallet";
             } else if (type != null && type.startsWith("agency")) {
                 targetUrl = "/my-agency";
+            } else if ("system".equalsIgnoreCase(type)) {
+                targetUrl = "/official-notifications";
             }
         }
 

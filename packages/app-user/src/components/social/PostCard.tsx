@@ -19,7 +19,12 @@ import {
   PiEyeFill as EyeIcon,
   PiVideoCameraFill as VideoIcon,
 } from 'react-icons/pi';
-import { Avatar, LevelBadge, VerifiedBadge } from '../user';
+import {
+  Avatar,
+  LevelBadge,
+  HostBadge,
+  EquippedBadge,
+} from '../user';
 import { momentsApi } from '../../api';
 import { useAuthStore, useUIStore } from '../../stores';
 import { timeAgo, compactNumber } from '../../lib/time';
@@ -121,15 +126,22 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   // Identify author & media
   const author = typeof moment.userId === 'object' ? moment.userId : null;
-  const isCurrentUser = currentUser && (
-    (author?._id && currentUser._id?.toString() === author._id?.toString()) ||
-    (author?.uid && currentUser.uid?.toString() === author.uid?.toString()) ||
-    (typeof moment.userId === 'string' && currentUser._id?.toString() === moment.userId?.toString())
+  const isCurrentUser = Boolean(
+    currentUser && (
+      (author?._id && currentUser._id?.toString() === author._id?.toString()) ||
+      (author?.uid && currentUser.uid?.toString() === author.uid?.toString()) ||
+      (typeof moment.userId === 'string' && currentUser._id?.toString() === moment.userId?.toString())
+    )
   );
-  const authorName = isCurrentUser ? (currentUser.nickname || author?.nickname || 'User') : (author?.nickname || 'User');
-  const authorAvatar = isCurrentUser ? (currentUser.avatar || author?.avatar) : author?.avatar;
-  const authorLevel = isCurrentUser ? resolveLevel(currentUser) : resolveLevel(author);
-  const authorId = author?._id || (isCurrentUser ? currentUser._id : (typeof moment.userId === 'string' ? moment.userId : undefined));
+  const authorUser = (isCurrentUser ? currentUser : author) as any;
+  const authorName = authorUser?.nickname || author?.nickname || 'User';
+  const authorAvatar = authorUser?.avatar || author?.avatar;
+  const authorLevel = resolveLevel(authorUser || author);
+  const authorId = author?._id || (isCurrentUser ? currentUser?._id : (typeof moment.userId === 'string' ? moment.userId : undefined));
+
+  // Author Badges
+  const authorHostBadge = authorUser?.hostBadge || authorUser?.host?.badge;
+  const authorEquippedBadge = authorUser?.equippedBadge || authorUser?.badge;
 
   const rawMediaSrc = moment.videoUrl || (moment.media && moment.media[0]);
   const mediaSrc = getMediaUrl(rawMediaSrc);
@@ -267,11 +279,16 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               <span className="text-sm font-bold text-ink truncate group-hover:text-accent-500 transition-colors">
                 {authorName}
               </span>
-              <VerifiedBadge verification={author?.verification} />
+              {authorHostBadge && authorHostBadge !== 'none' && (
+                <HostBadge badge={authorHostBadge} size="xs" />
+              )}
+              {authorEquippedBadge && (
+                <EquippedBadge badge={authorEquippedBadge} size="xs" />
+              )}
               <LevelBadge level={authorLevel} size="sm" />
             </div>
             <div className="flex items-center gap-2 mt-0.5">
@@ -556,12 +573,6 @@ export const PostCard: React.FC<PostCardProps> = ({
               loading="lazy"
             />
 
-            {/* Floating Full View Badge */}
-            <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/65 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity shadow-lg z-20 pointer-events-none border border-white/20">
-              <Fullscreen className="w-3.5 h-3.5" />
-              <span>Full View</span>
-            </div>
-
             {/* Floating Reactions Avatars Badge on Photo */}
             {likesCount > 0 && (
               <div
@@ -572,7 +583,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 className="absolute bottom-3 left-3 px-2 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white flex items-center gap-1.5 shadow-lg z-20 cursor-pointer active:scale-95 transition-all border border-white/20 group/reacts"
                 title="See who reacted to this post"
               >
-                <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+                <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 shrink-0" />
                 <div className="flex -space-x-1.5 overflow-hidden items-center shrink-0">
                   {(moment.likes || [])
                     .filter((u) => u && typeof u === 'object')
@@ -597,7 +608,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                     })}
                 </div>
                 {(likesCount > 3 || (moment.likes?.length || 0) > 3) && (
-                  <span className="text-[10px] text-white/90 font-black tracking-widest leading-none px-0.5">
+                  <span className="text-[10px] text-white/90 font-black tracking-widest leading-none px-0.5 shrink-0">
                     ...
                   </span>
                 )}
@@ -622,7 +633,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-sunken hover:bg-line/80 border border-line text-ink cursor-pointer active:scale-95 transition-all shadow-2xs"
             title="See who reacted to this post"
           >
-            <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 shrink-0" />
             <div className="flex -space-x-1.5 overflow-hidden items-center shrink-0">
               {(moment.likes || [])
                 .filter((u) => u && typeof u === 'object')
@@ -647,7 +658,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 })}
             </div>
             {(likesCount > 3 || (moment.likes?.length || 0) > 3) && (
-              <span className="text-[10px] text-ink-muted font-black tracking-widest leading-none px-0.5">
+              <span className="text-[10px] text-ink-muted font-black tracking-widest leading-none px-0.5 shrink-0">
                 ...
               </span>
             )}

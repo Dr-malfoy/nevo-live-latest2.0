@@ -11,18 +11,17 @@ declare global {
   }
 }
 
+import { referralService } from '../services/referral.service';
+
 /**
- * Presence tracking for the online/offline dot (requirement #3).
- *
- * Writing on every request would be one extra write per API call, so each
- * user is only written back to Mongo once per throttle window. The map is
- * capped so a traffic spike cannot grow it without bound.
+ * Presence tracking for the online/offline dot (requirement #3)
+ * and Day 2 login check for referral verification.
  */
 const PRESENCE_THROTTLE_MS = 60_000;
 const PRESENCE_MAP_MAX = 10_000;
 const lastTouched = new Map<string, number>();
 
-function touchPresence(userId: string): void {
+function touchPresence(userId: string, deviceId?: string): void {
   const now = Date.now();
   const previous = lastTouched.get(userId);
   if (previous && now - previous < PRESENCE_THROTTLE_MS) return;
@@ -32,6 +31,7 @@ function touchPresence(userId: string): void {
 
   // Fire-and-forget — presence must never delay or fail a request.
   User.updateOne({ _id: userId }, { $set: { lastActiveAt: new Date(now) } }).catch(() => {});
+  referralService.onUserLogin(userId, deviceId).catch(() => {});
 }
 
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
@@ -47,7 +47,8 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
   try {
     const decoded = verifyToken(token);
     req.user = decoded;
-    touchPresence(decoded.userId);
+    const deviceId = (req.headers['x-device-id'] || '') as string;
+    touchPresence(decoded.userId, deviceId);
     next();
   } catch (error) {
     sendError(res, 'Invalid or expired token', 401);

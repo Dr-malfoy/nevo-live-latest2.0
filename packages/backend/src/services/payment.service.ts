@@ -255,13 +255,14 @@ export const paymentService = {
       { amountBdt: order.amountBdt, unitCount, currency },
     );
 
-    await notificationService.createNotification(
-      order.userId.toString(),
-      'recharge',
-      'Recharge approved',
-      `Your recharge of ৳${order.amountBdt} was approved. ${unitCount} ${currency}s credited.`,
-      { orderId: order._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: order.userId.toString(),
+      type: 'recharge',
+      title: 'Recharge approved',
+      message: `Your recharge of ৳${order.amountBdt} was approved. ${unitCount} ${currency}s credited.`,
+      targetUrl: '/wallet',
+      data: { orderId: order._id.toString(), type: 'recharge', role: 'user' },
+    });
 
     // Real-time balance updates
     try {
@@ -377,13 +378,14 @@ export const paymentService = {
       } catch {}
     } else if (targetAgentId) {
       // Sent to specific agency agent
-      await notificationService.createNotification(
-        targetAgentId.toString(),
-        'recharge',
-        'New recharge request',
-        `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
-        { orderId: order._id, type: 'recharge', amountBdt, currency }
-      );
+      await notificationService.createNotification({
+        userId: targetAgentId.toString(),
+        type: 'recharge',
+        title: 'New recharge request',
+        message: `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
+        targetUrl: '/agent/requests?tab=recharge',
+        data: { orderId: order._id.toString(), type: 'recharge', role: 'agent', amountBdt, currency },
+      });
 
       try {
         const { getIO } = await import('../socket');
@@ -580,13 +582,14 @@ export const paymentService = {
     order.adminNote = note || '';
     await order.save();
 
-    await notificationService.createNotification(
-      order.userId.toString(),
-      'recharge',
-      'Recharge rejected',
-      `Your recharge of ৳${order.amountBdt} was rejected${note ? `: ${note}` : ''}.`,
-      { orderId: order._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: order.userId.toString(),
+      type: 'recharge',
+      title: 'Recharge rejected',
+      message: `Your recharge of ৳${order.amountBdt} was rejected${note ? `: ${note}` : ''}.`,
+      targetUrl: '/wallet',
+      data: { orderId: order._id.toString(), type: 'recharge', role: 'user' },
+    });
 
     return order;
   },
@@ -621,13 +624,14 @@ export const paymentService = {
     order.adminNote = note || '';
     await order.save();
 
-    await notificationService.createNotification(
-      order.userId.toString(),
-      'recharge',
-      'Recharge rejected',
-      `Your recharge of ৳${order.amountBdt} was rejected${note ? `: ${note}` : ''}.`,
-      { orderId: order._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: order.userId.toString(),
+      type: 'recharge',
+      title: 'Recharge rejected',
+      message: `Your recharge of ৳${order.amountBdt} was rejected${note ? `: ${note}` : ''}.`,
+      targetUrl: '/wallet',
+      data: { orderId: order._id.toString(), type: 'recharge', role: 'user' },
+    });
 
     return order;
   },
@@ -745,13 +749,14 @@ export const paymentService = {
       status: 'pending',
     });
 
-    await notificationService.createNotification(
-      agentId,
-      'withdrawal',
-      'New withdrawal request',
-      `${user.nickname} requested to withdraw ${amount} ${currency} (৳${finalBdt}) via ${method}`,
-      { withdrawalId: request._id, type: 'withdrawal', amount, currency }
-    );
+    await notificationService.createNotification({
+      userId: agentId,
+      type: 'withdrawal',
+      title: 'New withdrawal request',
+      message: `${user.nickname} requested to withdraw ${amount} ${currency} (৳${finalBdt}) via ${method}`,
+      targetUrl: '/agent/requests?tab=withdraw',
+      data: { withdrawalId: request._id.toString(), type: 'withdrawal', role: 'agent', amount, currency },
+    });
 
     try {
       getIO()?.to(`user:${agentId}`).emit('agent:request:new', {
@@ -835,13 +840,14 @@ export const paymentService = {
     request.status = 'approved';
     await request.save();
 
-    await notificationService.createNotification(
-      request.userId.toString(),
-      'withdrawal',
-      'Withdrawal approved',
-      `Your withdrawal of ${request.amount} ${request.currency} was approved. You will be paid via ${request.method}.`,
-      { withdrawalId: request._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: request.userId.toString(),
+      type: 'withdrawal',
+      title: 'Withdrawal approved',
+      message: `Your withdrawal of ${request.amount} ${request.currency} was approved. You will be paid via ${request.method}.`,
+      targetUrl: '/withdraw',
+      data: { withdrawalId: request._id.toString(), type: 'withdrawal', role: 'user' },
+    });
 
     return request;
   },
@@ -855,13 +861,14 @@ export const paymentService = {
     request.agentNote = note || '';
     await request.save();
 
-    await notificationService.createNotification(
-      request.userId.toString(),
-      'withdrawal',
-      'Withdrawal rejected',
-      `Your withdrawal of ${request.amount} ${request.currency} was rejected${note ? `: ${note}` : ''}.`,
-      { withdrawalId: request._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: request.userId.toString(),
+      type: 'withdrawal',
+      title: 'Withdrawal rejected',
+      message: `Your withdrawal of ${request.amount} ${request.currency} was rejected${note ? `: ${note}` : ''}.`,
+      targetUrl: '/withdraw',
+      data: { withdrawalId: request._id.toString(), type: 'withdrawal', role: 'user' },
+    });
 
     return request;
   },
@@ -874,13 +881,14 @@ export const paymentService = {
     request.status = 'paid';
     await request.save();
 
-    await notificationService.createNotification(
-      request.userId.toString(),
-      'withdrawal',
-      'Withdrawal paid',
-      `Your withdrawal of ${request.amount} ${request.currency} has been paid.`,
-      { withdrawalId: request._id.toString() }
-    );
+    await notificationService.createNotification({
+      userId: request.userId.toString(),
+      type: 'withdrawal',
+      title: 'Withdrawal paid',
+      message: `Your withdrawal of ${request.amount} ${request.currency} has been paid.`,
+      targetUrl: '/withdraw',
+      data: { withdrawalId: request._id.toString(), type: 'withdrawal', role: 'user' },
+    });
 
     return request;
   },

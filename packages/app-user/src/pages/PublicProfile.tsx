@@ -44,7 +44,7 @@ import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModa
 import { CallScreen } from '../components/call/CallScreen';
 import { requestMediaPermissions } from '../lib/permissions';
 import { countryLabel, flagEmoji } from '../lib/countries';
-import { getMediaUrl } from '../lib/media';
+import { getMediaUrl, getOriginalMediaUrl } from '../lib/media';
 import { calculateWealthLevel, calculateLiveLevel, formatLiveTime } from '../lib/userLevels';
 import type { PublicProfile as PublicProfileData } from '../types';
 
@@ -305,12 +305,12 @@ export const PublicProfile = () => {
           onClick={() => {
             if (coverMediaUrl) {
               setPreviewImage({
-                url: coverMediaUrl,
+                url: getOriginalMediaUrl(coverMediaUrl),
                 title: `${profile.nickname}'s Cover Photo`,
               });
             } else if (avatarMediaUrl) {
               setPreviewImage({
-                url: avatarMediaUrl,
+                url: getOriginalMediaUrl(avatarMediaUrl),
                 title: `${profile.nickname}'s Photo`,
               });
             }
@@ -390,12 +390,12 @@ export const PublicProfile = () => {
               onClick={() => {
                 if (avatarMediaUrl) {
                   setPreviewImage({
-                    url: avatarMediaUrl,
+                    url: getOriginalMediaUrl(avatarMediaUrl),
                     title: `${profile.nickname}'s Profile Picture`,
                   });
                 }
               }}
-              className="ring-4 ring-white rounded-full bg-white shadow-lg shrink-0 active:scale-95 transition-transform block relative overflow-hidden"
+              className="ring-4 ring-white rounded-full bg-white shadow-lg shrink-0 active:scale-95 transition-transform block relative"
               title="Click to view full picture"
             >
               <Avatar
@@ -404,7 +404,7 @@ export const PublicProfile = () => {
                 size="2xl"
                 online={Boolean(profile.online)}
               />
-              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full">
+              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full pointer-events-none">
                 <ExpandIcon className="w-5 h-5 drop-shadow" />
               </div>
             </button>

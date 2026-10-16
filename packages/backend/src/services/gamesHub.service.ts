@@ -3,6 +3,7 @@ import { AppError } from '../middleware/errorHandler';
 import { getBangladeshDayBounds } from '../utils/date';
 import { getIO } from '../socket';
 import { taskService } from './task.service';
+import { referralService } from './referral.service';
 
 // Lucky spin slices: index 0..7
 const SPIN_SLICES = [
@@ -835,6 +836,11 @@ export class GamesHubService {
 
     // 1. Update general task service (for daily tasks)
     await taskService.recordProgress(userId, metric, increment).catch(() => {});
+
+    // Track live watch minutes for referral validation & invitee rewards
+    if (metric === 'live_watch_minutes') {
+      await referralService.onUserWatchTime(userId, increment).catch(() => {});
+    }
 
     // 2. Also ensure progress document for metric directly
     await TaskProgress.findOneAndUpdate(

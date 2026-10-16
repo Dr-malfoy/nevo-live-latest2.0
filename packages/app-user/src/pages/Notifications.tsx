@@ -26,7 +26,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { notificationApi, officialNotificationApi, type NotificationItem } from '../api';
 import { Avatar } from '../components/user';
-import { useSocketStore, useUIStore } from '../stores';
+import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 
 interface TabConfig {
   key: string;
@@ -233,17 +233,29 @@ export const Notifications = () => {
       if (notif.data?.streamId) navigate(`/live/${notif.data.streamId}`);
       else if (notif.data?.roomId) navigate(`/party/${notif.data.roomId}`);
       else navigate('/');
+    } else if (type === 'withdrawal') {
+      const currentUser = useAuthStore.getState().user;
+      const isAgent = Boolean(currentUser?.isAgent || currentUser?.role === 'agent' || currentUser?.isAdmin);
+      const isAgentReq = isAgent && (notif.title?.toLowerCase().includes('request') || notif.data?.role === 'agent' || notif.data?.withdrawalId);
+      if (isAgentReq) navigate('/agent/requests?tab=withdraw');
+      else navigate('/withdraw');
+    } else if (type === 'recharge') {
+      const currentUser = useAuthStore.getState().user;
+      const isAgent = Boolean(currentUser?.isAgent || currentUser?.role === 'agent' || currentUser?.isAdmin);
+      const isAgentReq = isAgent && (notif.title?.toLowerCase().includes('request') || notif.data?.role === 'agent');
+      if (isAgentReq) navigate('/agent/requests?tab=recharge');
+      else navigate('/wallet');
     } else if (
       type === 'gift' ||
       type === 'coin_received' ||
       type === 'coin_transfer' ||
-      type === 'recharge' ||
-      type === 'withdrawal' ||
       type === 'rate_updated'
     ) {
       navigate('/wallet');
     } else if (type.startsWith('agency') || type === 'agent_linked') {
       navigate('/my-agency');
+    } else if (type === 'system') {
+      navigate('/official-notifications');
     } else if (type === 'call') {
       if (notif.data?.chatId) navigate(`/chat/${notif.data.chatId}`);
       else navigate('/chats');

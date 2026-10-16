@@ -113,13 +113,19 @@ export const notificationService = {
         } else if (type === 'follower' && senderId) {
           finalTargetUrl = `/user/${senderId}`;
         } else if ((type === 'live_started' || type === 'live_joined') && data?.streamId) {
-          finalTargetUrl = `/stream/${data.streamId}`;
+          finalTargetUrl = `/live/${data.streamId}`;
         } else if ((type === 'live_started' || type === 'live_joined') && data?.roomId) {
           finalTargetUrl = `/party/${data.roomId}`;
+        } else if (type === 'withdrawal') {
+          finalTargetUrl = (data?.role === 'agent' || data?.isAgent) ? '/agent/requests?tab=withdraw' : '/withdraw';
+        } else if (type === 'recharge') {
+          finalTargetUrl = (data?.role === 'agent' || data?.isAgent) ? '/agent/requests?tab=recharge' : '/wallet';
         } else if (type === 'gift' || type === 'coin_received' || type === 'coin_transfer') {
           finalTargetUrl = '/wallet';
-        } else if (type.startsWith('agency')) {
+        } else if (type.startsWith('agency') || type === 'agent_linked') {
           finalTargetUrl = '/my-agency';
+        } else if (type === 'system') {
+          finalTargetUrl = '/official-notifications';
         }
       }
 

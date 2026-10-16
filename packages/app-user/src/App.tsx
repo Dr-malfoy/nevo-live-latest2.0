@@ -352,10 +352,44 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
+    const handleNavigate = (url: string) => {
+      if (!url) return;
+      try {
+        navigate(url);
+      } catch (err) {
+        console.warn('[Navigation] Route navigation error:', err);
+      }
+    };
+
+    // Check for pending notification tap URL on mount & retry
+    const checkPendingTap = () => {
+      try {
+        const bridgeUrl = (window as any).NevoNativeBridge?.getPendingNotificationUrl?.();
+        const winUrl = (window as any).__PENDING_NOTIFICATION_URL__;
+        const localUrl = localStorage.getItem('nevo_pending_tap_url');
+        const target = bridgeUrl || winUrl || localUrl;
+        if (target) {
+          (window as any).__PENDING_NOTIFICATION_URL__ = null;
+          localStorage.removeItem('nevo_pending_tap_url');
+          console.log('[NotificationTap] Navigating to target:', target);
+          handleNavigate(target);
+        }
+      } catch (e) {
+        console.warn('Pending tap check error', e);
+      }
+    };
+
+    checkPendingTap();
+    const t1 = setTimeout(checkPendingTap, 400);
+    const t2 = setTimeout(checkPendingTap, 1200);
+    const t3 = setTimeout(checkPendingTap, 2500);
+
     const onNativeNotificationTap = (e: any) => {
       const detail = e.detail;
       if (detail && detail.targetUrl) {
-        navigate(detail.targetUrl);
+        (window as any).__PENDING_NOTIFICATION_URL__ = null;
+        localStorage.removeItem('nevo_pending_tap_url');
+        handleNavigate(detail.targetUrl);
       }
     };
 
@@ -371,6 +405,9 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     window.addEventListener('nativeNotificationTap', onNativeNotificationTap);
     window.addEventListener('nativeFcmToken', onNativeFcmToken);
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
       window.removeEventListener('nativeIncomingCall', onNativeIncomingCall);
       window.removeEventListener('nativeNotificationTap', onNativeNotificationTap);
       window.removeEventListener('nativeFcmToken', onNativeFcmToken);
@@ -468,9 +505,11 @@ export default function App() {
             {/* Stream pages — no nav, full screen */}
             <Route element={<StreamLayout />}>
               <Route path="/live/:id" element={<LiveStreamPage />} />
+              <Route path="/stream/:id" element={<LiveStreamPage />} />
               <Route path="/match" element={<ProtectedRoute><Match /></ProtectedRoute>} />
               <Route path="/go-live" element={<ProtectedRoute><GoLive /></ProtectedRoute>} />
               <Route path="/official-notifications" element={<OfficialNotifications />} />
+              <Route path="/notifications/official" element={<OfficialNotifications />} />
             </Route>
 
             {/* Main pages — with bottom nav */}
@@ -526,6 +565,14 @@ export default function App() {
             />
             <Route
               path="/withdraw"
+              element={<ProtectedRoute><Withdraw /></ProtectedRoute>}
+            />
+            <Route
+              path="/withdrawal"
+              element={<ProtectedRoute><Withdraw /></ProtectedRoute>}
+            />
+            <Route
+              path="/withdrawals"
               element={<ProtectedRoute><Withdraw /></ProtectedRoute>}
             />
             <Route
@@ -619,6 +666,7 @@ export default function App() {
             <Route path="/agent/invite-hosts" element={<AgentRoute><InviteHosts /></AgentRoute>} />
             <Route path="/agent/requests" element={<AgentRoute><AgentRequests /></AgentRoute>} />
             <Route path="/agent/recharge-withdraw" element={<AgentRoute><AgentRequests /></AgentRoute>} />
+            <Route path="/agent-requests" element={<AgentRoute><AgentRequests /></AgentRoute>} />
 
             {/* Creator centers — #40, #42, #62 */}
             <Route path="/streamer-center" element={<ProtectedRoute><StreamerCenter /></ProtectedRoute>} />
@@ -631,6 +679,7 @@ export default function App() {
 
             {/* Party — #17, #18, #19, #50 */}
             <Route path="/party/:id" element={<ProtectedRoute><PartyRoom /></ProtectedRoute>} />
+            <Route path="/room/:id" element={<ProtectedRoute><PartyRoom /></ProtectedRoute>} />
 
             {/* Referral — #26, #27, #58 */}
             <Route path="/invite" element={<ProtectedRoute><InviteFriends /></ProtectedRoute>} />
@@ -685,6 +734,9 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
+            {/* Catch-all fallback route to prevent blank / white screen on unmatched deep links */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <ToastContainer />
         </AuthListener>

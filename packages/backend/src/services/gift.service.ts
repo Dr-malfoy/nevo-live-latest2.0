@@ -5,6 +5,7 @@ import { notificationService } from './notification.service';
 import { calculateWealthLevel } from '../utils/userLevels';
 import { calculateGiftCoinDistribution, getAgencyCommissionByLevel } from '../utils/agencyTiers';
 import { calculateAgencyLevel } from './agency.service';
+import { referralService } from './referral.service';
 
 export const giftService = {
   async listActiveGifts() {
@@ -211,6 +212,13 @@ export const giftService = {
     });
 
     await Transaction.create(transactionsToCreate);
+
+    // Distribute 10% Lifetime Referral Commission to inviter if qualified (25+ invites)
+    referralService.distributeInviterLifetimeCommission(
+      receiverId.toString(),
+      hostCoins,
+      `Stream gift: ${quantity}x ${gift.name}`
+    ).catch((err) => console.error('[Referral] Lifetime commission distribution error:', err));
 
     // Push real-time balance updates to parties (per-user socket rooms)
     try {

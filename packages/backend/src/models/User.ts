@@ -150,6 +150,12 @@ export interface IUserDocument extends Document {
   };
   following: Schema.Types.ObjectId[];
   followers: Schema.Types.ObjectId[];
+  deviceId?: string;
+  hasLifetimeReferralCommission?: boolean;
+  lifetimeReferralCommissionPercent?: number;
+  totalWatchMinutes?: number;
+  loginDates?: string[];
+  lastLoginDateKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -203,6 +209,12 @@ const userSchema = new Schema<IUserDocument>(
     assetPasswordLockedUntil: { type: Date },
     callPricePerMinute: { type: Number, default: 1000, min: 0 },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    deviceId: { type: String, index: true },
+    hasLifetimeReferralCommission: { type: Boolean, default: false },
+    lifetimeReferralCommissionPercent: { type: Number, default: 0 },
+    totalWatchMinutes: { type: Number, default: 0 },
+    loginDates: { type: [String], default: [] },
+    lastLoginDateKey: { type: String },
     settings: {
       notifications: {
         system: { type: Boolean, default: true },

@@ -100,6 +100,10 @@ class RingtoneManager {
   stop() {
     this.isPlaying = false;
 
+    try {
+      (window as any).NevoNativeBridge?.stopRingtone?.();
+    } catch {}
+
     if (this.ringInterval) {
       clearInterval(this.ringInterval);
       this.ringInterval = null;

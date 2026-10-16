@@ -5,6 +5,7 @@ import { generateAgoraToken } from '../config/agora';
 import { getIO } from '../socket';
 import { chatService } from './chat.service';
 import { pushNotificationService } from './pushNotification.service';
+import { referralService } from './referral.service';
 import crypto from 'crypto';
 
 /** Hard cap on group call participants (user requirement). */
@@ -590,6 +591,15 @@ export const callService = {
       call.hostEarning = hostEarning;
       call.companyCommission = 0;
       await call.save();
+
+      // Distribute 10% Lifetime Referral Commission to inviter if qualified (25+ invites)
+      if (call.hostId && hostEarning > 0) {
+        referralService.distributeInviterLifetimeCommission(
+          call.hostId.toString(),
+          hostEarning,
+          `1:1 Call (${call.minutesBilled} min)`
+        ).catch((err) => console.error('[Referral] Call commission error:', err));
+      }
 
       // Emit updated balance to host & audience
       const [host, audience] = await Promise.all([

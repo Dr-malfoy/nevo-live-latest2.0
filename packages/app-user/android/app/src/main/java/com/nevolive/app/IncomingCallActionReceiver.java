@@ -16,6 +16,9 @@ public class IncomingCallActionReceiver extends BroadcastReceiver {
         Log.d(TAG, "Received call action: " + action + " for callId: " + callId);
 
         if ("com.nevolive.app.DECLINE_CALL".equals(action)) {
+            // Stop ringtone and vibration immediately
+            CallRingtoneManager.stop();
+
             // Dismiss notification immediately
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {

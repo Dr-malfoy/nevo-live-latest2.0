@@ -128,6 +128,15 @@ export const CallScreen = ({
     }
   }, [outgoing?.callee?.online]);
 
+  useEffect(() => {
+    return () => {
+      ringtone.stop();
+      try {
+        (window as any).NevoNativeBridge?.stopRingtone?.();
+      } catch {}
+    };
+  }, []);
+
   // Controls UI state
   const [chatOpen, setChatOpen] = useState(false);
   const [filterPickerOpen, setFilterPickerOpen] = useState(false);

@@ -20,6 +20,7 @@ import { Button, Input, PhoneInputWithCountry, formatFullPhoneNumber } from '../
 import { TermsModal } from '../components/TermsModal';
 import { useAuthStore, useUIStore } from '../stores';
 import { authApi } from '../api';
+import { getDeviceId } from '../api/client';
 import {
   setupRecaptcha,
   clearRecaptcha,
@@ -388,6 +389,7 @@ export const Register = () => {
         inviteCode: inviteCode.trim() || undefined,
         code,
         idToken,
+        deviceId: getDeviceId(),
       });
 
       showToast('Account created successfully! Welcome to Navo Live.', 'success');

@@ -19,6 +19,10 @@ import {
   PiXBold as CloseIcon,
   PiCaretRightBold as ChevronRight,
   PiShieldCheckFill as ShieldCheck,
+  PiWarningCircleFill as WarningIcon,
+  PiClockFill as Clock,
+  PiCheckCircleFill as CheckCircle,
+  PiArrowsClockwiseBold as RefreshIcon,
 } from 'react-icons/pi';
 import { referralApi, type ReferralSummary } from '../api/social.api';
 import { optional } from '../api/pending';
@@ -30,12 +34,24 @@ import { compactNumber } from '../lib/time';
 import type { UserPublic } from '../types';
 
 /**
- * Invite Friends & Earn Referral Hub — Navo Live
- * Re-designed modern referral system with multi-channel sharing,
- * reward analytics, milestone progression, and live income leaderboard.
+ * Invite Friends & Referral Hub — Navo Live
+ *
+ * Rules:
+ * - 1 Invite = 13,000 Coins (100 TK)
+ * - 5 Invites = 65,000 Coins
+ * - 10 Invites = VIP + 65,000 Coins
+ * - 25 Invites = 10% Lifetime Commission from invited users' income
+ *
+ * Invitee Reward:
+ * - New User Join = 13,000 Coins (100 TK) after registration + 10 min watch time
+ *
+ * Refer Valid Logic:
+ * - Valid only if: OTP verified + WatchTime > 30 min + Login Day 2
+ * - If DeviceID duplicate -> Invalid
+ * - Coin Release: 50% instant (6,500 coins), 50% after Day 2 login (6,500 coins)
  */
 
-type Tab = 'rewards' | 'rank';
+type Tab = 'rewards' | 'friends' | 'rank';
 
 export const InviteFriends = () => {
   const navigate = useNavigate();
@@ -47,6 +63,7 @@ export const InviteFriends = () => {
   const [rank, setRank] = useState<{ rank: number; user: UserPublic; amount: number }[]>([]);
   const [ticker, setTicker] = useState<{ nickname: string; claimed: number; earned: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -54,33 +71,36 @@ export const InviteFriends = () => {
   const [showQrModal, setShowQrModal] = useState(false);
   const [activeTickerIdx, setActiveTickerIdx] = useState(0);
 
+  const fetchReferralData = async (isManualRefresh = false) => {
+    if (isManualRefresh) setRefreshing(true);
+    try {
+      const [s, r, t] = await Promise.all([
+        optional(referralApi.getSummary()).catch(() => null),
+        optional(referralApi.getRank()).catch(() => null),
+        optional(referralApi.getTicker()).catch(() => null),
+      ]);
+
+      if (s?.data) setSummary(s.data);
+      if (r?.data) setRank(r.data);
+      const tickerData = t?.data && t.data.length > 0 ? t.data : [
+        { nickname: 'Zayan_99', claimed: 13000, earned: 65000 },
+        { nickname: 'Amina_Live', claimed: 26000, earned: 130000 },
+        { nickname: 'KingRaj', claimed: 65000, earned: 325000 },
+        { nickname: 'StarHost_01', claimed: 13000, earned: 52000 },
+      ];
+      setTicker(tickerData);
+
+      if (isManualRefresh) {
+        showToast('Referral stats updated', 'success');
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
-
-    Promise.all([
-      optional(referralApi.getSummary()).catch(() => null),
-      optional(referralApi.getRank()).catch(() => null),
-      optional(referralApi.getTicker()).catch(() => null),
-    ])
-      .then(([s, r, t]) => {
-        if (cancelled) return;
-        setSummary(s?.data ?? null);
-        setRank(r?.data ?? []);
-        const tickerData = t?.data && t.data.length > 0 ? t.data : [
-          { nickname: 'Zayan_99', claimed: 25, earned: 150 },
-          { nickname: 'Amina_Live', claimed: 40, earned: 320 },
-          { nickname: 'KingRaj', claimed: 50, earned: 500 },
-          { nickname: 'StarHost_01', claimed: 15, earned: 120 },
-        ];
-        setTicker(tickerData);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    fetchReferralData();
   }, []);
 
   // Cycle ticker messages every 3.5 seconds
@@ -94,7 +114,7 @@ export const InviteFriends = () => {
 
   const myId = summary?.myId ?? user?.uid ?? '';
   const inviteUrl = `${window.location.origin}/invite/${myId || user?.uid || ''}`;
-  const shareText = `Join me on Navo Live! Use my invite code [${myId}] to get free bonus coins and stream live: ${inviteUrl}`;
+  const shareText = `Join me on Navo Live! Use my invite code [${myId}] to get 13,000 Free Coins (100 TK) after registering and watching 10 mins: ${inviteUrl}`;
 
   const copyId = async () => {
     if (!myId) return;
@@ -123,15 +143,15 @@ export const InviteFriends = () => {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'Join Navo Live — Live Streaming & Party',
-          text: `Use my invite code ${myId} to get exclusive bonus rewards!`,
+          title: 'Join Navo Live — 13,000 Coins Welcome Bonus',
+          text: `Use my invite code ${myId} on Navo Live to get 13,000 Coins (100 TK) welcome bonus!`,
           url: inviteUrl,
         });
       } else {
         await copyLink();
       }
     } catch {
-      /* dismissed by user */
+      /* dismissed */
     }
   };
 
@@ -143,7 +163,7 @@ export const InviteFriends = () => {
     if (platform === 'whatsapp') {
       url = `https://api.whatsapp.com/send?text=${encodedText}`;
     } else if (platform === 'telegram') {
-      url = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(`Join me on Navo Live! Use invite code: ${myId}`)}`;
+      url = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(`Join me on Navo Live! Use my invite code: ${myId} to get 13,000 Coins (100 TK)!`)}`;
     } else if (platform === 'facebook') {
       url = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
     }
@@ -163,8 +183,8 @@ export const InviteFriends = () => {
         return;
       }
       if (res.success) {
-        showToast('🎉 Referral reward claimed successfully!', 'success');
-        setSummary((prev) => (prev ? { ...prev, availableToday: 0, claimed: (prev.claimed || 0) + (prev.availableToday || 0) } : prev));
+        showToast(`🎉 Claimed ${res.data?.claimed?.toLocaleString() || ''} referral coins successfully!`, 'success');
+        await fetchReferralData();
       } else {
         showToast(res.error || 'Could not claim rewards', 'error');
       }
@@ -173,45 +193,88 @@ export const InviteFriends = () => {
     }
   };
 
-  const money = (value?: number) => (value == null ? '—' : `$${value}`);
-  const perInviteCoins = summary?.perInvite ?? 500;
-  const maxBonus = summary?.maxReward ? `$${summary.maxReward}` : '$100';
+  const validInviteeCount = summary?.validInviteeCount ?? 0;
+  const inviteeCount = summary?.inviteeCount ?? 0;
+  const pendingCount = summary?.pendingInviteeCount ?? 0;
+  const invalidCount = summary?.invalidInviteeCount ?? 0;
+  const availableCoins = summary?.availableToday ?? 0;
 
-  // Milestone progression calculation
-  const inviteCount = summary?.inviteeCount ?? 0;
+  // Milestone tiers
   const milestones = [
-    { count: 1, reward: '500 Coins', unlocked: inviteCount >= 1 },
-    { count: 5, reward: '$5 Bonus', unlocked: inviteCount >= 5 },
-    { count: 10, reward: 'VIP Badge', unlocked: inviteCount >= 10 },
-    { count: 25, reward: '10% Commission', unlocked: inviteCount >= 25 },
+    {
+      count: 1,
+      label: '1 Invite',
+      reward: '13,000 Coins (100 TK)',
+      coins: 13000,
+      unlocked: validInviteeCount >= 1,
+      badge: 'Starter',
+    },
+    {
+      count: 5,
+      label: '5 Invites',
+      reward: '65,000 Coins (500 TK)',
+      coins: 65000,
+      unlocked: validInviteeCount >= 5,
+      badge: 'Silver',
+    },
+    {
+      count: 10,
+      label: '10 Invites',
+      reward: 'VIP Status + 65,000 Coins',
+      coins: 65000,
+      unlocked: validInviteeCount >= 10,
+      badge: 'VIP Elite',
+      perk: 'VIP Badge Active',
+    },
+    {
+      count: 25,
+      label: '25 Invites',
+      reward: '10% Lifetime Commission from invited users income',
+      unlocked: validInviteeCount >= 25,
+      badge: 'Partner',
+      perk: '10% Lifetime Cut',
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-[#0F0C20] text-white pb-14 selection:bg-[#7A5AF8] selection:text-white">
+    <div className="min-h-screen bg-[#0F0C20] text-white pb-16 selection:bg-[#7A5AF8] selection:text-white">
       {/* Top Header */}
       <ScreenHeader
         title="Invite & Earn"
         variant="media"
         right={
-          <button
-            onClick={() => setShowRulesModal(true)}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-white/90 backdrop-blur-sm transition-all"
-            title="Rules & FAQ"
-            aria-label="Rules and FAQ"
-          >
-            <Info className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => fetchReferralData(true)}
+              disabled={refreshing}
+              className={`w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-white/90 backdrop-blur-sm transition-all ${
+                refreshing ? 'animate-spin' : ''
+              }`}
+              title="Refresh"
+              aria-label="Refresh Data"
+            >
+              <RefreshIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 flex items-center justify-center text-white/90 backdrop-blur-sm transition-all"
+              title="Rules & Validation Logic"
+              aria-label="Rules and FAQ"
+            >
+              <Info className="w-5 h-5" />
+            </button>
+          </div>
         }
       />
 
       {/* Hero Banner with Glow & Modern Typography */}
-      <div className="relative pt-2 pb-6 px-5 text-center overflow-hidden">
-        {/* Background glow effects */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-44 bg-[#7A5AF8]/30 blur-[60px] rounded-full pointer-events-none" />
-        <div className="absolute top-6 right-6 w-32 h-32 bg-[#FF4D8A]/25 blur-[50px] rounded-full pointer-events-none" />
+      <div className="relative pt-2 pb-5 px-5 text-center overflow-hidden">
+        {/* Glow Effects */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-44 bg-[#7A5AF8]/35 blur-[70px] rounded-full pointer-events-none" />
+        <div className="absolute top-6 right-6 w-36 h-36 bg-[#FF4D8A]/30 blur-[60px] rounded-full pointer-events-none" />
 
         {/* Badge */}
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-[#7A5AF8]/30 to-[#FF4D8A]/30 border border-white/15 backdrop-blur-md mb-3 shadow-sm">
+        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-[#7A5AF8]/40 to-[#FF4D8A]/40 border border-white/15 backdrop-blur-md mb-2.5 shadow-sm">
           <Sparkle className="w-3.5 h-3.5 text-[#FFD277] animate-pulse" />
           <span className="text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-[#FFD277] to-[#FF8CE2] bg-clip-text text-transparent">
             Navo Live Referral Program
@@ -219,23 +282,23 @@ export const InviteFriends = () => {
         </div>
 
         {/* Main Heading */}
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
-          Invite Friends & Earn Real Cash
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white drop-shadow-md">
+          Invite Friends & Earn Real Rewards
         </h1>
-        <p className="text-xs sm:text-sm text-white/70 mt-1.5 max-w-xs mx-auto">
-          Get instant coin bonuses + lifetime commission for every active friend who joins!
+        <p className="text-xs sm:text-sm text-white/70 mt-1 max-w-xs mx-auto">
+          Earn <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> per valid invite + VIP perks & 10% Lifetime Commission!
         </p>
 
         {/* Live Reward Payout Ticker */}
         {ticker.length > 0 && (
-          <div className="mt-4 mx-auto max-w-sm h-8 rounded-full bg-white/[0.08] border border-white/10 flex items-center px-3.5 overflow-hidden backdrop-blur-md shadow-inner">
+          <div className="mt-3.5 mx-auto max-w-sm h-8 rounded-full bg-white/[0.08] border border-white/10 flex items-center px-3.5 overflow-hidden backdrop-blur-md shadow-inner">
             <span className="flex h-2 w-2 relative mr-2 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <div className="text-[11px] text-white/90 truncate transition-all duration-500 font-medium">
-              🔥 <span className="text-[#FFD277] font-semibold">{ticker[activeTickerIdx]?.nickname || 'Friend'}</span> just claimed{' '}
-              <span className="text-emerald-400 font-bold">${ticker[activeTickerIdx]?.claimed || 20}</span> (Total: ${ticker[activeTickerIdx]?.earned || 100})
+              🔥 <span className="text-[#FFD277] font-semibold">{ticker[activeTickerIdx]?.nickname || 'Friend'}</span> claimed{' '}
+              <span className="text-emerald-400 font-bold">{compactNumber(ticker[activeTickerIdx]?.claimed || 13000)} Coins</span> (Total: {compactNumber(ticker[activeTickerIdx]?.earned || 65000)})
             </div>
           </div>
         )}
@@ -248,34 +311,35 @@ export const InviteFriends = () => {
         </div>
       ) : (
         <div className="px-4 space-y-4 max-w-md mx-auto">
-          {/* Main Referral Card (Glassmorphism & Neon Accents) */}
+          {/* Main Referral Action Card */}
           <div className="relative rounded-3xl p-[1.5px] bg-gradient-to-b from-[#9C74F5] via-[#5F38E6] to-[#FF4D8A]/60 shadow-2xl">
             <div className="rounded-[22px] bg-gradient-to-b from-[#1C1635] to-[#120E24] p-5 text-center relative overflow-hidden">
-              {/* Subtle background decoration */}
               <div className="absolute -top-12 -right-12 w-32 h-32 bg-[#FF4D8A]/15 rounded-full blur-2xl pointer-events-none" />
               <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-[#7A5AF8]/20 rounded-full blur-2xl pointer-events-none" />
 
               <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-[#FFD277] uppercase tracking-wider mb-1">
                 <Gift className="w-4 h-4 text-[#FFD277]" />
-                <span>Referral Reward Pool</span>
+                <span>Referral Reward Rate</span>
               </div>
 
               <div className="mt-1">
-                <p className="text-xs text-white/60">You can earn up to</p>
-                <div className="flex items-baseline justify-center gap-1 mt-0.5">
-                  <span className="text-2xl font-bold text-[#FFD277]">$</span>
+                <p className="text-xs text-white/60">Per Valid Invite</p>
+                <div className="flex items-baseline justify-center gap-1.5 mt-0.5">
+                  <span className="text-2xl font-bold text-[#FFD277]">🪙</span>
                   <span className="text-4xl sm:text-5xl font-black tracking-tight bg-gradient-to-r from-[#FFD277] via-[#FF8CE2] to-[#FFF] bg-clip-text text-transparent">
-                    {summary?.maxReward ?? 100}
+                    13,000
                   </span>
-                  <span className="text-xs font-semibold text-white/60 ml-1">/ Month</span>
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full ml-1">
+                    = 100 TK
+                  </span>
                 </div>
               </div>
 
-              {/* Bonus Tag */}
-              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/10">
-                <span className="text-base">🪙</span>
-                <span className="text-xs font-medium text-white/90">
-                  <strong className="text-[#FFD277]">+{compactNumber(perInviteCoins)} Coins</strong> for every friend invited
+              {/* Release Schedule Pill */}
+              <div className="mt-3.5 inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/10 text-xs text-white/90">
+                <Lightning className="w-3.5 h-3.5 text-[#FFD277]" />
+                <span>
+                  Coin Release: <strong className="text-emerald-400">50% Instant</strong> (6,500) + <strong className="text-emerald-400">50% Day 2 Login</strong> (6,500)
                 </span>
               </div>
 
@@ -284,7 +348,7 @@ export const InviteFriends = () => {
                 <div className="text-left pl-1 min-w-0">
                   <p className="text-[10px] uppercase font-bold tracking-wider text-white/50">My Referral Code</p>
                   <p className="text-base font-extrabold tracking-wider text-white truncate font-mono">
-                    {myId || 'NAVO123'}
+                    {myId || user?.uid || 'NAVO123'}
                   </p>
                 </div>
                 <button
@@ -368,54 +432,132 @@ export const InviteFriends = () => {
             </div>
           </div>
 
-          {/* 3-Step How It Works Guide */}
-          <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Lightning className="w-4 h-4 text-[#FFD277]" />
-                How It Works
+          {/* Invitee Reward Card (Highlighted) */}
+          <div className="rounded-2xl p-4 bg-gradient-to-r from-[#22C55E]/15 via-[#10B981]/20 to-[#059669]/15 border border-emerald-500/30 flex items-start gap-3 shadow-lg">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+              <Gift className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wider">
+                  Invitee Welcome Bonus
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                  New User
+                </span>
+              </div>
+              <p className="text-sm font-bold text-white mt-1">
+                New User Join = <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong>
+              </p>
+              <p className="text-xs text-white/70 mt-0.5 leading-relaxed">
+                Your friends get credited 13,000 Coins right after registration and completing <strong className="text-white">10 min watch time</strong>!
+              </p>
+            </div>
+          </div>
+
+          {/* Referral Validation Logic Card */}
+          <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-[#FFD277]" />
+                Referral Validation Rules
               </span>
               <button
                 onClick={() => setShowRulesModal(true)}
-                className="text-[11px] text-[#A5A6FF] hover:underline flex items-center gap-0.5"
+                className="text-[11px] text-[#A5A6FF] hover:underline flex items-center gap-0.5 font-medium"
               >
-                Rules & Details <ChevronRight className="w-3 h-3" />
+                Full Terms <ChevronRight className="w-3 h-3" />
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-[#7A5AF8]/20 text-[#A5A6FF] font-bold text-xs flex items-center justify-center mb-1.5">
-                  1
+            <div className="space-y-2 text-xs text-white/80">
+              <div className="flex items-start gap-2 bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-white">Valid Only If:</strong>
+                  <span className="text-white/80"> OTP verified + WatchTime &gt; 30 min + Login Day 2</span>
                 </div>
-                <p className="text-[11px] font-bold text-white">Share Code</p>
-                <p className="text-[9px] text-white/60 mt-0.5 leading-tight">Send link or code to friends</p>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-[#FF4D8A]/20 text-[#FF8CE2] font-bold text-xs flex items-center justify-center mb-1.5">
-                  2
+              <div className="flex items-start gap-2 bg-red-500/10 p-2.5 rounded-xl border border-red-500/20 text-red-200">
+                <WarningIcon className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-red-300">Anti-Fraud Rule:</strong> If DeviceID is duplicate $\rightarrow$ marked <strong className="text-red-400 underline">Invalid</strong> (0 coins).
                 </div>
-                <p className="text-[11px] font-bold text-white">Friend Joins</p>
-                <p className="text-[9px] text-white/60 mt-0.5 leading-tight">They register & watch streams</p>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-[#FFD277]/20 text-[#FFD277] font-bold text-xs flex items-center justify-center mb-1.5">
-                  3
+              <div className="flex items-start gap-2 bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                <Lightning className="w-4 h-4 text-[#FFD277] shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-white">Coin Release:</strong>
+                  <span className="text-white/80"> 50% instant (6,500 coins), 50% after Day 2 login (6,500 coins).</span>
                 </div>
-                <p className="text-[11px] font-bold text-white">Earn Rewards</p>
-                <p className="text-[9px] text-white/60 mt-0.5 leading-tight">Get coins & daily cash</p>
               </div>
             </div>
           </div>
 
-          {/* Navigation Pill Tabs: My Rewards vs. Leaderboard */}
+          {/* Inviter Tiers & Milestones Showcase */}
+          <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Trophy className="w-4 h-4 text-[#FFD277]" />
+                Inviter Reward Tiers
+              </span>
+              <span className="text-[11px] text-white/60">
+                Valid: <strong className="text-[#FFD277]">{validInviteeCount}</strong> / {inviteeCount}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {milestones.map((m, i) => (
+                <div
+                  key={i}
+                  className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-2.5 ${
+                    m.unlocked
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-white'
+                      : 'bg-white/[0.02] border-white/5 text-white/70'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-white">{m.label}</span>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
+                          m.unlocked ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'
+                        }`}
+                      >
+                        {m.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-bold text-[#FFD277] mt-0.5 truncate">{m.reward}</p>
+                    {m.perk && (
+                      <p className="text-[9px] text-[#A5A6FF] font-semibold mt-0.5">⭐ {m.perk}</p>
+                    )}
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    {m.unlocked ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3" /> Unlocked
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-white/40 font-semibold block">
+                        {Math.max(0, m.count - validInviteeCount)} left
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation Pill Tabs */}
           <div className="pt-2">
             <PillTabs
               tabs={[
-                { key: 'rewards', label: 'My Rewards & Stats' },
-                { key: 'rank', label: 'Income Leaderboard' },
+                { key: 'rewards', label: 'My Rewards' },
+                { key: 'friends', label: `Invited Friends (${inviteeCount})` },
+                { key: 'rank', label: 'Leaderboard' },
               ]}
               active={tab}
               onChange={(k) => setTab(k as Tab)}
@@ -424,9 +566,10 @@ export const InviteFriends = () => {
             />
           </div>
 
-          {tab === 'rewards' ? (
+          {/* TAB 1: MY REWARDS */}
+          {tab === 'rewards' && (
             <div className="space-y-3">
-              {/* Stat Counter Grid */}
+              {/* Stat Counters Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-white/60">
@@ -434,32 +577,34 @@ export const InviteFriends = () => {
                     <HandCoins className="w-4 h-4 text-emerald-400" />
                   </div>
                   <p className="text-2xl font-black text-white mt-1.5 tabular-nums">
-                    {money(summary?.claimed)}
+                    {compactNumber(summary?.claimed || 0)} <span className="text-xs font-normal text-white/60">Coins</span>
                   </p>
-                  <p className="text-[10px] text-white/50 mt-0.5">Lifetime referral earnings</p>
+                  <p className="text-[10px] text-white/50 mt-0.5">Lifetime referral payouts</p>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-white/60">
-                    <span className="text-xs font-medium">Friends Invited</span>
+                    <span className="text-xs font-medium">Valid Invites</span>
                     <Users className="w-4 h-4 text-[#7A5AF8]" />
                   </div>
                   <p className="text-2xl font-black text-white mt-1.5 tabular-nums">
-                    {summary?.inviteeCount ?? 0}
+                    {validInviteeCount} <span className="text-xs font-normal text-white/50">/ {inviteeCount}</span>
                   </p>
-                  <p className="text-[10px] text-white/50 mt-0.5">Registered via your code</p>
+                  <p className="text-[10px] text-white/50 mt-0.5">
+                    {pendingCount} pending • {invalidCount} invalid
+                  </p>
                 </div>
               </div>
 
               {/* Available Today Claim Card */}
-              <div className="rounded-2xl p-4 bg-gradient-to-r from-[#7A5AF8]/20 via-[#4F2DB8]/30 to-[#FF4D8A]/20 border border-white/15">
+              <div className="rounded-2xl p-4 bg-gradient-to-r from-[#7A5AF8]/25 via-[#4F2DB8]/35 to-[#FF4D8A]/25 border border-white/15 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs text-white/70 block">Available to Claim Today</span>
                     <div className="flex items-baseline gap-1 mt-0.5">
                       <span className="text-xl font-bold text-[#FFD277]">🪙</span>
                       <span className="text-2xl font-black text-white tabular-nums">
-                        {summary ? compactNumber(summary.availableToday) : '0'}
+                        {summary ? compactNumber(availableCoins) : '0'}
                       </span>
                       <span className="text-xs text-white/60 ml-1">Coins</span>
                     </div>
@@ -467,7 +612,7 @@ export const InviteFriends = () => {
 
                   <button
                     onClick={claim}
-                    disabled={claiming || !summary?.availableToday || summary.availableToday <= 0}
+                    disabled={claiming || availableCoins <= 0}
                     className="h-11 px-5 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#6366F1] hover:brightness-110 active:scale-95 text-white text-xs font-extrabold disabled:opacity-40 disabled:pointer-events-none shadow-md transition-all flex items-center gap-1.5"
                   >
                     {claiming ? (
@@ -485,51 +630,114 @@ export const InviteFriends = () => {
                 </div>
               </div>
 
-              {/* Milestone Progress Card */}
-              <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-4">
-                <p className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Trophy className="w-4 h-4 text-[#FFD277]" />
-                  Invite Milestones & Perks
-                </p>
+              {/* Special Privileges Status */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2.5">
+                <p className="text-xs font-bold text-white uppercase tracking-wider">Unlocked Privileges</p>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02]">
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-[#FFD277]" />
+                    <span className="text-xs text-white">VIP Badge (10 Invites)</span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${summary?.isVip ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
+                    {summary?.isVip ? 'Active' : 'Locked'}
+                  </span>
+                </div>
 
-                <div className="space-y-2.5">
-                  {milestones.map((m, i) => (
-                    <div
-                      key={i}
-                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                        m.unlocked
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-white'
-                          : 'bg-white/[0.02] border-white/5 text-white/60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                            m.unlocked ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/40'
-                          }`}
-                        >
-                          {m.unlocked ? <Check className="w-3.5 h-3.5" /> : m.count}
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-white">Invite {m.count} {m.count === 1 ? 'Friend' : 'Friends'}</p>
-                          <p className="text-[10px] text-white/60">{m.reward}</p>
-                        </div>
-                      </div>
-
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          m.unlocked ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'
-                        }`}
-                      >
-                        {m.unlocked ? 'Unlocked' : `${Math.max(0, m.count - inviteCount)} left`}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02]">
+                  <div className="flex items-center gap-2">
+                    <Sparkle className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs text-white">10% Lifetime Commission (25 Invites)</span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${summary?.hasLifetimeCommission ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
+                    {summary?.hasLifetimeCommission ? '10% Active' : 'Locked'}
+                  </span>
                 </div>
               </div>
             </div>
-          ) : (
-            /* Income Leaderboard Tab */
+          )}
+
+          {/* TAB 2: INVITED FRIENDS & VALIDATION STATUS */}
+          {tab === 'friends' && (
+            <div className="space-y-3">
+              {!summary?.invitees || summary.invitees.length === 0 ? (
+                <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-6 text-center">
+                  <EmptyState
+                    title="No Invited Friends Yet"
+                    hint="Share your referral code to invite friends and start earning!"
+                    className="!py-6 text-white"
+                  />
+                  <button
+                    onClick={inviteNow}
+                    className="mt-3 px-5 py-2 rounded-xl bg-gradient-to-r from-[#FF8C00] to-[#FF0055] text-white text-xs font-bold inline-flex items-center gap-1.5"
+                  >
+                    <Share2 className="w-3.5 h-3.5" /> Invite Friends
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1 text-xs text-white/60">
+                    <span>Friend Info</span>
+                    <span>Validation & Coins</span>
+                  </div>
+
+                  <div className="bg-white/[0.04] border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+                    {summary.invitees.map((invitee) => (
+                      <div key={invitee._id} className="p-3.5 flex flex-col gap-2 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar src={invitee.avatar} nickname={invitee.nickname} size="sm" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-white truncate">{invitee.nickname}</p>
+                              <p className="text-[10px] text-white/50 font-mono">UID: {invitee.uid}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                                invitee.status === 'valid'
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : invitee.status === 'invalid'
+                                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              }`}
+                            >
+                              {invitee.status === 'valid'
+                                ? '✓ Valid (+13,000)'
+                                : invitee.status === 'invalid'
+                                ? '✗ Invalid (Duplicate)'
+                                : '⏳ Pending'}
+                            </span>
+                            <p className="text-[11px] font-extrabold text-[#FFD277] mt-0.5">
+                              {compactNumber(invitee.coinsEarned)} Coins Released
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Checklist progress for pending invites */}
+                        <div className="bg-white/[0.02] rounded-xl p-2 flex items-center justify-between text-[10px] text-white/70">
+                          <span className={invitee.otpVerified ? 'text-emerald-400 font-bold' : 'text-white/40'}>
+                            {invitee.otpVerified ? '✓ OTP Done' : '⏳ OTP Pending'}
+                          </span>
+                          <span className="text-white/20">•</span>
+                          <span className={invitee.watchTimeMinutes >= 30 ? 'text-emerald-400 font-bold' : 'text-amber-300'}>
+                            Watch: {invitee.watchTimeMinutes}/30 min
+                          </span>
+                          <span className="text-white/20">•</span>
+                          <span className={invitee.hasDay2Login ? 'text-emerald-400 font-bold' : 'text-white/40'}>
+                            {invitee.hasDay2Login ? '✓ Day 2 Login' : '⏳ Day 2 Login'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: INCOME LEADERBOARD */}
+          {tab === 'rank' && (
             <div className="space-y-3">
               {rank.length === 0 ? (
                 <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-6 text-center">
@@ -547,7 +755,7 @@ export const InviteFriends = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {/* Top 3 Podium Highlights if at least 3 ranks exist */}
+                  {/* Top 3 Podium Highlights */}
                   {rank.length >= 3 && (
                     <div className="grid grid-cols-3 gap-2 pt-3 pb-2 text-center items-end">
                       {/* 2nd Place */}
@@ -565,7 +773,7 @@ export const InviteFriends = () => {
                           {rank[1].user.nickname}
                         </p>
                         <p className="text-[10px] font-black text-slate-300 tabular-nums">
-                          ${compactNumber(rank[1].amount)}
+                          {compactNumber(rank[1].amount)} Coins
                         </p>
                       </div>
 
@@ -585,7 +793,7 @@ export const InviteFriends = () => {
                           {rank[0].user.nickname}
                         </p>
                         <p className="text-xs font-black text-white tabular-nums">
-                          ${compactNumber(rank[0].amount)}
+                          {compactNumber(rank[0].amount)} Coins
                         </p>
                       </div>
 
@@ -604,7 +812,7 @@ export const InviteFriends = () => {
                           {rank[2].user.nickname}
                         </p>
                         <p className="text-[10px] font-black text-amber-500 tabular-nums">
-                          ${compactNumber(rank[2].amount)}
+                          {compactNumber(rank[2].amount)} Coins
                         </p>
                       </div>
                     </div>
@@ -636,7 +844,7 @@ export const InviteFriends = () => {
                           {row.user.nickname}
                         </span>
                         <span className="text-xs font-extrabold text-[#FFD277] tabular-nums">
-                          ${compactNumber(row.amount)}
+                          {compactNumber(row.amount)} Coins
                         </span>
                       </button>
                     ))}
@@ -670,30 +878,46 @@ export const InviteFriends = () => {
 
             <div className="overflow-y-auto py-4 space-y-4 text-xs text-white/80 pr-1">
               <div>
-                <h4 className="font-bold text-white text-sm mb-1">1. How to Earn</h4>
+                <h4 className="font-bold text-white text-sm mb-1">1. Inviter Tiers & Rewards</h4>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li><strong>1 Invite</strong> = 13,000 Coins (100 TK value)</li>
+                  <li><strong>5 Invites</strong> = 65,000 Coins (500 TK value)</li>
+                  <li><strong>10 Invites</strong> = VIP Status + 65,000 Bonus Coins</li>
+                  <li><strong>25 Invites</strong> = 10% Lifetime Commission from invited users' income</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-white text-sm mb-1">2. Invitee Reward</h4>
                 <p className="leading-relaxed">
-                  Share your exclusive invite code or link with friends. When they register a new account on Navo Live using your code, you will immediately receive <strong>+{perInviteCoins} Coins</strong> and unlock daily income sharing.
+                  Every new user joining via your code receives <strong>13,000 Coins (100 TK)</strong> immediately after registering with OTP and completing <strong>10 minutes stream watch time</strong>.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-bold text-white text-sm mb-1">2. Commission & Earnings</h4>
+                <h4 className="font-bold text-white text-sm mb-1">3. Refer Valid Logic</h4>
                 <p className="leading-relaxed">
-                  You earn commission when your invited users watch streams, send gifts, or top up. The more active friends you invite, the higher your monthly reward cap (up to {maxBonus}).
+                  An invite is considered <strong>Valid</strong> only when the invited user meets all 3 criteria:
+                </p>
+                <ul className="list-disc pl-4 space-y-1 mt-1 text-white/90">
+                  <li>OTP verified phone number</li>
+                  <li>Cumulative Watch Time &gt; 30 minutes</li>
+                  <li>Logs in on Day 2</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-white text-sm mb-1">4. Coin Release Schedule</h4>
+                <p className="leading-relaxed">
+                  - <strong>50% instant (6,500 Coins)</strong> is released upon successful registration with unique device ID.<br />
+                  - <strong>50% (6,500 Coins)</strong> is released after Day 2 login and 30 min watch time.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-bold text-white text-sm mb-1">3. Daily Reward Claim</h4>
-                <p className="leading-relaxed">
-                  Referral coins accumulate daily based on your invitees' activity. Tap <strong>Claim Now</strong> once every 24 hours to credit earnings directly to your Navo Live coin wallet.
-                </p>
-              </div>
-
-              <div>
-                <h4 className="font-bold text-white text-sm mb-1">4. Anti-Fraud & Fair Play</h4>
-                <p className="leading-relaxed">
-                  Duplicate accounts, emulator fraud, or self-referrals on the same device/IP are strictly prohibited and will result in referral forfeiture and account suspension.
+                <h4 className="font-bold text-red-400 text-sm mb-1">5. Anti-Fraud & DeviceID Check</h4>
+                <p className="leading-relaxed text-red-200">
+                  If duplicate DeviceID is detected across accounts, the referral is automatically marked <strong>Invalid</strong> and no coins are released.
                 </p>
               </div>
             </div>
@@ -702,7 +926,7 @@ export const InviteFriends = () => {
               onClick={() => setShowRulesModal(false)}
               className="w-full h-11 mt-2 rounded-xl bg-gradient-to-r from-[#7A5AF8] to-[#FF4D8A] text-white font-bold text-xs"
             >
-              Got It
+              I Understand
             </button>
           </div>
         </div>
