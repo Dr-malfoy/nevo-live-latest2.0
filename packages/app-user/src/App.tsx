@@ -469,6 +469,7 @@ export default function App() {
             <Route element={<StreamLayout />}>
               <Route path="/live/:id" element={<LiveStreamPage />} />
               <Route path="/match" element={<ProtectedRoute><Match /></ProtectedRoute>} />
+              <Route path="/go-live" element={<ProtectedRoute><GoLive /></ProtectedRoute>} />
               <Route path="/official-notifications" element={<OfficialNotifications />} />
             </Route>
 
@@ -506,10 +507,6 @@ export default function App() {
             <Route
               path="/verification"
               element={<ProtectedRoute><VerificationCenter /></ProtectedRoute>}
-            />
-            <Route
-              path="/go-live"
-              element={<ProtectedRoute><GoLive /></ProtectedRoute>}
             />
             <Route
               path="/moments/new"
