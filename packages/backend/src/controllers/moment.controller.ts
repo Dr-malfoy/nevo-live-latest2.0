@@ -244,12 +244,30 @@ export const momentController = {
         return;
       }
 
-      moment.comments.push({
-        userId: req.user!.userId as any,
-        text: req.body.text,
-        createdAt: new Date(),
-      });
+      const { text, parentId, replyTo } = req.body;
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        sendError(res, 'Comment text is required', 400);
+        return;
+      }
 
+      const newComment: any = {
+        userId: req.user!.userId as any,
+        text: text.trim(),
+        likes: [],
+        createdAt: new Date(),
+      };
+
+      if (parentId) {
+        newComment.parentId = parentId;
+      }
+      if (replyTo && (replyTo.userId || replyTo.nickname)) {
+        newComment.replyTo = {
+          userId: replyTo.userId,
+          nickname: replyTo.nickname,
+        };
+      }
+
+      moment.comments.push(newComment);
       await moment.save();
 
       const populated = await moment.populate('comments.userId', USER_FIELDS);
@@ -266,6 +284,65 @@ export const momentController = {
       });
 
       sendSuccess(res, commentObj, 'Comment added');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async toggleCommentLike(req: Request, res: Response, next: NextFunction) {
+    try {
+      const moment = await Moment.findById(req.params.id);
+      if (!moment) {
+        sendError(res, 'Moment not found', 404);
+        return;
+      }
+
+      const commentId = req.params.commentId;
+      const comment: any = (moment.comments as any).id?.(commentId) || moment.comments.find(
+        (c: any) => c._id?.toString() === commentId
+      );
+
+      if (!comment) {
+        sendError(res, 'Comment not found', 404);
+        return;
+      }
+
+      if (!Array.isArray(comment.likes)) {
+        comment.likes = [];
+      }
+
+      const userId = req.user!.userId.toString();
+      const index = comment.likes.findIndex(
+        (id: any) => (id ? id.toString() : '') === userId
+      );
+
+      let isLiked = false;
+      if (index > -1) {
+        comment.likes.splice(index, 1);
+        isLiked = false;
+      } else {
+        comment.likes.push(req.user!.userId as any);
+        isLiked = true;
+      }
+
+      await moment.save();
+
+      const likesArray = comment.likes.map((id: any) => (id ? id.toString() : ''));
+
+      safeEmit('moment:comment:like', {
+        momentId: moment._id.toString(),
+        commentId: comment._id.toString(),
+        userId,
+        liked: isLiked,
+        likes: likesArray,
+        likesCount: comment.likes.length,
+      });
+
+      sendSuccess(res, {
+        liked: isLiked,
+        likesCount: comment.likes.length,
+        likes: likesArray,
+      }, isLiked ? 'Comment liked' : 'Comment unliked');
     } catch (error) {
       next(error);
     }

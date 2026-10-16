@@ -1,4 +1,4 @@
-import { Gift, User, Transaction, PlatformWallet, Agency } from '../models';
+import { Gift, User, Transaction, PlatformWallet, Agency, LiveStream } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { notificationService } from './notification.service';
@@ -102,6 +102,14 @@ export const giftService = {
       receiver.coins = updatedReceiver.coins;
       receiver.wealthExp = updatedReceiver.wealthExp;
       receiver.wealthLevel = updatedReceiver.wealthLevel;
+    }
+
+    // 1b. If gift is sent in a live stream, increment live stream earnings
+    if (sourceType === 'live') {
+      LiveStream.updateOne(
+        { hostId: receiverId, status: 'live' },
+        { $inc: { earningsCoins: hostCoins } }
+      ).catch((err) => console.warn('Failed to update live stream earningsCoins:', err));
     }
 
     // 2. Agency's coin share flows directly into the Agent's account

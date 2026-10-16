@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage, PurchaseOrder } from '../models';
+import { getFormattedTxId } from '../models/Transaction';
 
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
@@ -179,15 +181,165 @@ export const adminController = {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
+      const { search, type, category, currency, status } = req.query as Record<string, string>;
 
-      const total = await Transaction.countDocuments();
-      const transactions = await Transaction.find()
-        .populate('userId', 'uid nickname')
+      const filter: any = {};
+
+      if (currency && (currency === 'diamond' || currency === 'coin')) {
+        filter.currency = currency;
+      }
+
+      if (status && ['completed', 'pending', 'failed'].includes(status)) {
+        filter.status = status;
+      }
+
+      // Filter by category or type (buy, withdraw, transfer, etc.)
+      const cat = (category || type || '').toLowerCase();
+      if (cat === 'buy' || cat === 'recharge') {
+        filter.type = { $in: ['recharge', 'agent_recharge'] };
+      } else if (cat === 'withdraw' || cat === 'withdrawal') {
+        filter.type = { $in: ['withdraw', 'coin_sale'] };
+      } else if (cat === 'transfer') {
+        filter.type = { $in: ['transfer', 'transfer_in'] };
+      } else if (cat === 'game') {
+        filter.type = { $in: ['game_bet', 'game_win'] };
+      } else if (cat === 'reward') {
+        filter.type = {
+          $in: [
+            'daily_reward',
+            'task_reward',
+            'signin_reward',
+            'activity_reward',
+            'spin_reward',
+            'ranking_prize',
+            'creator_reward',
+          ],
+        };
+      } else if (type && type !== 'all') {
+        if (type.includes(',')) {
+          filter.type = { $in: type.split(',') };
+        } else {
+          filter.type = type;
+        }
+      }
+
+      if (search && search.trim()) {
+        const q = search.trim();
+        const orConditions: any[] = [];
+
+        // 1. txId field match (case-insensitive regex)
+        orConditions.push({ txId: new RegExp(q, 'i') });
+
+        // 2. Exact match on _id if valid MongoDB ObjectId
+        if (mongoose.Types.ObjectId.isValid(q)) {
+          orConditions.push({ _id: new mongoose.Types.ObjectId(q) });
+        }
+
+        // 3. Match generated txId format numbers/hex
+        const cleanDigits = q.replace(/[^0-9]/g, '');
+        if (cleanDigits.length >= 4) {
+          orConditions.push({ txId: new RegExp(cleanDigits, 'i') });
+        }
+
+        // 4. Find matching users by UID, nickname, phone
+        const matchingUsers = await User.find({
+          $or: [
+            { uid: new RegExp(q, 'i') },
+            { nickname: new RegExp(q, 'i') },
+            { phone: new RegExp(q, 'i') },
+          ],
+        }).select('_id').limit(50);
+
+        if (matchingUsers.length > 0) {
+          const userIds = matchingUsers.map((u) => u._id);
+          orConditions.push({ userId: { $in: userIds } });
+          orConditions.push({ targetId: { $in: userIds } });
+        }
+
+        // 5. Match gateway transactionId or orderId on PurchaseOrder
+        const matchingOrders = await PurchaseOrder.find({
+          $or: [
+            { transactionId: new RegExp(q, 'i') },
+            { orderId: new RegExp(q, 'i') },
+          ],
+        }).select('userId').limit(50);
+
+        if (matchingOrders.length > 0) {
+          const orderUserIds = matchingOrders.map((o) => o.userId);
+          orConditions.push({ userId: { $in: orderUserIds } });
+        }
+
+        filter.$or = orConditions;
+      }
+
+      const total = await Transaction.countDocuments(filter);
+      const rawTransactions = await Transaction.find(filter)
+        .populate('userId', 'uid nickname phone avatar role')
+        .populate('targetId', 'uid nickname phone avatar role')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
-        .limit(limit);
+        .limit(limit)
+        .lean();
 
-      sendPaginated(res, transactions, total, page, limit);
+      // Format transactions with normalized txId, BDT valuation (130:1), and category labels
+      const RATE_COINS = 130;
+      const RATE_DIAMONDS = 130;
+
+      const transactions = rawTransactions.map((tx: any) => {
+        const rate = tx.currency === 'coin' ? RATE_COINS : RATE_DIAMONDS;
+        const bdtValue = tx.amount ? tx.amount / rate : 0;
+        const formattedTxId = tx.txId || getFormattedTxId(tx);
+
+        let category = 'other';
+        if (tx.type === 'recharge' || tx.type === 'agent_recharge') category = 'buy';
+        else if (tx.type === 'withdraw' || tx.type === 'coin_sale') category = 'withdraw';
+        else if (tx.type === 'transfer' || tx.type === 'transfer_in') category = 'transfer';
+        else if (tx.type === 'game_bet' || tx.type === 'game_win') category = 'game';
+        else if (tx.type?.includes('reward') || tx.type === 'ranking_prize') category = 'reward';
+
+        return {
+          ...tx,
+          txId: formattedTxId,
+          bdtValue,
+          category,
+        };
+      });
+
+      // Compute quick summary stats
+      const [totalBuys, totalWithdraws, totalDiamondsVol, totalCoinsVol] = await Promise.all([
+        Transaction.countDocuments({ type: { $in: ['recharge', 'agent_recharge'] } }),
+        Transaction.countDocuments({ type: { $in: ['withdraw', 'coin_sale'] } }),
+        Transaction.aggregate([
+          { $match: { currency: 'diamond', status: 'completed' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+        Transaction.aggregate([
+          { $match: { currency: 'coin', status: 'completed' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+      ]);
+
+      const stats = {
+        totalTransactions: await Transaction.countDocuments(),
+        totalBuys,
+        totalWithdraws,
+        totalDiamondsVolume: totalDiamondsVol[0]?.total || 0,
+        totalCoinsVolume: totalCoinsVol[0]?.total || 0,
+        rateCoins: RATE_COINS,
+        rateDiamonds: RATE_DIAMONDS,
+      };
+
+      res.json({
+        success: true,
+        data: transactions,
+        stats,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit) || 1,
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -441,7 +593,8 @@ export const adminController = {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const status = req.query.status as string;
-      const { data, total } = await paymentService.getAllAgentPurchaseOrders({ status, page, limit });
+      const search = req.query.search as string;
+      const { data, total } = await paymentService.getAllAgentPurchaseOrders({ status, search, page, limit });
       sendPaginated(res, data, total, page, limit);
     } catch (error) {
       next(error);

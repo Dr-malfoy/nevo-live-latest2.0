@@ -1,10 +1,13 @@
+import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PiUserPlusFill as UserPlus, PiHeartFill as Heart, PiGiftFill as GiftIcon, PiSparkleFill as Sparkle } from 'react-icons/pi';
 import { Avatar } from '../user';
 import type { RoomNotification } from './types';
 
-interface NotificationOverlayProps {
+export interface NotificationOverlayProps {
   notifications: RoomNotification[];
+  onDismiss?: (id: string) => void;
+  durationMs?: number;
 }
 
 const getBannerTheme = (kind: RoomNotification['kind']) => {
@@ -34,46 +37,89 @@ const getBannerTheme = (kind: RoomNotification['kind']) => {
   }
 };
 
-export const NotificationOverlay = ({ notifications }: NotificationOverlayProps) => {
-  const visible = notifications.slice(-3);
+const NotificationBannerItem = ({
+  item,
+  onDismiss,
+  durationMs = 5000,
+}: {
+  item: RoomNotification;
+  onDismiss: (id: string) => void;
+  durationMs?: number;
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onDismiss(item.id);
+    }, durationMs);
+    return () => clearTimeout(timer);
+  }, [item.id, onDismiss, durationMs]);
+
+  const theme = getBannerTheme(item.kind);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -20, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -16, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 450, damping: 26 }}
+      role="status"
+      className={`flex items-center gap-3 px-3.5 py-2 rounded-full border backdrop-blur-xl pointer-events-auto ${theme.bg}`}
+    >
+      {item.avatar ? (
+        <Avatar
+          src={item.avatar}
+          nickname={item.text}
+          size="sm"
+          className="!w-7 !h-7 ring-2 ring-white/30 text-[10px] shrink-0"
+        />
+      ) : (
+        <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${theme.iconBg}`}>
+          {theme.icon}
+        </span>
+      )}
+
+      <div className="flex-1 min-w-0 pr-1 flex items-center gap-1.5">
+        <p className="text-[12px] sm:text-[13px] text-white/95 font-semibold leading-snug truncate">
+          {item.text}
+        </p>
+        {item.kind === 'gift' && <Sparkle className="w-3.5 h-3.5 text-yellow-300 shrink-0 animate-pulse" />}
+      </div>
+    </motion.div>
+  );
+};
+
+export const NotificationOverlay = ({
+  notifications,
+  onDismiss,
+  durationMs = 5000,
+}: NotificationOverlayProps) => {
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+
+  const handleDismiss = useCallback(
+    (id: string) => {
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      onDismiss?.(id);
+    },
+    [onDismiss]
+  );
+
+  const visible = notifications.filter((n) => !dismissedIds.has(n.id)).slice(-3);
 
   return (
     <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col gap-2 w-[min(380px,94vw)] pointer-events-none">
       <AnimatePresence>
-        {visible.map((n) => {
-          const theme = getBannerTheme(n.kind);
-          return (
-            <motion.div
-              key={n.id}
-              initial={{ opacity: 0, y: -20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -16, scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 26 }}
-              role="status"
-              className={`flex items-center gap-3 px-3.5 py-2 rounded-full border backdrop-blur-xl ${theme.bg}`}
-            >
-              {n.avatar ? (
-                <Avatar
-                  src={n.avatar}
-                  nickname={n.text}
-                  size="sm"
-                  className="!w-7 !h-7 ring-2 ring-white/30 text-[10px] shrink-0"
-                />
-              ) : (
-                <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${theme.iconBg}`}>
-                  {theme.icon}
-                </span>
-              )}
-
-              <div className="flex-1 min-w-0 pr-1 flex items-center gap-1.5">
-                <p className="text-[12px] sm:text-[13px] text-white/95 font-semibold leading-snug truncate">
-                  {n.text}
-                </p>
-                {n.kind === 'gift' && <Sparkle className="w-3.5 h-3.5 text-yellow-300 shrink-0 animate-pulse" />}
-              </div>
-            </motion.div>
-          );
-        })}
+        {visible.map((n) => (
+          <NotificationBannerItem
+            key={n.id}
+            item={n}
+            onDismiss={handleDismiss}
+            durationMs={durationMs}
+          />
+        ))}
       </AnimatePresence>
     </div>
   );

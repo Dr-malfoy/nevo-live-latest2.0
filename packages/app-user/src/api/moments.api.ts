@@ -27,8 +27,18 @@ export const momentsApi = {
   toggleLike: (id: string) =>
     client.post<ApiResponse<{ liked: boolean; likesCount?: number }>>(`/moments/${id}/like`),
 
-  addComment: (id: string, text: string) =>
-    client.post<ApiResponse<any>>(`/moments/${id}/comment`, { text }),
+  addComment: (
+    id: string,
+    text: string,
+    parentId?: string,
+    replyTo?: { userId?: string; nickname?: string }
+  ) =>
+    client.post<ApiResponse<any>>(`/moments/${id}/comment`, { text, parentId, replyTo }),
+
+  toggleCommentLike: (momentId: string, commentId: string) =>
+    client.post<ApiResponse<{ liked: boolean; likesCount: number; likes: string[] }>>(
+      `/moments/${momentId}/comments/${commentId}/like`
+    ),
 
   share: (id: string) =>
     client.post<ApiResponse<{ shareCount: number }>>(`/moments/${id}/share`),

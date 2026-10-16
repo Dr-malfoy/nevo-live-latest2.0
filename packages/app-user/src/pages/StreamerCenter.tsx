@@ -104,6 +104,7 @@ export const StreamerCenter = () => {
   const [inspiration, setInspiration] = useState<{ guidelines: InspirationRow[]; tools: InspirationRow[] } | null>(null);
   const [milestones, setMilestones] = useState<MilestoneData | null>(null);
   const [history, setHistory] = useState<StreamHistoryItem[]>([]);
+  const [totalLiveEarnings, setTotalLiveEarnings] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [copiedUid, setCopiedUid] = useState(false);
 
@@ -134,7 +135,7 @@ export const StreamerCenter = () => {
       optional(streamerApi.getLastReport()).catch(() => null),
       optional(streamerApi.getInspiration()).catch(() => null),
       optional(streamerApi.getMilestones()).catch(() => null),
-      optional(streamerApi.getHistory(1, 10)).catch(() => null),
+      optional(streamerApi.getHistory(1, 20)).catch(() => null),
     ])
       .then(([s, r, i, m, h]) => {
         if (cancelled) return;
@@ -142,7 +143,18 @@ export const StreamerCenter = () => {
         if (r?.data) setReport(r.data);
         if (i?.data) setInspiration(i.data);
         if (m?.data) setMilestones(m.data);
-        if (h?.data) setHistory(h.data);
+
+        const historyItems = Array.isArray((h as any)?.data?.data)
+          ? (h as any).data.data
+          : Array.isArray((h as any)?.data)
+          ? (h as any).data
+          : [];
+        setHistory(historyItems);
+
+        const histTotal = (h as any)?.data?.totalLiveEarnings ?? (h as any)?.totalLiveEarnings ?? 0;
+        if (histTotal) {
+          setTotalLiveEarnings(histTotal);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -231,6 +243,10 @@ export const StreamerCenter = () => {
     inspirationTab === 'guidelines'
       ? inspiration?.guidelines ?? []
       : inspiration?.tools ?? [];
+
+  const allTimeLiveCoins = stats?.totalLiveEarnings ?? stats?.totalEarningsCoins ?? totalLiveEarnings ?? 0;
+  const periodLiveCoins = stats?.coinsEarned ?? stats?.diamondsEarned ?? stats?.pointsEarned ?? 0;
+  const currentRangeLabel = RANGES.find((r) => r.key === range)?.label ?? 'Period';
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 pb-28 font-sans selection:bg-purple-500 selection:text-white">
@@ -380,6 +396,29 @@ export const StreamerCenter = () => {
               </button>
             </div>
 
+            {/* Total Live Earnings Highlight Banner */}
+            <div className="mb-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-600/25 border border-amber-500/35 shadow-md flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center font-black text-xl shadow-md shadow-amber-500/30">
+                  🪙
+                </div>
+                <div>
+                  <p className="text-[11px] text-amber-200/90 font-bold uppercase tracking-wider">Total Live Earnings (All Time)</p>
+                  <p className="text-xl font-black text-amber-300 font-mono tracking-tight flex items-baseline gap-1.5 mt-0.5">
+                    {allTimeLiveCoins.toLocaleString()}
+                    <span className="text-xs text-amber-400 font-bold">Coins</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/income')}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/25 hover:bg-amber-500/35 active:scale-95 text-amber-300 text-xs font-bold border border-amber-500/40 transition-all flex items-center gap-1 shadow-sm"
+              >
+                <span>Income</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {/* Range Tabs */}
             <div className="mb-4">
               <PillTabs
@@ -392,6 +431,44 @@ export const StreamerCenter = () => {
 
             {/* Metrics 4-Grid */}
             <div className="grid grid-cols-2 gap-2.5">
+              {/* Live Coins Earned for Selected Range */}
+              <div
+                onClick={() => navigate('/income')}
+                className="rounded-2xl bg-gradient-to-br from-amber-950/40 via-slate-900/95 to-slate-800/95 border border-amber-500/35 p-3 flex flex-col justify-between cursor-pointer hover:border-amber-500/60 transition-colors shadow-sm"
+              >
+                <div className="flex items-center justify-between text-slate-400 text-xs">
+                  <span className="flex items-center gap-1 font-bold text-amber-300">
+                    <Coins className="w-3.5 h-3.5 text-amber-400" /> {currentRangeLabel} Coins
+                  </span>
+                  {stats?.trend?.pointsEarned === 'up' ? (
+                    <ArrowUp className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <ArrowDown className="w-3 h-3 text-rose-400" />
+                  )}
+                </div>
+                <p className="mt-2 text-lg font-black text-amber-300 font-mono tracking-tight">
+                  {periodLiveCoins.toLocaleString()} 🪙
+                </p>
+                <p className="text-[10px] text-amber-400/80 font-medium mt-0.5">Live stream earnings</p>
+              </div>
+
+              {/* Total All-Time Live Coins */}
+              <div
+                onClick={() => navigate('/income')}
+                className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/90 border border-slate-700/40 p-3 flex flex-col justify-between cursor-pointer hover:border-amber-500/40 transition-colors"
+              >
+                <div className="flex items-center justify-between text-slate-400 text-xs">
+                  <span className="flex items-center gap-1 font-semibold text-slate-300">
+                    <Coins className="w-3.5 h-3.5 text-yellow-400" /> Total Live Coins
+                  </span>
+                  <ChevronRight className="w-3 h-3 text-slate-500" />
+                </div>
+                <p className="mt-2 text-lg font-black text-white font-mono tracking-tight">
+                  {allTimeLiveCoins.toLocaleString()} 🪙
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Lifetime live revenue</p>
+              </div>
+
               {/* Duration */}
               <div className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/90 border border-slate-700/40 p-3 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
@@ -410,37 +487,6 @@ export const StreamerCenter = () => {
                 <p className="text-[10px] text-slate-400 mt-0.5">
                   {stats?.streamCount ? `${stats.streamCount} live sessions` : '0 sessions'}
                 </p>
-              </div>
-
-              {/* Diamond Revenue */}
-              <div
-                onClick={() => navigate('/income')}
-                className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/90 border border-slate-700/40 p-3 flex flex-col justify-between cursor-pointer hover:border-purple-500/40 transition-colors"
-              >
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Coins className="w-3.5 h-3.5 text-amber-400" /> Diamonds Earned
-                  </span>
-                  <ChevronRight className="w-3 h-3 text-slate-400" />
-                </div>
-                <p className="mt-2 text-lg font-black text-amber-300 font-mono tracking-tight">
-                  {(stats?.diamondsEarned ?? stats?.pointsEarned ?? 0).toLocaleString()} 💎
-                </p>
-                <p className="text-[10px] text-purple-400 font-semibold mt-0.5">Tap to view income →</p>
-              </div>
-
-              {/* New Followers */}
-              <div className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/90 border border-slate-700/40 p-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Users className="w-3.5 h-3.5 text-pink-400" /> Total Followers
-                  </span>
-                  <ArrowUp className="w-3 h-3 text-emerald-400" />
-                </div>
-                <p className="mt-2 text-lg font-black text-white font-mono tracking-tight">
-                  {(stats?.newFollowers ?? user?.followers?.length ?? 0).toLocaleString()}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Community growth</p>
               </div>
 
               {/* Viewers */}
@@ -514,6 +560,12 @@ export const StreamerCenter = () => {
                           ? 'AI scoring in progress — start your next stream to increase engagement!'
                           : 'Your stream engagement was strong. Keep up high energy and interaction!')}
                     </p>
+                    <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-amber-300 font-bold">
+                      <span>🪙 Earned in this live:</span>
+                      <span className="font-mono text-amber-200">
+                        +{(report.coinsEarned ?? report.pointsEarned ?? 0).toLocaleString()} Coins
+                      </span>
+                    </div>
                     <div className="flex items-center gap-2 mt-2">
                       <button
                         onClick={() => setShowCoverModal(true)}
@@ -543,10 +595,10 @@ export const StreamerCenter = () => {
                     <p className="text-[10px] text-slate-400">Viewers</p>
                     <p className="text-xs font-bold text-emerald-400 font-mono mt-0.5">{report.viewers}</p>
                   </div>
-                  <div className="bg-slate-900/80 p-2 rounded-xl text-center border border-slate-700/30">
-                    <p className="text-[10px] text-slate-400">Diamonds</p>
-                    <p className="text-xs font-bold text-amber-300 font-mono mt-0.5">
-                      {report.pointsEarned.toLocaleString()}
+                  <div className="bg-gradient-to-b from-amber-500/15 to-slate-900/90 p-2 rounded-xl text-center border border-amber-500/40 shadow-sm">
+                    <p className="text-[10px] text-amber-300/90 font-bold">Live Coins</p>
+                    <p className="text-xs font-black text-amber-300 font-mono mt-0.5 truncate">
+                      +{(report.coinsEarned ?? report.pointsEarned ?? 0).toLocaleString()} 🪙
                     </p>
                   </div>
                   <div className="bg-slate-900/80 p-2 rounded-xl text-center border border-slate-700/30">
@@ -572,7 +624,102 @@ export const StreamerCenter = () => {
             )}
           </div>
 
-          {/* 4. STREAMER LEVEL & MONTHLY MILESTONES */}
+          {/* 4. LIVE-WISE EARNINGS & SESSIONS CARD */}
+          <div className="rounded-3xl bg-slate-800/80 border border-slate-700/60 p-4 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+                  <Coins className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Live-Wise Earnings</h3>
+                  <p className="text-[11px] text-slate-400">Coins earned per live stream session</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowHistoryModal(true)}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-0.5 active:translate-x-0.5 transition-transform"
+              >
+                All Sessions ({history.length}) <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {history.length === 0 ? (
+              <div className="text-center py-6 px-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+                <BroadcastIcon className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-300">No Live Sessions Yet</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Start streaming to see your live-wise earned coins here!
+                </p>
+                <button
+                  onClick={() => navigate('/go-live')}
+                  className="mt-3 px-3.5 py-1 rounded-full bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 text-xs font-bold transition-colors"
+                >
+                  Go Live Now
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {history.slice(0, 4).map((item) => {
+                  const itemCoins = item.earningsCoins ?? item.coinsEarned ?? item.pointsEarned ?? 0;
+                  return (
+                    <div
+                      key={item._id}
+                      className="p-3 rounded-2xl bg-slate-900/90 border border-slate-700/40 hover:border-amber-500/30 flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                          {item.cover ? (
+                            <img src={getMediaUrl(item.cover)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-purple-400 bg-purple-950/40">
+                              <Video className="w-5 h-5" />
+                            </div>
+                          )}
+                          {item.status === 'live' && (
+                            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{item.title}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {new Date(item.startedAt).toLocaleDateString()} • {formatDuration(item.durationSec)}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
+                            <span className="text-emerald-400 font-semibold">{item.viewers} Viewers</span>
+                            <span>•</span>
+                            <span className="capitalize">{item.category || 'Live'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Earned Coins Badge */}
+                      <div className="shrink-0 text-right">
+                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/15 border border-amber-500/35 text-amber-300 font-black text-xs font-mono shadow-sm">
+                          <span>+{itemCoins.toLocaleString()}</span>
+                          <span className="text-[10px]">🪙</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 mt-0.5 font-medium">Live Earned</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {history.length > 4 && (
+                  <button
+                    onClick={() => setShowHistoryModal(true)}
+                    className="w-full py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-center text-xs font-semibold text-amber-400 border border-slate-800 transition-colors mt-1"
+                  >
+                    View All {history.length} Live Sessions & Earnings →
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 5. STREAMER LEVEL & MONTHLY MILESTONES */}
           <div className="rounded-3xl bg-slate-800/80 border border-slate-700/60 p-4 shadow-lg backdrop-blur-sm">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -969,9 +1116,9 @@ export const StreamerCenter = () => {
       {/* 3. STREAM HISTORY MODAL */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between shrink-0">
-              <h3 className="font-bold text-white text-base">Past Broadcast History</h3>
+              <h3 className="font-bold text-white text-base">Broadcast History & Earnings</h3>
               <button
                 onClick={() => setShowHistoryModal(false)}
                 className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
@@ -980,37 +1127,70 @@ export const StreamerCenter = () => {
               </button>
             </div>
 
+            {/* Total live earnings banner inside modal */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-600/20 border border-amber-500/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">🪙</span>
+                <div>
+                  <p className="text-[10px] text-amber-200/80 font-semibold uppercase">Total Live Earnings</p>
+                  <p className="text-base font-black text-amber-300 font-mono">
+                    {allTimeLiveCoins.toLocaleString()} Coins
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-slate-950 text-[11px] text-slate-300 font-bold border border-slate-800">
+                {history.length} Sessions
+              </span>
+            </div>
+
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-800">
               {history.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
                   <Video className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-xs">No broadcast sessions found yet.</p>
+                  <p className="text-xs font-semibold">No broadcast sessions found yet.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Start a live broadcast to track earnings.</p>
                 </div>
               ) : (
-                history.map((item) => (
-                  <div key={item._id} className="pt-2 first:pt-0 flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
-                      {item.cover ? (
-                        <img src={getMediaUrl(item.cover)} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-purple-400 bg-purple-950/40">
-                          <Video className="w-5 h-5" />
+                history.map((item) => {
+                  const itemCoins = item.earningsCoins ?? item.coinsEarned ?? item.pointsEarned ?? 0;
+                  return (
+                    <div key={item._id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                          {item.cover ? (
+                            <img src={getMediaUrl(item.cover)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-purple-400 bg-purple-950/40">
+                              <Video className="w-5 h-5" />
+                            </div>
+                          )}
+                          {item.status === 'live' && (
+                            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-white truncate">{item.title}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(item.startedAt).toLocaleDateString()} • {formatDuration(item.durationSec)}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-300">
-                        <span className="text-emerald-400 font-semibold">{item.viewers} Viewers</span>
-                        <span>•</span>
-                        <span className="capitalize text-slate-400">{item.category}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{item.title}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {new Date(item.startedAt).toLocaleDateString()} • {formatDuration(item.durationSec)}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-300">
+                            <span className="text-emerald-400 font-semibold">{item.viewers} Viewers</span>
+                            <span>•</span>
+                            <span className="capitalize text-slate-400">{item.category}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Session Live Coins Earned Badge */}
+                      <div className="shrink-0 text-right">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-xs font-mono">
+                          +{itemCoins.toLocaleString()} 🪙
+                        </span>
+                        <p className="text-[9px] text-slate-500 mt-0.5 font-medium">Live Earned</p>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

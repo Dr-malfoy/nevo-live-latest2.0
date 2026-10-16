@@ -75,20 +75,52 @@ export const streamerService = {
     const avgConcurrentUsers = streamCount > 0 ? Math.round(totalViewersCount / streamCount) : 0;
 
     // Fetch transactions (earnings from live streams or gifts)
+    const liveFilter: any = {
+      userId: hostObjectId,
+      $or: [
+        { type: 'gift_receive', sourceType: { $ne: 'party' } },
+        { type: 'gift_receive', sourceType: 'live' },
+        { type: 'credit', sourceType: { $ne: 'party' } },
+        { type: 'call_earning' },
+      ],
+      status: { $ne: 'failed' },
+      createdAt: { $gte: start, $lte: end },
+    };
+
     const earningsAgg = await Transaction.aggregate([
+      { $match: liveFilter },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const txPeriodEarnings = earningsAgg[0]?.total || 0;
+    const streamEarningsInPeriod = streams.reduce((sum, s: any) => sum + (s.earningsCoins || 0), 0);
+    const pointsEarned = Math.max(txPeriodEarnings, streamEarningsInPeriod);
+
+    // Calculate ALL-TIME total live earnings
+    const totalEarningsAgg = await Transaction.aggregate([
       {
         $match: {
           userId: hostObjectId,
-          type: 'credit',
-          sourceType: { $in: ['live', 'gift', 'stream', 'reward'] },
-          createdAt: { $gte: start, $lte: end },
+          $or: [
+            { type: 'gift_receive', sourceType: { $ne: 'party' } },
+            { type: 'gift_receive', sourceType: 'live' },
+            { type: 'credit', sourceType: { $ne: 'party' } },
+            { type: 'call_earning' },
+          ],
+          status: { $ne: 'failed' },
         },
       },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-    const pointsEarned = earningsAgg[0]?.total || 0;
+    const txTotalEarnings = totalEarningsAgg[0]?.total || 0;
 
-    // Fetch user for follower count and agency details
+    const allStreamsAgg = await LiveStream.aggregate([
+      { $match: { hostId: hostObjectId } },
+      { $group: { _id: null, total: { $sum: '$earningsCoins' } } },
+    ]);
+    const streamsAllTimeEarnings = allStreamsAgg[0]?.total || 0;
+    const totalLiveEarnings = Math.max(txTotalEarnings, streamsAllTimeEarnings);
+
+    // Fetch user for follower count, wallet balance, and agency details
     const user = await User.findById(userId).populate('agencyId', 'name code logo').lean();
     const totalFollowers = user?.followers?.length || 0;
 
@@ -111,8 +143,13 @@ export const streamerService = {
       {
         $match: {
           userId: hostObjectId,
-          type: 'credit',
-          sourceType: { $in: ['live', 'gift', 'stream', 'reward'] },
+          $or: [
+            { type: 'gift_receive', sourceType: { $ne: 'party' } },
+            { type: 'gift_receive', sourceType: 'live' },
+            { type: 'credit', sourceType: { $ne: 'party' } },
+            { type: 'call_earning' },
+          ],
+          status: { $ne: 'failed' },
           createdAt: { $gte: prevStart, $lte: prevEnd },
         },
       },
@@ -130,12 +167,17 @@ export const streamerService = {
     return {
       liveDurationSec,
       pointsEarned,
+      diamondsEarned: pointsEarned,
+      coinsEarned: pointsEarned,
+      totalLiveEarnings,
+      totalEarningsCoins: totalLiveEarnings,
+      walletCoins: user?.coins || 0,
+      walletDiamonds: user?.diamonds || 0,
       newFollowers: totalFollowers,
       avgConcurrentUsers,
       peakConcurrentUsers,
       streamCount,
       totalViewers: totalViewersCount,
-      diamondsEarned: pointsEarned,
       level: user?.liveLevel || user?.level || 1,
       agencyName: (user?.agencyId as any)?.name || 'Independent Host',
       agencyCode: (user?.agencyId as any)?.code || '',
@@ -170,8 +212,13 @@ export const streamerService = {
       {
         $match: {
           userId: hostObjectId,
-          type: 'credit',
-          sourceType: { $in: ['live', 'gift'] },
+          $or: [
+            { type: 'gift_receive', sourceType: { $ne: 'party' } },
+            { type: 'gift_receive', sourceType: 'live' },
+            { type: 'credit', sourceType: { $ne: 'party' } },
+            { type: 'call_earning' },
+          ],
+          status: { $ne: 'failed' },
           createdAt: {
             $gte: lastStream.startedAt,
             $lte: lastStream.endedAt || new Date(),
@@ -180,7 +227,8 @@ export const streamerService = {
       },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-    const pointsEarned = streamEarnings[0]?.total || 0;
+    const txEarned = streamEarnings[0]?.total || 0;
+    const pointsEarned = Math.max((lastStream as any).earningsCoins || 0, txEarned);
 
     // Stream before last for trend calculation
     const streamBefore = await LiveStream.findOne({
@@ -213,6 +261,8 @@ export const streamerService = {
       aiFeedback: aiScore >= 85 ? 'Outstanding viewer engagement and steady pacing! Keep this energy.' : 'Good stream! Try using interactive tools and PK battles to boost retention.',
       liveDurationSec,
       pointsEarned,
+      coinsEarned: pointsEarned,
+      diamondsEarned: pointsEarned,
       newFollowers: Math.min(viewers, Math.floor(viewers * 0.4)),
       viewers,
       peakViewers: lastStream.viewerCount || viewers,
@@ -853,7 +903,7 @@ export const streamerService = {
   },
 
   /**
-   * §4.8 — Get live stream history for a streamer.
+   * §4.8 — Get live stream history for a streamer with live-wise earnings.
    */
   async getStreamHistory(hostId: string, page: number, limit: number) {
     const hostObjectId = new mongoose.Types.ObjectId(hostId);
@@ -864,13 +914,79 @@ export const streamerService = {
       .limit(limit)
       .lean();
 
+    // Query all-time total live earnings
+    const totalEarningsAgg = await Transaction.aggregate([
+      {
+        $match: {
+          userId: hostObjectId,
+          $or: [
+            { type: 'gift_receive', sourceType: { $ne: 'party' } },
+            { type: 'gift_receive', sourceType: 'live' },
+            { type: 'credit', sourceType: { $ne: 'party' } },
+            { type: 'call_earning' },
+          ],
+          status: { $ne: 'failed' },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const txTotalEarnings = totalEarningsAgg[0]?.total || 0;
+
+    const allStreamsAgg = await LiveStream.aggregate([
+      { $match: { hostId: hostObjectId } },
+      { $group: { _id: null, total: { $sum: '$earningsCoins' } } },
+    ]);
+    const streamsAllTimeEarnings = allStreamsAgg[0]?.total || 0;
+    const totalLiveEarnings = Math.max(txTotalEarnings, streamsAllTimeEarnings);
+
+    // Fetch transactions in the window of these streams to calculate session-by-session earnings
+    let txMap: { createdAt: Date; amount: number }[] = [];
+    if (streams.length > 0) {
+      const dates = streams.map((s) => new Date(s.startedAt).getTime()).filter((t) => !isNaN(t));
+      const minDate = new Date(Math.min(...dates));
+      const endDates = streams.map((s) => (s.endedAt ? new Date(s.endedAt).getTime() : Date.now())).filter((t) => !isNaN(t));
+      const maxDate = new Date(Math.max(...endDates));
+
+      txMap = await Transaction.find({
+        userId: hostObjectId,
+        $or: [
+          { type: 'gift_receive', sourceType: { $ne: 'party' } },
+          { type: 'gift_receive', sourceType: 'live' },
+          { type: 'credit', sourceType: { $ne: 'party' } },
+        ],
+        status: { $ne: 'failed' },
+        createdAt: { $gte: minDate, $lte: maxDate },
+      })
+        .select('createdAt amount')
+        .lean();
+    }
+
     const formatted = streams.map((s) => {
       let durationSec = 0;
+      const sStart = new Date(s.startedAt);
+      const sEnd = s.endedAt
+        ? new Date(s.endedAt)
+        : s.status === 'live'
+        ? new Date()
+        : new Date(sStart.getTime() + 3600000);
+
       if (s.endedAt && s.startedAt) {
         durationSec = Math.max(0, Math.floor((new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000));
       } else if (s.startedAt) {
         durationSec = Math.max(0, Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000));
       }
+
+      // Calculate live-wise earned coins from transactions in stream window
+      let sessionEarned = 0;
+      for (const tx of txMap) {
+        const txTime = new Date(tx.createdAt).getTime();
+        if (txTime >= sStart.getTime() && txTime <= sEnd.getTime()) {
+          sessionEarned += tx.amount || 0;
+        }
+      }
+
+      const earningsCoins = Math.max((s as any).earningsCoins || 0, sessionEarned);
+
       return {
         _id: s._id,
         title: s.title || 'Live Stream',
@@ -883,10 +999,14 @@ export const streamerService = {
         durationSec,
         viewers: s.totalViewers || s.viewerCount || 0,
         peakViewers: s.viewerCount || s.totalViewers || 0,
+        earningsCoins,
+        pointsEarned: earningsCoins,
+        coinsEarned: earningsCoins,
+        diamondsEarned: earningsCoins,
       };
     });
 
-    return { data: formatted, total };
+    return { data: formatted, total, totalLiveEarnings };
   },
 
   /**

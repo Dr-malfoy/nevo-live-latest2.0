@@ -70,13 +70,13 @@ const PAYOUT_METHODS: PayoutMethodItem[] = [
   },
 ];
 
-const PRESET_AMOUNTS = [500, 1000, 2000, 5000, 10000];
+const PRESET_AMOUNTS = [1300, 6500, 13000, 65000, 130000];
 
 export const Withdraw = () => {
   const navigate = useNavigate();
   const { user, updateUser } = useAuthStore();
 
-  const [rates, setRates] = useState<any>({ withdrawalRate: 1, diamondRate: 1, coinRate: 1 });
+  const [rates, setRates] = useState<any>({ withdrawalRate: 130, diamondRate: 130, coinRate: 130 });
   const [currency] = useState<'coin'>('coin');
   const [method, setMethod] = useState('bkash');
   const [accountNumber, setAccountNumber] = useState('');
@@ -130,9 +130,9 @@ export const Withdraw = () => {
     } catch {}
   };
 
-  const rate = rates.withdrawalRate || rates.coinRate || 1;
+  const rate = (rates.withdrawalRate && rates.withdrawalRate > 1) ? rates.withdrawalRate : (rates.coinRate && rates.coinRate > 1 ? rates.coinRate : 130);
   const parsedAmount = parseInt(amount) || 0;
-  const bdtValue = Math.floor(parsedAmount / rate);
+  const bdtValue = parsedAmount / rate;
   const currentBalance = user?.coins || 0;
 
   const handlePresetClick = (preset: number) => {
@@ -413,11 +413,11 @@ export const Withdraw = () => {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-900 text-sm">Coins (Earnings)</span>
                         <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                          Withdrawals are for Coins
+                          Rate: {rate} Coins = ৳1 BDT
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-500 font-medium">
-                        Available Balance: {user?.coins?.toLocaleString() || 0} Coins
+                        Available Balance: {user?.coins?.toLocaleString() || 0} Coins (≈ ৳{((user?.coins || 0) / rate).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT)
                       </span>
                     </div>
                   </div>
@@ -526,7 +526,7 @@ export const Withdraw = () => {
                           : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
-                      {p.toLocaleString()}
+                      {p.toLocaleString()} Coins <span className="text-[10px] font-normal opacity-75">(৳{Math.floor(p / rate).toLocaleString()})</span>
                     </button>
                   ))}
                 </div>
@@ -537,12 +537,12 @@ export const Withdraw = () => {
                     <div>
                       <p className="text-[10px] text-slate-400">Estimated Payout in BDT</p>
                       <p className="text-lg font-black text-white tabular-nums">
-                        ≈ ৳{bdtValue.toLocaleString()} BDT
+                        ≈ ৳{bdtValue.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
                       </p>
                     </div>
                     <div className="text-right border-l border-slate-700 pl-3">
                       <p className="text-[10px] text-slate-400">Conversion Rate</p>
-                      <p className="text-xs font-bold text-slate-200">{rate} Coins = 1 BDT</p>
+                      <p className="text-xs font-bold text-amber-300">{rate} Coins = 1 BDT</p>
                     </div>
                   </div>
                 )}

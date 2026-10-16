@@ -40,6 +40,7 @@ export interface LiveRoomProps {
   followBusy?: boolean;
   messages: RoomMessage[];
   notifications: RoomNotification[];
+  onDismissNotification?: (id: string) => void;
   giftBurst: GiftBurst | null;
   onLeave: () => void;
   onEnd: () => void;

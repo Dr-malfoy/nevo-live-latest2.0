@@ -13,6 +13,7 @@ router.delete('/:id', authenticate, momentController.deleteMoment);
 router.post('/:id/like', authenticate, momentController.toggleLike);
 router.get('/:id/likes', optionalAuth, momentController.getLikes);
 router.post('/:id/comment', authenticate, momentController.addComment);
+router.post('/:id/comments/:commentId/like', authenticate, momentController.toggleCommentLike);
 router.post('/:id/share', optionalAuth, momentController.shareMoment);
 router.post('/:id/view', optionalAuth, momentController.recordView);
 

@@ -626,6 +626,11 @@ export const AgentDashboard = () => {
       showToast('Enter an amount to convert', 'error');
       return;
     }
+    const currentBalance = convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0);
+    if (amount > currentBalance) {
+      showToast(`Insufficient ${convertFrom} balance. Available: ${currentBalance.toLocaleString()}`, 'error');
+      return;
+    }
 
     setSubmittingTx(true);
     try {
@@ -1488,9 +1493,9 @@ export const AgentDashboard = () => {
                   )}
                 </SectionCard>
 
-                {/* Six Quick Tool Shortcuts */}
+                {/* Quick Tool Shortcuts */}
                 <SectionCard title="Agency Management Toolkit">
-                  <div className="grid grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                     <button
                       onClick={() => setTab('users')}
                       className="flex flex-col items-center p-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100/70 border border-indigo-100 transition-all text-center"
@@ -1532,6 +1537,26 @@ export const AgentDashboard = () => {
                     >
                       <DiamondIcon className="w-6 h-6 text-cyan-600 mb-1.5" />
                       <span className="text-xs font-bold text-slate-900">Send Diamonds</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setConvertFrom('coin');
+                        setTransferAmountInput('');
+                        setWalletModal('convert');
+                      }}
+                      className="flex flex-col items-center p-3 rounded-2xl bg-violet-50 hover:bg-violet-100/70 border border-violet-100 transition-all text-center group"
+                    >
+                      <ExchangeIcon className="w-6 h-6 text-violet-600 mb-1.5 group-hover:scale-105 transition-transform" />
+                      <span className="text-xs font-bold text-slate-900">Currency Converter</span>
+                    </button>
+
+                    <button
+                      onClick={() => myAgency?._id ? navigate(`/agency/${myAgency._id}`) : navigate('/agency')}
+                      className="flex flex-col items-center p-3 rounded-2xl bg-blue-50 hover:bg-blue-100/70 border border-blue-100 transition-all text-center"
+                    >
+                      <Buildings className="w-6 h-6 text-blue-600 mb-1.5" />
+                      <span className="text-xs font-bold text-slate-900">Agency Profile</span>
                     </button>
 
                     <button
@@ -2666,56 +2691,203 @@ export const AgentDashboard = () => {
       {/* ── Currency Convert Modal ── */}
       {walletModal === 'convert' && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95 duration-150">
-            <h3 className="text-base font-extrabold text-slate-900 mb-3">Convert Currency</h3>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95 duration-150 border border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Currency Converter</h3>
+                <p className="text-xs text-slate-500">Exchange between Coins and Diamonds instantly</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWalletModal(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Available Balance Box */}
+            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Your Available Balance
+                </span>
+                <span className="text-[10px] font-bold text-indigo-600">Rate: 1 Diamond = 1 Coin</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Available Coins */}
+                <div
+                  onClick={() => {
+                    setConvertFrom('coin');
+                    setTransferAmountInput('');
+                  }}
+                  className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    convertFrom === 'coin'
+                      ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/30 shadow-xs'
+                      : 'bg-white border-slate-200/80 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                      <CoinIcon className="w-4 h-4 text-amber-500" /> Coins
+                    </span>
+                    {convertFrom === 'coin' && (
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900">
+                        From
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-black text-slate-900 tabular-nums">
+                    {(user?.coins || 0).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Available Diamonds */}
+                <div
+                  onClick={() => {
+                    setConvertFrom('diamond');
+                    setTransferAmountInput('');
+                  }}
+                  className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    convertFrom === 'diamond'
+                      ? 'bg-cyan-50 border-cyan-300 ring-2 ring-cyan-400/30 shadow-xs'
+                      : 'bg-white border-slate-200/80 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                      <DiamondIcon className="w-4 h-4 text-cyan-500" /> Diamonds
+                    </span>
+                    {convertFrom === 'diamond' && (
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-cyan-200/80 text-cyan-900">
+                        From
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-black text-slate-900 tabular-nums">
+                    {(user?.diamonds || 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <form onSubmit={handleConvertCurrency} className="space-y-3">
+              {/* Direction Selection */}
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setConvertFrom('coin')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-center ${convertFrom === 'coin' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-slate-200 text-slate-600'}`}
+                  onClick={() => {
+                    setConvertFrom('coin');
+                    setTransferAmountInput('');
+                  }}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
+                    convertFrom === 'coin'
+                      ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
                 >
-                  Coins → Diamonds
+                  <CoinIcon className={`w-4 h-4 ${convertFrom === 'coin' ? 'text-white' : 'text-amber-500'}`} />
+                  <span>Coins → Diamonds</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConvertFrom('diamond')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-center ${convertFrom === 'diamond' ? 'border-cyan-500 bg-cyan-50 text-cyan-900' : 'border-slate-200 text-slate-600'}`}
+                  onClick={() => {
+                    setConvertFrom('diamond');
+                    setTransferAmountInput('');
+                  }}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
+                    convertFrom === 'diamond'
+                      ? 'border-cyan-600 bg-cyan-600 text-white shadow-xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
                 >
-                  Diamonds → Coins
+                  <DiamondIcon className={`w-4 h-4 ${convertFrom === 'diamond' ? 'text-white' : 'text-cyan-500'}`} />
+                  <span>Diamonds → Coins</span>
                 </button>
               </div>
 
+              {/* Amount Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Amount to Convert ({convertFrom === 'coin' ? 'Coins' : 'Diamonds'})
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={transferAmountInput}
-                  onChange={(e) => setTransferAmountInput(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter amount"
-                  className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold tabular-nums"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Amount to Convert
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxAmount = convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0);
+                      setTransferAmountInput(String(maxAmount));
+                    }}
+                    className="text-[11px] font-extrabold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    Max: {(convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0)).toLocaleString()}
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={transferAmountInput}
+                    onChange={(e) => setTransferAmountInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder={`Enter ${convertFrom === 'coin' ? 'Coins' : 'Diamonds'} to convert`}
+                    className="w-full h-11 px-3 pr-24 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black tabular-nums focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase pointer-events-none">
+                    {convertFrom === 'coin' ? 'Coins' : 'Diamonds'}
+                  </span>
+                </div>
               </div>
 
+              {/* Quick Preset Buttons */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {[100, 500, 1000, 5000, 10000].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setTransferAmountInput(String(preset))}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 transition-colors shrink-0"
+                  >
+                    +{preset.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+
+              {/* Live Estimation Preview */}
+              {Number(transferAmountInput) > 0 && (
+                <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-100 flex items-center justify-between text-xs">
+                  <span className="text-indigo-700 font-bold">You will receive approx:</span>
+                  <span className="font-black text-indigo-950 flex items-center gap-1.5">
+                    {convertFrom === 'coin' ? (
+                      <>
+                        <DiamondIcon className="w-4 h-4 text-cyan-600 inline" />
+                        {Number(transferAmountInput).toLocaleString()} Diamonds
+                      </>
+                    ) : (
+                      <>
+                        <CoinIcon className="w-4 h-4 text-amber-500 inline" />
+                        {Number(transferAmountInput).toLocaleString()} Coins
+                      </>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setWalletModal(null)}
                   disabled={submittingTx}
-                  className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
+                  className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingTx}
-                  className="flex-1 h-10 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs"
+                  disabled={submittingTx || !transferAmountInput || Number(transferAmountInput) <= 0}
+                  className="flex-1 h-10 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all"
                 >
-                  {submittingTx ? 'Converting...' : 'Convert'}
+                  {submittingTx ? 'Converting...' : 'Convert Now'}
                 </button>
               </div>
             </form>

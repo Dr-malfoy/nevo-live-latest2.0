@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Search,
   RefreshCw,
@@ -58,15 +58,24 @@ export const Orders = () => {
     officialPendingCount: 0,
     totalConfirmedBdt: 0,
     totalConfirmedDiamonds: 0,
+    matchedAcrossAllFilters: false,
+    agentOrderMatchCount: 0,
   });
 
-  const load = async () => {
+  const isFirstMount = useRef(true);
+
+  const load = async (
+    targetPage = page,
+    targetStatus = statusFilter,
+    targetType = typeFilter,
+    targetSearch = search
+  ) => {
     setLoading(true);
     try {
-      const params: any = { page, limit: 20 };
-      if (statusFilter) params.status = statusFilter;
-      if (typeFilter !== 'all') params.type = typeFilter;
-      if (search.trim()) params.search = search.trim();
+      const params: any = { page: targetPage, limit: 20 };
+      if (targetStatus) params.status = targetStatus;
+      if (targetType !== 'all') params.type = targetType;
+      if (targetSearch && targetSearch.trim()) params.search = targetSearch.trim();
 
       const { data } = await adminApi.getOrders(params);
       if (data.success) {
@@ -83,14 +92,31 @@ export const Orders = () => {
     }
   };
 
+  // Debounced search on typing
   useEffect(() => {
-    load();
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      load(1, statusFilter, typeFilter, search);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setPage(1);
+      load(1, statusFilter, typeFilter, search);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reload when page, statusFilter, or typeFilter change
+  useEffect(() => {
+    if (!isFirstMount.current) {
+      load(page, statusFilter, typeFilter, search);
+    }
   }, [page, statusFilter, typeFilter]);
 
   // Auto-refresh every 20s for new orders
   useEffect(() => {
     const timer = setInterval(() => {
-      load();
+      load(page, statusFilter, typeFilter, search);
     }, 20000);
     return () => clearInterval(timer);
   }, [page, statusFilter, typeFilter, search]);
@@ -98,7 +124,13 @@ export const Orders = () => {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    load();
+    load(1, statusFilter, typeFilter, search);
+  };
+
+  const handleClearSearch = () => {
+    setSearch('');
+    setPage(1);
+    load(1, statusFilter, typeFilter, '');
   };
 
   const copyToClipboard = (text: string, key: string) => {
@@ -238,6 +270,18 @@ export const Orders = () => {
         };
         const badgeColor = methodColors[r.paymentMethod?.toLowerCase()] || 'bg-slate-700/50 text-slate-300 border-slate-600';
 
+        const cleanSearch = search.trim().toLowerCase().replace(/^(transaction\s*id|transactionid|trxid|trx\s*id|txid|tx\s*id|trx|tx|texid|tex\s*id)\s*[:#=\-\s]\s*/i, '').replace(/^#+/, '').trim();
+        const isTrxMatch = Boolean(
+          cleanSearch &&
+          r.transactionId &&
+          (r.transactionId.toLowerCase().includes(cleanSearch) || cleanSearch.includes(r.transactionId.toLowerCase()))
+        );
+        const isAccMatch = Boolean(
+          cleanSearch &&
+          r.accountNumber &&
+          (r.accountNumber.toLowerCase().includes(cleanSearch) || cleanSearch.includes(r.accountNumber.toLowerCase()))
+        );
+
         return (
           <div className="text-xs space-y-1">
             <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border capitalize ${badgeColor}`}>
@@ -246,7 +290,9 @@ export const Orders = () => {
             {r.accountNumber && (
               <div className="flex items-center gap-1 text-dark-300 text-[11px]">
                 <span className="text-dark-400">Sender:</span>
-                <span className="font-mono">{r.accountNumber}</span>
+                <span className={`font-mono px-1 rounded ${isAccMatch ? 'bg-amber-500/30 text-amber-200 border border-amber-400/40 font-bold' : ''}`}>
+                  {r.accountNumber}
+                </span>
                 <button
                   type="button"
                   onClick={() => copyToClipboard(r.accountNumber!, `acc-${r._id}`)}
@@ -259,7 +305,13 @@ export const Orders = () => {
             )}
             <div className="flex items-center gap-1 text-dark-300 text-[11px]">
               <span className="text-dark-400">TrxID:</span>
-              <span className="font-mono text-cyan-300 font-semibold">{r.transactionId || '—'}</span>
+              <span className={`font-mono font-semibold px-1 rounded ${
+                isTrxMatch
+                  ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/50 shadow-sm'
+                  : 'text-cyan-300'
+              }`}>
+                {r.transactionId || '—'}
+              </span>
               {r.transactionId && (
                 <button
                   type="button"
@@ -562,7 +614,7 @@ export const Orders = () => {
           {search && (
             <button
               type="button"
-              onClick={() => { setSearch(''); setPage(1); setTimeout(load, 50); }}
+              onClick={handleClearSearch}
               className="px-3 py-2 bg-dark-800 hover:bg-dark-700 text-dark-300 text-xs font-medium rounded-lg transition-colors"
             >
               Clear
@@ -570,6 +622,45 @@ export const Orders = () => {
           )}
         </form>
       </div>
+
+      {/* Search Feedback Notifications */}
+      {stats.matchedAcrossAllFilters && search.trim() && (
+        <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3 flex items-center justify-between text-xs text-cyan-200">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>
+              Found matching order across all statuses and destinations for "{search.trim()}". (Filters were automatically relaxed to show your result).
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTypeFilter('all');
+              setStatusFilter('');
+            }}
+            className="text-[11px] underline text-cyan-300 hover:text-white shrink-0 ml-2"
+          >
+            Reset Filters
+          </button>
+        </div>
+      )}
+
+      {stats.agentOrderMatchCount > 0 && search.trim() && (
+        <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3 flex items-center justify-between text-xs text-purple-200">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>
+              Found {stats.agentOrderMatchCount} matching order(s) in Agent Orders for "{search.trim()}".
+            </span>
+          </div>
+          <a
+            href="/agent-orders"
+            className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[11px] font-semibold transition-colors shrink-0 ml-2"
+          >
+            View in Agent Orders
+          </a>
+        </div>
+      )}
 
       {/* Orders Table */}
       <DataTable

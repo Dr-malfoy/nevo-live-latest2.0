@@ -11,7 +11,8 @@ import { PkTypesSheet } from '../components/party/PkTypesSheet';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { Loading } from '../components/ui';
 import { GenderSelectionModal } from '../components/user';
-import { MessageInput, GiftOverlay } from '../components/live';
+import { MessageInput, GiftOverlay, NotificationOverlay } from '../components/live';
+import type { RoomNotification } from '../components/live/types';
 import { GiftPanel } from '../components/stream';
 import type { GiftBurst } from '../components/live/GiftOverlay';
 import { compactNumber, initial } from '../lib/time';
@@ -60,6 +61,7 @@ export const PartyRoom = () => {
   const [pkOpen, setPkOpen] = useState(false);
   const [giftPanelOpen, setGiftPanelOpen] = useState(false);
   const [giftBurst, setGiftBurst] = useState<GiftBurst | null>(null);
+  const [notifications, setNotifications] = useState<RoomNotification[]>([]);
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [pendingSeatIndex, setPendingSeatIndex] = useState<number | null>(null);
   const burstTimerRef = useRef<any>(null);
@@ -219,17 +221,40 @@ export const PartyRoom = () => {
     const onGift = (p: any) => {
       const giftName = p?.gift?.name || 'Gift';
       const count = p?.count || 1;
-      push({ id: `${Date.now()}-g`, kind: 'chat', nickname: p?.senderName ?? 'Someone', text: `Sent ${count}x ${giftName}!` });
+      const senderName = p?.senderName ?? 'Someone';
+      push({ id: `${Date.now()}-g`, kind: 'chat', nickname: senderName, text: `Sent ${count}x ${giftName}!` });
       if (p?.gift) {
         triggerGifts(p.gift.icon || p.gift.animation || '🎁', giftName, 4);
         setGiftBurst({
           id: `${Date.now()}`,
           gift: p.gift,
           count,
-          nickname: p?.senderName || 'Someone',
+          nickname: senderName,
         });
         if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
-        burstTimerRef.current = setTimeout(() => setGiftBurst(null), 3000);
+        burstTimerRef.current = setTimeout(() => setGiftBurst(null), 5000);
+      }
+      const notifId = `${Date.now()}-${Math.random()}`;
+      setNotifications((prev) => [
+        ...prev.slice(-4),
+        { id: notifId, kind: 'gift', text: `${senderName} sent ${count}x ${giftName}!`, avatar: p?.senderAvatar },
+      ]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }, 5000);
+    };
+
+    const onGiftNotif = (notif: any) => {
+      if (notif?.type === 'gift') {
+        const msg = notif.message || 'You received a gift!';
+        const notifId = `${Date.now()}-${Math.random()}`;
+        setNotifications((prev) => [
+          ...prev.slice(-4),
+          { id: notifId, kind: 'gift', text: msg, avatar: notif.data?.senderAvatar },
+        ]);
+        setTimeout(() => {
+          setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+        }, 5000);
       }
     };
 
@@ -249,6 +274,7 @@ export const PartyRoom = () => {
     socket.on('room:mic-changed', onMicChanged);
     socket.on('room:viewer-count', onViewerCount);
     socket.on('room:gift', onGift);
+    socket.on('notification:new', onGiftNotif);
     socket.on('room:closed', onClosed);
     socket.on('room:ended', onClosed);
 
@@ -263,6 +289,7 @@ export const PartyRoom = () => {
       socket.off('room:mic-changed', onMicChanged);
       socket.off('room:viewer-count', onViewerCount);
       socket.off('room:gift', onGift);
+      socket.off('notification:new', onGiftNotif);
       socket.off('room:closed', onClosed);
       socket.off('room:ended', onClosed);
     };
@@ -543,7 +570,7 @@ export const PartyRoom = () => {
         nickname: user?.nickname || 'You',
       });
       if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
-      burstTimerRef.current = setTimeout(() => setGiftBurst(null), 3600);
+      burstTimerRef.current = setTimeout(() => setGiftBurst(null), 5000);
 
       triggerGifts(gift.icon || gift.animation || '🎁', gift.name, Math.min(quantity, 6));
 
@@ -836,6 +863,13 @@ export const PartyRoom = () => {
           </div>
         </div>
       )}
+
+      {/* Notifications overlay (5s auto-dismiss) */}
+      <NotificationOverlay
+        notifications={notifications}
+        durationMs={5000}
+        onDismiss={(notifId) => setNotifications((prev) => prev.filter((n) => n.id !== notifId))}
+      />
 
       {/* Floating gift / sticker animation items */}
       <FloatingGifts items={floatingGiftItems} />

@@ -301,7 +301,7 @@ export const LiveStreamPage = () => {
             nickname: msg.nickname || 'Someone',
           });
           if (burstTimer.current) clearTimeout(burstTimer.current);
-          burstTimer.current = setTimeout(() => setGiftBurst(null), 3600);
+          burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
 
           triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
         }
@@ -317,10 +317,14 @@ export const LiveStreamPage = () => {
       // In-room toast when the host receives a gift
       if (notif?.type === 'gift') {
         const msg = notif.message || 'You received a gift!';
+        const notifId = `${Date.now()}-${Math.random()}`;
         setNotifications((prev) => [
           ...prev.slice(-4),
-          { id: `${Date.now()}-${Math.random()}`, kind: 'gift', text: msg, avatar: notif.data?.senderAvatar },
+          { id: notifId, kind: 'gift', text: msg, avatar: notif.data?.senderAvatar },
         ]);
+        setTimeout(() => {
+          setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+        }, 5000);
       }
     };
 
@@ -590,7 +594,7 @@ export const LiveStreamPage = () => {
         nickname: currentUser?.nickname || 'You',
       });
       if (burstTimer.current) clearTimeout(burstTimer.current);
-      burstTimer.current = setTimeout(() => setGiftBurst(null), 3600);
+      burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
 
       triggerGifts(gift.icon || (gift as any).animation || '🎁', gift.name, Math.min(quantity, 6));
 
@@ -673,6 +677,7 @@ export const LiveStreamPage = () => {
         followBusy={followBusy}
         messages={chatMessages}
         notifications={notifications}
+        onDismissNotification={(notifId) => setNotifications((prev) => prev.filter((n) => n.id !== notifId))}
         giftBurst={giftBurst}
         onLeave={requestLeaveStream}
         onEnd={requestEndStream}

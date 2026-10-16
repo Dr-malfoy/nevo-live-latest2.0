@@ -29,8 +29,8 @@ const paymentConfigSchema = new Schema<IPaymentConfigDocument, IPaymentConfigMod
     nagadEnabled: { type: Boolean, default: true },
     rocketEnabled: { type: Boolean, default: true },
     diamondRate: { type: Number, default: 130, min: 0.01 },
-    coinRate: { type: Number, default: 1, min: 0.01 },
-    withdrawalRate: { type: Number, default: 1, min: 0.01 },
+    coinRate: { type: Number, default: 130, min: 0.01 },
+    withdrawalRate: { type: Number, default: 130, min: 0.01 },
     rechargeRate: { type: Number, default: 130, min: 0.01 },
     bonusRate: { type: Number, default: 0, min: 0, max: 100 },
     serviceCharge: { type: Number, default: 0, min: 0 },
@@ -42,11 +42,23 @@ const paymentConfigSchema = new Schema<IPaymentConfigDocument, IPaymentConfigMod
 paymentConfigSchema.statics.getConfig = async function (): Promise<IPaymentConfigDocument> {
   let config = await this.findOne();
   if (!config) {
-    config = await this.create({ diamondRate: 130, rechargeRate: 130 });
-  } else if (!config.diamondRate || config.diamondRate === 1) {
-    config.diamondRate = 130;
-    config.rechargeRate = 130;
-    await config.save();
+    config = await this.create({ diamondRate: 130, rechargeRate: 130, coinRate: 130, withdrawalRate: 130 });
+  } else {
+    let modified = false;
+    if (!config.diamondRate || config.diamondRate === 1) {
+      config.diamondRate = 130;
+      config.rechargeRate = 130;
+      modified = true;
+    }
+    if (!config.withdrawalRate || config.withdrawalRate === 1) {
+      config.withdrawalRate = 130;
+      modified = true;
+    }
+    if (!config.coinRate || config.coinRate === 1) {
+      config.coinRate = 130;
+      modified = true;
+    }
+    if (modified) await config.save();
   }
   return config;
 };

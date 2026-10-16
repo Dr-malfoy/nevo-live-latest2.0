@@ -82,6 +82,7 @@ router.put('/contact-messages/:id', authenticate, requireAdmin, contactControlle
 router.get('/wallet', authenticate, requireAdmin, walletController.getWallet);
 router.get('/wallet/lookup', authenticate, requireAdmin, walletController.lookupUser);
 router.post('/wallet/transfer', authenticate, requireAdmin, walletController.transfer);
+router.get('/wallet/transactions', authenticate, requireAdmin, adminController.getTransactions);
 
 // Payment config
 router.get('/payment-config', authenticate, requireAdmin, adminController.getPaymentConfig);

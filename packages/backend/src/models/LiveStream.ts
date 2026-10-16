@@ -20,6 +20,7 @@ export interface ILiveStreamDocument extends Document {
   totalViewers: number;
   /** Distinct viewers currently in the room — makes join/leave idempotent. */
   viewers: Schema.Types.ObjectId[];
+  earningsCoins?: number;
   startedAt: Date;
   endedAt?: Date;
   heartbeatAt: Date;
@@ -63,6 +64,7 @@ const liveStreamSchema = new Schema<ILiveStreamDocument>(
     viewerCount: { type: Number, default: 0, min: 0 },
     totalViewers: { type: Number, default: 0, min: 0 },
     viewers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    earningsCoins: { type: Number, default: 0, min: 0 },
     startedAt: { type: Date, default: Date.now },
     endedAt: Date,
     heartbeatAt: { type: Date, default: Date.now },

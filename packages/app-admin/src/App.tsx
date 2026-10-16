@@ -88,6 +88,7 @@ export default function App() {
           <Route path="support-tickets" element={<ContactMessages />} />
           <Route path="tickets" element={<ContactMessages />} />
           <Route path="wallet" element={<AdminWallet />} />
+          <Route path="wallet-transactions" element={<AdminWallet />} />
           <Route path="official-notifications" element={<OfficialNotifications />} />
           <Route path="verification" element={<Verification />} />
           <Route path="asset-passwords" element={<AssetPasswords />} />

@@ -1,8 +1,15 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface IComment {
+  _id?: Schema.Types.ObjectId;
   userId: Schema.Types.ObjectId;
   text: string;
+  likes?: Schema.Types.ObjectId[];
+  parentId?: Schema.Types.ObjectId;
+  replyTo?: {
+    userId?: Schema.Types.ObjectId;
+    nickname?: string;
+  };
   createdAt: Date;
 }
 
@@ -42,6 +49,12 @@ const momentSchema = new Schema<IMomentDocument>(
       {
         userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
         text: { type: String, required: true },
+        likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+        parentId: { type: Schema.Types.ObjectId },
+        replyTo: {
+          userId: { type: Schema.Types.ObjectId, ref: 'User' },
+          nickname: { type: String },
+        },
         createdAt: { type: Date, default: Date.now },
       },
     ],

@@ -562,6 +562,48 @@ export const PostCard: React.FC<PostCardProps> = ({
               <span>Full View</span>
             </div>
 
+            {/* Floating Reactions Avatars Badge on Photo */}
+            {likesCount > 0 && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowReactions(true);
+                }}
+                className="absolute bottom-3 left-3 px-2 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white flex items-center gap-1.5 shadow-lg z-20 cursor-pointer active:scale-95 transition-all border border-white/20 group/reacts"
+                title="See who reacted to this post"
+              >
+                <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+                <div className="flex -space-x-1.5 overflow-hidden items-center shrink-0">
+                  {(moment.likes || [])
+                    .filter((u) => u && typeof u === 'object')
+                    .slice(0, 3)
+                    .map((u: any, idx: number) => {
+                      const avatarSrc = getMediaUrl(u.avatar);
+                      return avatarSrc ? (
+                        <img
+                          key={u._id || idx}
+                          src={avatarSrc}
+                          alt={u.nickname || 'User'}
+                          className="w-4 h-4 rounded-full object-cover ring-1 ring-white/90 shadow-2xs shrink-0"
+                        />
+                      ) : (
+                        <div
+                          key={u._id || idx}
+                          className="w-4 h-4 rounded-full bg-gradient-to-tr from-accent-500 to-rose-400 ring-1 ring-white/90 flex items-center justify-center text-[7px] font-black text-white shrink-0"
+                        >
+                          {(u.nickname || 'U').charAt(0).toUpperCase()}
+                        </div>
+                      );
+                    })}
+                </div>
+                {(likesCount > 3 || (moment.likes?.length || 0) > 3) && (
+                  <span className="text-[10px] text-white/90 font-black tracking-widest leading-none px-0.5">
+                    ...
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Double Tap Floating Heart Animation */}
             {showDoubleTapHeart && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-ping">
@@ -572,40 +614,44 @@ export const PostCard: React.FC<PostCardProps> = ({
         )
       )}
 
-      {/* ── WHO REACTED SUMMARY BAR (Clickable to see all who reacted) ── */}
-      {likesCount > 0 && (
-        <div
-          onClick={() => setShowReactions(true)}
-          className="px-4 py-2 border-t border-line/60 bg-surface-soft/20 hover:bg-surface-soft/80 flex items-center justify-between cursor-pointer group transition-colors select-none"
-          title="See who reacted to this post"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex -space-x-1.5 overflow-hidden shrink-0">
+      {/* Floating Reaction Pill for text-only moments (if no photo) */}
+      {!mediaSrc && likesCount > 0 && (
+        <div className="px-4 pb-2 flex items-center">
+          <div
+            onClick={() => setShowReactions(true)}
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-sunken hover:bg-line/80 border border-line text-ink cursor-pointer active:scale-95 transition-all shadow-2xs"
+            title="See who reacted to this post"
+          >
+            <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+            <div className="flex -space-x-1.5 overflow-hidden items-center shrink-0">
               {(moment.likes || [])
                 .filter((u) => u && typeof u === 'object')
                 .slice(0, 3)
-                .map((u: any, idx: number) => (
-                  <Avatar
-                    key={u._id || idx}
-                    src={u.avatar}
-                    nickname={u.nickname || 'User'}
-                    size="xs"
-                    ringed
-                  />
-                ))}
+                .map((u: any, idx: number) => {
+                  const avatarSrc = getMediaUrl(u.avatar);
+                  return avatarSrc ? (
+                    <img
+                      key={u._id || idx}
+                      src={avatarSrc}
+                      alt={u.nickname || 'User'}
+                      className="w-4 h-4 rounded-full object-cover ring-1 ring-white shadow-2xs shrink-0"
+                    />
+                  ) : (
+                    <div
+                      key={u._id || idx}
+                      className="w-4 h-4 rounded-full bg-gradient-to-tr from-accent-500 to-rose-400 ring-1 ring-white flex items-center justify-center text-[7px] font-black text-white shrink-0"
+                    >
+                      {(u.nickname || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  );
+                })}
             </div>
-            <span className="text-xs text-ink-muted group-hover:text-ink transition-colors font-medium truncate">
-              Liked by{' '}
-              <strong className="text-ink font-bold group-hover:text-rose-500 transition-colors">
-                {(moment.likes || []).find((u) => u && typeof u === 'object')?.nickname || `${likesCount} people`}
-              </strong>
-              {likesCount > 1 ? ` and ${likesCount - 1} others` : ''}
-            </span>
+            {(likesCount > 3 || (moment.likes?.length || 0) > 3) && (
+              <span className="text-[10px] text-ink-muted font-black tracking-widest leading-none px-0.5">
+                ...
+              </span>
+            )}
           </div>
-
-          <span className="text-[11px] text-accent-600 font-bold group-hover:underline shrink-0">
-            See all
-          </span>
         </div>
       )}
 

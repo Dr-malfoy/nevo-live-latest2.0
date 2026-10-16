@@ -229,8 +229,15 @@ export interface Moment {
 }
 
 export interface Comment {
+  _id?: string;
   userId: UserPublic;
   text: string;
+  likes?: string[];
+  parentId?: string;
+  replyTo?: {
+    userId?: string;
+    nickname?: string;
+  };
   createdAt: string;
 }
 

@@ -34,6 +34,7 @@ export const LiveRoom = ({
   followBusy,
   messages,
   notifications,
+  onDismissNotification,
   giftBurst,
   onLeave,
   onEnd,
@@ -211,7 +212,7 @@ export const LiveRoom = ({
       )}
 
       {/* Notifications / reactions / hearts / gifts */}
-      <NotificationOverlay notifications={notifications} />
+      <NotificationOverlay notifications={notifications} onDismiss={onDismissNotification} durationMs={5000} />
       <ReactionOverlay items={reactions} />
       <FloatingHearts hearts={hearts} />
       <GiftOverlay burst={giftBurst} />

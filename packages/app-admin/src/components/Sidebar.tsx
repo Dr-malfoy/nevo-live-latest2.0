@@ -14,7 +14,7 @@ const links = [
   { to: '/agents', icon: Building2, label: 'Agents' },
   { to: '/agent-orders', icon: ShoppingBag, label: 'Agent Orders' },
   { to: '/withdrawal-requests', icon: Handshake, label: 'Withdrawals' },
-  { to: '/wallet', icon: Wallet, label: 'Platform Wallet' },
+  { to: '/wallet', icon: Wallet, label: 'Wallet & Transactions' },
   { to: '/moderation-reports', icon: Flag, label: 'Complaints' },
   { to: '/contact-messages', icon: Headphones, label: 'Support Tickets' },
   { to: '/asset-passwords', icon: KeyRound, label: 'Asset Passwords' },

@@ -183,10 +183,37 @@ export const MomentsPage: React.FC = () => {
       );
     };
 
+    const handleCommentLike = (data: {
+      momentId: string;
+      commentId: string;
+      userId: string;
+      liked: boolean;
+      likes: string[];
+      likesCount: number;
+    }) => {
+      setMoments((prev) =>
+        prev.map((m) => {
+          if (m._id !== data.momentId) return m;
+          const updatedComments = (m.comments || []).map((c: any) => {
+            if (c._id?.toString() !== data.commentId) return c;
+            return {
+              ...c,
+              likes: data.likes,
+            };
+          });
+          return {
+            ...m,
+            comments: updatedComments,
+          };
+        })
+      );
+    };
+
     socket.on('moment:created', handleMomentCreated);
     socket.on('moment:updated', handleMomentUpdated);
     socket.on('moment:like', handleMomentLike);
     socket.on('moment:comment', handleMomentComment);
+    socket.on('moment:comment:like', handleCommentLike);
     socket.on('moment:share', handleMomentShare);
     socket.on('moment:deleted', handleMomentDeleted);
     socket.on('moment:view', handleMomentView);
@@ -196,6 +223,7 @@ export const MomentsPage: React.FC = () => {
       socket.off('moment:updated', handleMomentUpdated);
       socket.off('moment:like', handleMomentLike);
       socket.off('moment:comment', handleMomentComment);
+      socket.off('moment:comment:like', handleCommentLike);
       socket.off('moment:share', handleMomentShare);
       socket.off('moment:deleted', handleMomentDeleted);
       socket.off('moment:view', handleMomentView);

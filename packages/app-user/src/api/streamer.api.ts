@@ -6,12 +6,17 @@ export type StreamerRange = 'today' | 'week' | 'month' | 'all';
 export interface StreamerStats {
   liveDurationSec: number;
   pointsEarned: number;
+  diamondsEarned?: number;
+  coinsEarned?: number;
+  totalLiveEarnings?: number;
+  totalEarningsCoins?: number;
+  walletCoins?: number;
+  walletDiamonds?: number;
   newFollowers: number;
   avgConcurrentUsers: number;
   peakConcurrentUsers?: number;
   streamCount?: number;
   totalViewers?: number;
-  diamondsEarned?: number;
   level?: number;
   agencyName?: string;
   agencyCode?: string;
@@ -35,6 +40,8 @@ export interface LastStreamReport {
   aiFeedback?: string;
   liveDurationSec: number;
   pointsEarned: number;
+  coinsEarned?: number;
+  diamondsEarned?: number;
   newFollowers: number;
   viewers: number;
   peakViewers?: number;
@@ -65,6 +72,10 @@ export interface StreamHistoryItem {
   durationSec: number;
   viewers: number;
   peakViewers?: number;
+  earningsCoins?: number;
+  coinsEarned?: number;
+  diamondsEarned?: number;
+  pointsEarned?: number;
 }
 
 export interface MilestoneReward {
@@ -216,8 +227,8 @@ export const streamerApi = {
 
   getMilestones: () => client.get<ApiResponse<MilestoneData>>('/streamer/milestones'),
 
-  getHistory: (page = 1, limit = 10) =>
-    client.get<{ success: boolean; data: StreamHistoryItem[]; total: number; page: number; limit: number }>(
+  getHistory: (page = 1, limit = 20) =>
+    client.get<{ success: boolean; data: StreamHistoryItem[]; total: number; totalLiveEarnings?: number; page?: number; limit?: number }>(
       '/streamer/history',
       { params: { page, limit } }
     ),

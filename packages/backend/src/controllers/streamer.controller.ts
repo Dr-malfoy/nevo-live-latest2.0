@@ -61,7 +61,7 @@ export const streamerController = {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const result = await streamerService.getStreamHistory(req.user!.userId, page, limit);
-      sendPaginated(res, result.data, result.total, page, limit);
+      sendPaginated(res, result.data, result.total, page, limit, { totalLiveEarnings: result.totalLiveEarnings });
     } catch (error) { next(error); }
   },
 

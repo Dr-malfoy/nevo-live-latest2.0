@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import {
   PurchaseOrder, User, Transaction, PaymentConfig,
@@ -425,32 +426,110 @@ export const paymentService = {
       filter.agentId = { $ne: null };
     }
 
-    if (query.search && query.search.trim()) {
-      const term = query.search.trim();
-      const matchingUsers = await User.find({
-        $or: [
-          { uid: { $regex: term, $options: 'i' } },
-          { nickname: { $regex: term, $options: 'i' } },
-          { phone: { $regex: term, $options: 'i' } },
-        ],
-      }).select('_id');
+    let matchedAcrossAllFilters = false;
+    let agentOrderMatchCount = 0;
 
+    if (query.search && query.search.trim()) {
+      const rawTerm = query.search.trim();
+      const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Strip prefixes like "trxid:", "txid:", "trx:", "tx:", "texid:", "transaction id:", "#"
+      const cleanTerm = rawTerm
+        .replace(/^(transaction\s*id|transactionid|trxid|trx\s*id|txid|tx\s*id|trx|tx|texid|tex\s*id)\s*[:#=\-\s]\s*/i, '')
+        .replace(/^#+/, '')
+        .trim();
+
+      const compactTerm = cleanTerm.replace(/\s+/g, '');
+      const terms = Array.from(new Set([rawTerm, cleanTerm, compactTerm])).filter(Boolean);
+
+      // Search users by nickname, phone, or UID
+      const userConditions = terms.map((t) => ({
+        $or: [
+          { uid: { $regex: escapeRegex(t), $options: 'i' } },
+          { nickname: { $regex: escapeRegex(t), $options: 'i' } },
+          { phone: { $regex: escapeRegex(t), $options: 'i' } },
+        ],
+      }));
+
+      const matchingUsers = await User.find({ $or: userConditions }).select('_id');
       const userIds = matchingUsers.map((u: any) => u._id);
 
-      const searchConditions: any[] = [
-        { transactionId: { $regex: term, $options: 'i' } },
-        { accountNumber: { $regex: term, $options: 'i' } },
-      ];
+      const searchConditions: any[] = [];
+
+      for (const t of terms) {
+        const escaped = escapeRegex(t);
+        searchConditions.push({ transactionId: { $regex: escaped, $options: 'i' } });
+        searchConditions.push({ accountNumber: { $regex: escaped, $options: 'i' } });
+
+        // Match MongoDB ObjectId or partial hex id (e.g., #167c73 displayed in UI)
+        if (mongoose.Types.ObjectId.isValid(t) && t.length === 24) {
+          searchConditions.push({ _id: new mongoose.Types.ObjectId(t) });
+        } else if (/^[a-fA-F0-9]{4,24}$/.test(t)) {
+          searchConditions.push({
+            $expr: {
+              $regexMatch: {
+                input: { $toString: '$_id' },
+                regex: escaped,
+                options: 'i',
+              },
+            },
+          });
+        }
+      }
+
       if (userIds.length > 0) {
         searchConditions.push({ userId: { $in: userIds } });
         searchConditions.push({ agentId: { $in: userIds } });
       }
 
+      // Check if any matching AgentPurchaseOrders exist (in case admin searches an agent order)
+      try {
+        const agentConditions: any[] = [];
+        for (const t of terms) {
+          const escaped = escapeRegex(t);
+          agentConditions.push({ transactionId: { $regex: escaped, $options: 'i' } });
+        }
+        if (userIds.length > 0) {
+          agentConditions.push({ agentId: { $in: userIds } });
+        }
+        if (agentConditions.length > 0) {
+          agentOrderMatchCount = await AgentPurchaseOrder.countDocuments({ $or: agentConditions });
+        }
+      } catch {}
+
+      // Combine base filters (status, type) with search conditions
+      let searchFilter: any = {};
+      if (filter.status) searchFilter.status = filter.status;
+      if (filter.isOfficial !== undefined) searchFilter.isOfficial = filter.isOfficial;
+      if (filter.agentId !== undefined) searchFilter.agentId = filter.agentId;
+
+      let combinedFilter: any;
       if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, { $or: searchConditions }];
-        delete filter.$or;
+        combinedFilter = { $and: [{ $or: filter.$or }, { $or: searchConditions }] };
+      } else if (Object.keys(searchFilter).length > 0) {
+        combinedFilter = { ...searchFilter, $or: searchConditions };
       } else {
-        filter.$or = searchConditions;
+        combinedFilter = { $or: searchConditions };
+      }
+
+      // Test if any results match with the active status/type filters
+      const countWithFilters = await PurchaseOrder.countDocuments(combinedFilter);
+
+      if (countWithFilters > 0) {
+        Object.keys(filter).forEach((k) => delete filter[k]);
+        Object.assign(filter, combinedFilter);
+      } else {
+        // If 0 matches with filters, check if there are matches across ALL orders ignoring status/type!
+        const globalMatchCount = await PurchaseOrder.countDocuments({ $or: searchConditions });
+        if (globalMatchCount > 0) {
+          // Relax the status/type filters so the user actually sees the order!
+          Object.keys(filter).forEach((k) => delete filter[k]);
+          filter.$or = searchConditions;
+          matchedAcrossAllFilters = true;
+        } else {
+          Object.keys(filter).forEach((k) => delete filter[k]);
+          Object.assign(filter, combinedFilter);
+        }
       }
     }
 
@@ -475,6 +554,8 @@ export const paymentService = {
       officialPendingCount,
       totalConfirmedBdt: confirmedSummary[0]?.totalBdt || 0,
       totalConfirmedDiamonds: confirmedSummary[0]?.totalDiamonds || 0,
+      matchedAcrossAllFilters,
+      agentOrderMatchCount,
     };
 
     return { data: orders, total, stats };
@@ -646,7 +727,7 @@ export const paymentService = {
     if (!agency) throw new AppError('Linked agency not found', 404);
     const agentId = agency.agentId.toString();
 
-    const rate = config.withdrawalRate || config.coinRate || 1;
+    const rate = (config.withdrawalRate && config.withdrawalRate > 1) ? config.withdrawalRate : (config.coinRate && config.coinRate > 1 ? config.coinRate : 130);
     const amountBdt = Math.floor(amount / rate);
 
     // Apply service charge (percent of BDT value)
@@ -840,9 +921,64 @@ export const paymentService = {
     return { data, total };
   },
 
-  async getAllAgentPurchaseOrders(query: { status?: string; page: number; limit: number }) {
+  async getAllAgentPurchaseOrders(query: { status?: string; search?: string; page: number; limit: number }) {
     const filter: any = {};
     if (query.status) filter.status = query.status;
+
+    if (query.search && query.search.trim()) {
+      const rawTerm = query.search.trim();
+      const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const cleanTerm = rawTerm
+        .replace(/^(transaction\s*id|transactionid|trxid|trx\s*id|txid|tx\s*id|trx|tx|texid|tex\s*id)\s*[:#=\-\s]\s*/i, '')
+        .replace(/^#+/, '')
+        .trim();
+      const compactTerm = cleanTerm.replace(/\s+/g, '');
+      const terms = Array.from(new Set([rawTerm, cleanTerm, compactTerm])).filter(Boolean);
+
+      const matchingAgents = await User.find({
+        $or: terms.flatMap((t) => [
+          { uid: { $regex: escapeRegex(t), $options: 'i' } },
+          { nickname: { $regex: escapeRegex(t), $options: 'i' } },
+          { phone: { $regex: escapeRegex(t), $options: 'i' } },
+        ]),
+      }).select('_id');
+      const agentIds = matchingAgents.map((u: any) => u._id);
+
+      const searchConditions: any[] = [];
+      for (const t of terms) {
+        const escaped = escapeRegex(t);
+        searchConditions.push({ transactionId: { $regex: escaped, $options: 'i' } });
+        if (mongoose.Types.ObjectId.isValid(t) && t.length === 24) {
+          searchConditions.push({ _id: new mongoose.Types.ObjectId(t) });
+        } else if (/^[a-fA-F0-9]{4,24}$/.test(t)) {
+          searchConditions.push({
+            $expr: {
+              $regexMatch: {
+                input: { $toString: '$_id' },
+                regex: escaped,
+                options: 'i',
+              },
+            },
+          });
+        }
+      }
+      if (agentIds.length > 0) {
+        searchConditions.push({ agentId: { $in: agentIds } });
+      }
+
+      if (filter.status) {
+        const countWithStatus = await AgentPurchaseOrder.countDocuments({ status: filter.status, $or: searchConditions });
+        if (countWithStatus > 0) {
+          filter.$or = searchConditions;
+        } else {
+          delete filter.status;
+          filter.$or = searchConditions;
+        }
+      } else {
+        filter.$or = searchConditions;
+      }
+    }
+
     const total = await AgentPurchaseOrder.countDocuments(filter);
     const data = await AgentPurchaseOrder.find(filter)
       .populate('agentId', 'uid nickname')
