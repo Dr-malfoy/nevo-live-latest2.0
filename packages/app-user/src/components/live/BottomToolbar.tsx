@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
-import { PiHeartFill as Heart, PiGiftFill as GiftIcon, PiShareNetworkFill as Share2, PiMicrophoneFill as Mic, PiMicrophoneSlashFill as MicOff, PiVideoCameraFill as Video, PiVideoCameraSlashFill as VideoOff, PiArrowsLeftRightBold as FlipHorizontal, PiPhoneSlashFill as PhoneOff, PiMagicWandFill as Wand2, PiStickerFill as Sticker, PiSquaresFourFill as Grid } from 'react-icons/pi';
+import { PiHeartFill as Heart, PiGiftFill as GiftIcon, PiShareNetworkFill as Share2, PiVideoCameraFill as Video, PiVideoCameraSlashFill as VideoOff, PiArrowsLeftRightBold as FlipHorizontal, PiPhoneSlashFill as PhoneOff, PiMagicWandFill as Wand2, PiStickerFill as Sticker, PiSquaresFourFill as Grid } from 'react-icons/pi';
+import { MouthIcon, MouthOffIcon } from './MouthIcons';
 import { MessageInput } from './MessageInput';
 import { Avatar } from '../user';
 
@@ -94,7 +95,7 @@ export const BottomToolbar = ({
             active={!micOn}
             activeClass="text-red-400"
           >
-            {micOn ? <Mic className="w-5 h-5 text-emerald-400" /> : <MicOff className="w-5 h-5 text-white/90" />}
+            {micOn ? <MouthIcon className="w-5 h-5 text-emerald-400" /> : <MouthOffIcon className="w-5 h-5 text-white/90" />}
           </RoundBtn>
         ) : (
           <RoundBtn
@@ -105,7 +106,7 @@ export const BottomToolbar = ({
             active={micRequestPending}
             activeClass="text-amber-400 animate-pulse border-amber-400"
           >
-            <Mic className={`w-5 h-5 ${micRequestPending ? 'text-amber-400' : 'text-white/90'}`} />
+            <MouthIcon className={`w-5 h-5 ${micRequestPending ? 'text-amber-400' : 'text-white/90'}`} />
           </RoundBtn>
         )}
 

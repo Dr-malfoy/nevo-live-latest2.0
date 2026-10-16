@@ -10,6 +10,7 @@ import {
   PiGiftFill as Gift,
   PiFlagFill as Flag,
 } from 'react-icons/pi';
+import { MouthIcon, MouthOffIcon } from './MouthIcons';
 import { useUIStore } from '../../stores';
 
 export interface LiveToolsSheetProps {
@@ -88,7 +89,7 @@ export const LiveToolsSheet = ({
     ...(onToggleMic ? [{
       id: 'mic',
       label: micOn ? 'Mic ON' : 'Mic OFF',
-      Icon: micOn ? Mic : MicOff,
+      Icon: micOn ? MouthIcon : MouthOffIcon,
       badge: micOn ? 'ON' : 'OFF',
       badgeColor: micOn ? 'bg-emerald-500' : 'bg-red-500',
       active: micOn,
@@ -123,7 +124,7 @@ export const LiveToolsSheet = ({
     {
       id: 'viewer_mic',
       label: isSpeaker ? (micOn ? 'Mic ON' : 'Mic OFF') : (micRequestPending ? 'Requested' : 'Request Mic'),
-      Icon: isSpeaker ? (micOn ? Mic : MicOff) : Mic,
+      Icon: isSpeaker ? (micOn ? MouthIcon : MouthOffIcon) : MouthIcon,
       badge: isSpeaker ? (micOn ? 'ON' : 'OFF') : (micRequestPending ? 'WAIT' : 'MIC'),
       badgeColor: isSpeaker ? (micOn ? 'bg-emerald-500' : 'bg-red-500') : (micRequestPending ? 'bg-amber-500' : 'bg-pink-500'),
       active: isSpeaker ? micOn : micRequestPending,
