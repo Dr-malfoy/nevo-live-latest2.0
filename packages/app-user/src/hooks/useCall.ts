@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, ILocalAudioTrack, UID } from 'agora-rtc-sdk-ng';
 
+try {
+  AgoraRTC.disableLogUpload();
+  AgoraRTC.setLogLevel(2);
+} catch {}
+
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
 
 const RTC_CONFIG: RTCConfiguration = {

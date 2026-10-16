@@ -6,6 +6,14 @@ import AgoraRTC, {
   UID,
 } from 'agora-rtc-sdk-ng';
 
+// Suppress unneeded Agora SDK background log uploads and console spam
+try {
+  AgoraRTC.disableLogUpload();
+  AgoraRTC.setLogLevel(2);
+} catch {
+  // Ignore in environments without window/RTC
+}
+
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
