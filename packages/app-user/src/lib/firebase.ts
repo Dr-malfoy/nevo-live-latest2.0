@@ -111,8 +111,6 @@ export const verifyPhoneOtp = async (
 };
 
 export const signInWithGoogle = async (): Promise<string> => {
-  const provider = new GoogleAuthProvider();
-
   // Native Android / iOS Google Sign-In sheet
   if (Capacitor.isNativePlatform()) {
     try {
@@ -123,18 +121,32 @@ export const signInWithGoogle = async (): Promise<string> => {
         grantOfflineAccess: true,
       });
       const googleUser = await GoogleAuth.signIn();
-      const idToken = googleUser?.authentication?.idToken;
+      const idToken = googleUser?.authentication?.idToken || (googleUser as any)?.idToken;
       if (idToken) {
         const credential = GoogleAuthProvider.credential(idToken);
         const res = await signInWithCredential(auth, credential);
         return (await res.user.getIdToken()) || idToken;
       }
+      throw new Error('Google Sign-In did not return an identity token.');
     } catch (nativeErr: any) {
-      console.warn('Native Google Auth issue, attempting web popup fallback:', nativeErr);
+      console.error('Native Google Auth error:', nativeErr);
+      const msg = nativeErr?.message || String(nativeErr);
+      if (msg.includes('12501') || msg.includes('cancel') || msg.includes('CANCEL') || nativeErr?.code === '12501') {
+        throw new Error('Google sign-in was cancelled.');
+      }
+      if (msg.includes('10') || msg.includes('DEVELOPER_ERROR') || msg.includes('12500')) {
+        throw new Error(
+          'Google Sign-In configuration error: Please ensure the app SHA-1 fingerprint is added in Firebase Console. You can also sign in using Phone or Password.'
+        );
+      }
+      throw new Error(
+        msg || 'Native Google sign-in failed. Please try again or use Phone / Password login.'
+      );
     }
   }
 
-  // Web Browser Popup Flow
+  // Web Browser Popup Flow (Only for Desktop / Chrome Web browsers)
+  const provider = new GoogleAuthProvider();
   try {
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
@@ -163,8 +175,10 @@ export const signInWithFacebook = async (): Promise<{ idToken: string; accessTok
         const idToken = await firebaseResult.user.getIdToken();
         return { idToken, accessToken: fbAccessToken };
       }
+      throw new Error('Facebook login did not return a valid token.');
     } catch (nativeErr: any) {
-      console.warn('[FacebookAuth] Native Facebook Login warning, trying web popup fallback:', nativeErr);
+      console.error('[FacebookAuth] Native Facebook Login error:', nativeErr);
+      throw new Error(nativeErr?.message || 'Facebook login was cancelled or failed.');
     }
   }
 
