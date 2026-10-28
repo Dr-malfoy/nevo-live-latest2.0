@@ -152,7 +152,7 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — id contract kept identical */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black"
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent"
         style={{ filter: filterCss || undefined }}
       />
 
@@ -265,7 +265,13 @@ export const LiveRoom = ({
         onKickSpeaker={onKickSpeaker}
       />
 
-      <CommentOverlay messages={messages} currentUserId={user?._id} />
+      <CommentOverlay
+        messages={messages}
+        currentUserId={user?._id}
+        onUserClick={(u) => {
+          if (onHostClick && u?._id) onHostClick(u as any);
+        }}
+      />
 
       <BottomToolbar
         isHost={isHost}

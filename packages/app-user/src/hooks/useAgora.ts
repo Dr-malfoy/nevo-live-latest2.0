@@ -327,12 +327,11 @@ export const useAgora = () => {
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
 
-      // Set initial Agora client role: if host or shouldMicOn is true, 'host', otherwise 'audience' with Ultra-Low Latency (<400ms-800ms)
+      // Set initial Agora client role: host or audience
       if (role === 'host' || shouldMicOn) {
         await client.setClientRole('host');
       } else {
-        // level: 2 = AUDIENCE_LEVEL_ULTRA_LOW_LATENCY (interactive real-time streaming)
-        await client.setClientRole('audience', { level: 2 });
+        await client.setClientRole('audience');
       }
 
       // Handle browser audio autoplay policies
@@ -381,11 +380,9 @@ export const useAgora = () => {
               const videoArea = document.getElementById('agora-video-area');
               if (videoArea) videoArea.appendChild(container);
             }
-            user.videoTrack?.play(container, { fit: 'cover', mirror: false });
-            // Low-latency stream fallback for viewers during network degradation to eliminate lag/buffering
-            try {
-              client.setStreamFallbackOption(user.uid, 1);
-            } catch {}
+            if (user.videoTrack) {
+              user.videoTrack.play(container, { fit: 'cover', mirror: false });
+            }
           }
           if (mediaType === 'audio') {
             try {
@@ -417,49 +414,39 @@ export const useAgora = () => {
       try {
         await client.join(resolvedAppId, channel, token, uid ?? 0);
 
-        // Host enables dual-stream so viewers with variable network bandwidth receive real-time stream without buffering delay
-        if (role === 'host') {
-          try {
-            await client.enableDualStream();
-          } catch (dualErr) {
-            console.warn('[useAgora] Dual stream notice:', dualErr);
-          }
-        }
-
         if (role === 'host' && videoEnabled) {
-          const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
           let videoTrack: ICameraVideoTrack | null = null;
           try {
-            // High-Definition HD/FHD Camera capture (1080p/720p portrait, 30fps, 1500-3500 kbps, detail mode)
+            // High-Definition 720p HD (30fps, 2000 kbps) standard Agora preset
             videoTrack = await AgoraRTC.createCameraVideoTrack({
-              facingMode: 'user',
-              encoderConfig: {
-                width: isPortrait ? { ideal: 1080, min: 480, max: 1920 } : { ideal: 1920, min: 640, max: 1920 },
-                height: isPortrait ? { ideal: 1920, min: 640, max: 1920 } : { ideal: 1080, min: 480, max: 1080 },
-                frameRate: { ideal: 30, max: 30 },
-                bitrateMin: 1500,
-                bitrateMax: 3500,
-                optimizationMode: 'detail',
-              },
+              encoderConfig: '720p_2',
             });
-          } catch (hdErr) {
-            console.warn('[useAgora] 1080p HD capture fallback to 720p_2 preset:', hdErr);
+          } catch (p2Err) {
+            console.warn('[useAgora] 720p_2 failed, falling back to 720p_1:', p2Err);
             try {
               videoTrack = await AgoraRTC.createCameraVideoTrack({
-                facingMode: 'user',
-                encoderConfig: '720p_2',
-              });
-            } catch (p2Err) {
-              console.warn('[useAgora] 720p_2 fallback to 720p_1 preset:', p2Err);
-              videoTrack = await AgoraRTC.createCameraVideoTrack({
-                facingMode: 'user',
                 encoderConfig: '720p_1',
+              });
+            } catch (p1Err) {
+              console.warn('[useAgora] 720p_1 failed, fallback to standard HD config:', p1Err);
+              videoTrack = await AgoraRTC.createCameraVideoTrack({
+                encoderConfig: { width: 1280, height: 720, frameRate: 30 },
               });
             }
           }
           localVideoRef.current = videoTrack;
           cameraOnRef.current = true;
           setCameraOn(true);
+
+          // Immediately render host local video in agora-video-area
+          const videoArea = document.getElementById('agora-video-area');
+          if (videoArea && videoTrack) {
+            try {
+              videoTrack.play(videoArea, { fit: 'cover' });
+            } catch (playErr) {
+              console.warn('[useAgora] Immediate host preview error:', playErr);
+            }
+          }
         } else {
           localVideoRef.current = null;
           cameraOnRef.current = false;
@@ -518,8 +505,11 @@ export const useAgora = () => {
       // 1. If Agora native track is available
       if (localVideoRef.current) {
         try {
-          localVideoRef.current.play(containerId, { fit: 'cover', mirror: true });
-          return;
+          const container = document.getElementById(containerId);
+          if (container) {
+            localVideoRef.current.play(container, { fit: 'cover' });
+            return;
+          }
         } catch (e) {
           console.warn(`[useAgora] playLocalVideo attempt ${attempt + 1} failed:`, e);
         }
@@ -570,30 +560,20 @@ export const useAgora = () => {
       }
     } else if (next && clientRef.current) {
       try {
-        const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
         let videoTrack: ICameraVideoTrack | null = null;
         try {
           videoTrack = await AgoraRTC.createCameraVideoTrack({
-            facingMode: 'user',
-            encoderConfig: {
-              width: isPortrait ? { ideal: 1080, min: 480, max: 1920 } : { ideal: 1920, min: 640, max: 1920 },
-              height: isPortrait ? { ideal: 1920, min: 640, max: 1920 } : { ideal: 1080, min: 480, max: 1080 },
-              frameRate: { ideal: 30, max: 30 },
-              bitrateMin: 1500,
-              bitrateMax: 3500,
-              optimizationMode: 'detail',
-            },
+            encoderConfig: '720p_2',
           });
         } catch {
           videoTrack = await AgoraRTC.createCameraVideoTrack({
-            facingMode: 'user',
-            encoderConfig: '720p_2',
+            encoderConfig: '720p_1',
           });
         }
         localVideoRef.current = videoTrack;
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
-        if (videoArea) videoTrack.play(videoArea, { fit: 'cover', mirror: true });
+        if (videoArea) videoTrack.play(videoArea, { fit: 'cover' });
       } catch (e) {
         console.warn('[useAgora] live camera enable error:', e);
       }
