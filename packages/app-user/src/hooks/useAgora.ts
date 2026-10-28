@@ -354,7 +354,7 @@ export const useAgora = () => {
       }
 
       client.on('connection-state-change', (cur, prev) => {
-        if (cur === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
+        if ((cur === 'RECONNECTING' || cur === 'DISCONNECTED') && prev === 'CONNECTED') {
           if (!networkLostRef.current) {
             networkLostRef.current = true;
             setError('Connection lost — reconnecting…');

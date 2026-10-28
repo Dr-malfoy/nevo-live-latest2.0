@@ -35,6 +35,8 @@ export interface LiveRoomProps {
   micOn: boolean;
   /** RTC connection error message (e.g. network lost) — rendered as a pill. */
   error?: string;
+  isReconnecting?: boolean;
+  reconnectCountdown?: number;
   elapsed: string;
   isFollowing: boolean;
   followBusy?: boolean;

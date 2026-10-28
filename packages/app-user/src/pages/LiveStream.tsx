@@ -18,7 +18,7 @@ import { getMediaUrl } from '../lib/media';
 import type { LiveStream, Gift as GiftType } from '../types';
 
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
-const NETWORK_GRACE_MS = 10_000; // 10s grace before auto-ending on network loss
+const NETWORK_GRACE_MS = 30_000; // 30s grace window before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 export const LiveStreamPage = () => {
@@ -64,6 +64,9 @@ export const LiveStreamPage = () => {
   } | null>(null);
   const totalViewersRef = useRef(1);
   const peakViewersRef = useRef(1);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectCountdown, setReconnectCountdown] = useState(30);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval>>();
   const burstTimer = useRef<ReturnType<typeof setTimeout>>();
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
   const sendingGiftRef = useRef(false);
@@ -192,10 +195,26 @@ export const LiveStreamPage = () => {
     return () => clearInterval(interval);
   }, [joined, isHost, id]);
 
-  // Network grace: auto-end after 10s of disconnect unless connection recovers
+  // Network grace: 30s grace with reconnect countdown before auto-ending
   const handleNetworkLost = useCallback(() => {
     if (networkTimerRef.current) return;
+
+    setIsReconnecting(true);
+    setReconnectCountdown(30);
+
+    let remaining = 30;
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setReconnectCountdown(Math.max(0, remaining));
+      if (remaining <= 0) {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      }
+    }, 1000);
+
     networkTimerRef.current = setTimeout(() => {
+      setIsReconnecting(false);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       showToast('Connection lost — ending live session', 'error');
       fireEnd();
     }, NETWORK_GRACE_MS);
@@ -206,7 +225,39 @@ export const LiveStreamPage = () => {
       clearTimeout(networkTimerRef.current);
       networkTimerRef.current = undefined;
     }
-  }, []);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = undefined;
+    }
+    setIsReconnecting(false);
+    showToast('Connection restored!', 'success');
+
+    // Re-verify socket and channel health
+    if (socket && id) {
+      socket.emit('stream:join', { streamId: id });
+    }
+  }, [socket, id, showToast]);
+
+  // Window offline/online event detection
+  useEffect(() => {
+    if (!joined) return;
+
+    const onOffline = () => {
+      handleNetworkLost();
+    };
+
+    const onOnline = () => {
+      handleNetworkRecover();
+    };
+
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [joined, handleNetworkLost, handleNetworkRecover]);
 
   // Load stream first, then join Agora — ordering ensures isHost is correct before the join effect fires
   useEffect(() => {
@@ -515,6 +566,16 @@ export const LiveStreamPage = () => {
     socket.on('stream:viewer-joined', onViewerJoined);
     socket.on('stream:viewer-left', onViewerLeft);
     socket.on('stream:viewer-count', onViewerCount);
+    const onSocketDisconnect = (reason: string) => {
+      if (reason === 'io client disconnect') return;
+      handleNetworkLost();
+    };
+    const onSocketConnect = () => {
+      handleNetworkRecover();
+    };
+
+    socket.on('disconnect', onSocketDisconnect);
+    socket.on('connect', onSocketConnect);
     socket.on('stream:top-gifters', onTopGifters);
     socket.on('stream:speakers-update', onSpeakersUpdate);
     socket.on('stream:mic:requested', onMicRequested);
@@ -524,6 +585,8 @@ export const LiveStreamPage = () => {
 
     return () => {
       leaveRoom(`stream:${id}`);
+      socket.off('disconnect', onSocketDisconnect);
+      socket.off('connect', onSocketConnect);
       socket.off('stream:chat-received', onChat);
       socket.off('stream:gift-received', onGift);
       socket.off('stream:ended', onEnded);
@@ -807,6 +870,8 @@ export const LiveStreamPage = () => {
         cameraOn={cameraOn}
         micOn={micOn}
         error={error}
+        isReconnecting={isReconnecting}
+        reconnectCountdown={reconnectCountdown}
         elapsed={formatElapsed(elapsed)}
         isFollowing={isFollowing}
         followBusy={followBusy}
