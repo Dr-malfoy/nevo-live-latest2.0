@@ -176,11 +176,13 @@ export const GoLive: React.FC = () => {
           return;
         }
 
+        const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
+            height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: false, // local preview only, prevent feedback loop
         });

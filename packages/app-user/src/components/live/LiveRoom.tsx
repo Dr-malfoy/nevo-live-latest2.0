@@ -152,7 +152,7 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — id contract kept identical */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black/40"
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black"
         style={{ filter: filterCss || undefined }}
       />
 

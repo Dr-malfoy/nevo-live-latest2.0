@@ -411,4 +411,82 @@
   .animate-float-badge {
     animation: float-badge 2.8s ease-in-out infinite;
   }
+
+  /* ── Diamond Seller Animated Badge Effects ── */
+  @keyframes diamond-shimmer-sweep {
+    0% {
+      transform: translateX(-150%) skewX(-25deg);
+    }
+    35%, 100% {
+      transform: translateX(250%) skewX(-25deg);
+    }
+  }
+
+  @keyframes diamond-pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 6px rgba(6, 182, 212, 0.45), inset 0 0 6px rgba(34, 211, 238, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 16px rgba(34, 211, 238, 0.85), 0 0 24px rgba(6, 182, 212, 0.5), inset 0 0 10px rgba(34, 211, 238, 0.4);
+    }
+  }
+
+  @keyframes diamond-sparkle-spin {
+    0%, 100% {
+      transform: scale(0.75) rotate(0deg);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(1.3) rotate(90deg);
+      opacity: 1;
+    }
+  }
+
+  @keyframes diamond-gem-float {
+    0%, 100% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-1.5px) rotate(3deg);
+    }
+  }
+
+  .animate-diamond-shimmer {
+    animation: diamond-shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  .animate-diamond-glow {
+    animation: diamond-pulse-glow 2.4s ease-in-out infinite;
+  }
+
+  .animate-diamond-sparkle {
+    animation: diamond-sparkle-spin 2s ease-in-out infinite;
+  }
+
+  .animate-diamond-float {
+    animation: diamond-gem-float 3s ease-in-out infinite;
+  }
+
+  /* ── High-Definition Live Stream Video Rendering ─────────────────── */
+  #agora-video-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+  }
+
+  #agora-video-area video,
+  #agora-video-area .agora_video_player,
+  [id^="remote-container-"] video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    image-rendering: -webkit-optimize-contrast;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
 }

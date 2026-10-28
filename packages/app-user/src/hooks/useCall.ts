@@ -276,8 +276,14 @@ export const useCall = () => {
     async (type: 'audio' | 'video', socket?: any, callId?: string) => {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: type === 'video' ? { facingMode: currentFacingModeRef.current, width: { ideal: 640 }, height: { ideal: 480 } } : false,
+            video: type === 'video' ? {
+              facingMode: currentFacingModeRef.current,
+              width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
+              height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
+              frameRate: { ideal: 30, max: 30 },
+            } : false,
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           });
           fallbackStreamRef.current = stream;
@@ -491,10 +497,26 @@ export const useCall = () => {
         // 2. Camera track (with graceful error handling)
         if (type === 'video') {
           try {
-            const videoTrack = await AgoraRTC.createCameraVideoTrack({
-              encoderConfig: { width: 640, height: 480, frameRate: 30 },
-              facingMode: currentFacingModeRef.current,
-            });
+            const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
+            let videoTrack: ICameraVideoTrack | null = null;
+            try {
+              videoTrack = await AgoraRTC.createCameraVideoTrack({
+                encoderConfig: {
+                  width: isPortrait ? { ideal: 1080, min: 480, max: 1920 } : { ideal: 1920, min: 640, max: 1920 },
+                  height: isPortrait ? { ideal: 1920, min: 640, max: 1920 } : { ideal: 1080, min: 480, max: 1080 },
+                  frameRate: { ideal: 30, max: 30 },
+                  bitrateMin: 1200,
+                  bitrateMax: 3000,
+                  optimizationMode: 'detail',
+                },
+                facingMode: currentFacingModeRef.current,
+              });
+            } catch {
+              videoTrack = await AgoraRTC.createCameraVideoTrack({
+                encoderConfig: '720p_2',
+                facingMode: currentFacingModeRef.current,
+              });
+            }
             localVideoRef.current = videoTrack;
             cameraOnRef.current = true;
             setCameraOn(true);
