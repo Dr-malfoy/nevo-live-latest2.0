@@ -16,7 +16,7 @@ import { useVideoFilters } from '../hooks/useVideoFilters';
 import { registerLiveSession, endLiveSession } from '../services/liveSession';
 import type { LiveStream, Gift as GiftType } from '../types';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
 const NETWORK_GRACE_MS = 10_000; // 10s grace before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 

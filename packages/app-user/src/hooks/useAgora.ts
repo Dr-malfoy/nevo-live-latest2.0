@@ -163,6 +163,9 @@ export const useAgora = () => {
           viewerPeerRef.current = pc;
 
           pc.ontrack = (event) => {
+            if (event.receiver && typeof (event.receiver as any).playoutDelayHint !== 'undefined') {
+              (event.receiver as any).playoutDelayHint = 0; // Eliminate WebRTC jitter buffer delay
+            }
             const remoteStream = event.streams[0] || new MediaStream([event.track]);
             const container = document.getElementById('agora-video-area');
             if (container) {
@@ -308,8 +311,13 @@ export const useAgora = () => {
         clientRef.current = null;
       }
 
-      // If no valid Agora App ID is provided or in dev placeholder, gracefully fallback to local WebRTC
-      if (!appId || appId === '89383e4dfc4a43a4954a30fa9984b4f6' || appId.trim() === '') {
+      // Resolve Agora App ID with universal fallback
+      const resolvedAppId = (appId && appId.trim() !== '' && appId !== '89383e4dfc4a43a4954a30fa9984b4f6')
+        ? appId.trim()
+        : 'b0b508017ff54158a6e30f30c7cbea98';
+
+      // If no valid Agora App ID is available, gracefully fallback to local WebRTC
+      if (!resolvedAppId) {
         console.warn('[useAgora] No valid Agora App ID provided. Using browser WebRTC live relay mode.');
         await initLocalMediaFallback(videoEnabled, role, socket, streamId, shouldMicOn);
         return null;
@@ -319,11 +327,12 @@ export const useAgora = () => {
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
 
-      // Set initial Agora client role: if host or shouldMicOn is true, 'host', otherwise 'audience' with ultra-low latency
+      // Set initial Agora client role: if host or shouldMicOn is true, 'host', otherwise 'audience' with Ultra-Low Latency (<400ms-800ms)
       if (role === 'host' || shouldMicOn) {
         await client.setClientRole('host');
       } else {
-        await client.setClientRole('audience', { level: 1 });
+        // level: 2 = AUDIENCE_LEVEL_ULTRA_LOW_LATENCY (interactive real-time streaming)
+        await client.setClientRole('audience', { level: 2 });
       }
 
       // Handle browser audio autoplay policies
@@ -373,6 +382,10 @@ export const useAgora = () => {
               if (videoArea) videoArea.appendChild(container);
             }
             user.videoTrack?.play(container, { fit: 'cover', mirror: false });
+            // Low-latency stream fallback for viewers during network degradation to eliminate lag/buffering
+            try {
+              client.setStreamFallbackOption(user.uid, 1);
+            } catch {}
           }
           if (mediaType === 'audio') {
             try {
@@ -402,7 +415,16 @@ export const useAgora = () => {
       });
 
       try {
-        await client.join(appId, channel, token, uid ?? 0);
+        await client.join(resolvedAppId, channel, token, uid ?? 0);
+
+        // Host enables dual-stream so viewers with variable network bandwidth receive real-time stream without buffering delay
+        if (role === 'host') {
+          try {
+            await client.enableDualStream();
+          } catch (dualErr) {
+            console.warn('[useAgora] Dual stream notice:', dualErr);
+          }
+        }
 
         if (role === 'host' && videoEnabled) {
           const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;

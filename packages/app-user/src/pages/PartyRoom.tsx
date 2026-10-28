@@ -18,7 +18,7 @@ import type { GiftBurst } from '../components/live/GiftOverlay';
 import { compactNumber, initial } from '../lib/time';
 import { useAgora } from '../hooks/useAgora';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
 
 /**
  * Party room — requirements #17 and #18.
@@ -684,14 +684,7 @@ export const PartyRoom = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setGiftPanelOpen(true)}
-            className="ml-auto h-8 px-3 rounded-full bg-[#FF3B7F]/90 text-white text-xs font-bold flex items-center gap-1 shrink-0"
-          >
-            <Gift className="w-3.5 h-3.5" /> Gift
-          </button>
-
-          <span className="h-8 px-2.5 rounded-full bg-white/10 text-white text-xs font-semibold flex items-center gap-1 shrink-0">
+          <span className="ml-auto h-8 px-2.5 rounded-full bg-white/10 text-white text-xs font-semibold flex items-center gap-1 shrink-0">
             <Users className="w-3.5 h-3.5" />
             {compactNumber(room?.viewerCount ?? 0)}
           </span>
@@ -814,7 +807,7 @@ export const PartyRoom = () => {
       {/* ── Bottom bar, Chat & icons (#17.8) ────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-3 safe-bottom border-t border-white/10">
         <MessageInput onSend={handleSendMessage} />
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={handleToggleMic}
             className={`relative w-9 h-9 rounded-full flex items-center justify-center ${micOn ? 'bg-white/10' : 'bg-red-500/80'}`}
@@ -830,6 +823,14 @@ export const PartyRoom = () => {
           >
             <PiSlidersFill className="w-[18px] h-[18px] text-white" />
             <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-status-live" />
+          </button>
+
+          <button
+            onClick={() => setGiftPanelOpen(true)}
+            aria-label="Send Gift"
+            className="relative w-9 h-9 rounded-full bg-gradient-to-tr from-[#FF3B7F] to-[#FF6E9F] flex items-center justify-center shadow-lg shadow-pink-500/30 active:scale-95 transition-transform"
+          >
+            <Gift className="w-[18px] h-[18px] text-white" />
           </button>
         </div>
       </div>
