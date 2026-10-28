@@ -468,9 +468,7 @@ export const GoLive: React.FC = () => {
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover transition-all duration-300 ${
-                    facingMode === 'user' ? 'scale-x-[-1]' : ''
-                  }`}
+                  className="w-full h-full object-cover transition-all duration-300"
                   style={{ filter: activeFilter.css }}
                 />
               ) : (

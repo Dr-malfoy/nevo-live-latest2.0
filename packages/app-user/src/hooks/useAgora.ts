@@ -61,12 +61,14 @@ export const useAgora = () => {
 
   const cameraOnRef = useRef(false);
   const micOnRef = useRef(false);
+  const facingModeRef = useRef<'user' | 'environment'>('user');
   const joiningRef = useRef(false);
   const togglingMicRef = useRef(false);
   const networkLostRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState('');
@@ -420,17 +422,20 @@ export const useAgora = () => {
             // High-Definition 720p HD (30fps, 2000 kbps) standard Agora preset
             videoTrack = await AgoraRTC.createCameraVideoTrack({
               encoderConfig: '720p_2',
+              facingMode: facingModeRef.current,
             });
           } catch (p2Err) {
             console.warn('[useAgora] 720p_2 failed, falling back to 720p_1:', p2Err);
             try {
               videoTrack = await AgoraRTC.createCameraVideoTrack({
                 encoderConfig: '720p_1',
+                facingMode: facingModeRef.current,
               });
             } catch (p1Err) {
               console.warn('[useAgora] 720p_1 failed, fallback to standard HD config:', p1Err);
               videoTrack = await AgoraRTC.createCameraVideoTrack({
                 encoderConfig: { width: 1280, height: 720, frameRate: 30 },
+                facingMode: facingModeRef.current,
               });
             }
           }
@@ -438,11 +443,11 @@ export const useAgora = () => {
           cameraOnRef.current = true;
           setCameraOn(true);
 
-          // Immediately render host local video in agora-video-area
+          // Immediately render host local video in agora-video-area (mirror: false for real position)
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea && videoTrack) {
             try {
-              videoTrack.play(videoArea, { fit: 'cover' });
+              videoTrack.play(videoArea, { fit: 'cover', mirror: false });
             } catch (playErr) {
               console.warn('[useAgora] Immediate host preview error:', playErr);
             }
@@ -507,7 +512,7 @@ export const useAgora = () => {
         try {
           const container = document.getElementById(containerId);
           if (container) {
-            localVideoRef.current.play(container, { fit: 'cover' });
+            localVideoRef.current.play(container, { fit: 'cover', mirror: false });
             return;
           }
         } catch (e) {
@@ -564,16 +569,18 @@ export const useAgora = () => {
         try {
           videoTrack = await AgoraRTC.createCameraVideoTrack({
             encoderConfig: '720p_2',
+            facingMode: facingModeRef.current,
           });
         } catch {
           videoTrack = await AgoraRTC.createCameraVideoTrack({
             encoderConfig: '720p_1',
+            facingMode: facingModeRef.current,
           });
         }
         localVideoRef.current = videoTrack;
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
-        if (videoArea) videoTrack.play(videoArea, { fit: 'cover' });
+        if (videoArea) videoTrack.play(videoArea, { fit: 'cover', mirror: false });
       } catch (e) {
         console.warn('[useAgora] live camera enable error:', e);
       }
@@ -695,36 +702,125 @@ export const useAgora = () => {
   }, []);
 
   const switchCamera = useCallback(async () => {
+    const currentMode = facingModeRef.current;
+    const targetFacing: 'user' | 'environment' = currentMode === 'user' ? 'environment' : 'user';
+
+    const isFront = (label: string, idx: number) => {
+      const lbl = label.toLowerCase();
+      if (/front|user|facetime|selfie|forward/i.test(lbl)) return true;
+      if (/back|rear|environment|world/i.test(lbl)) return false;
+      if (/camera2?\s*1\b/i.test(lbl)) return true;
+      if (!lbl && idx === 1) return true;
+      return false;
+    };
+
+    const isBack = (label: string, idx: number) => {
+      const lbl = label.toLowerCase();
+      if (/back|rear|environment|world/i.test(lbl)) return true;
+      if (/front|user|facetime|selfie|forward/i.test(lbl)) return false;
+      if (/camera2?\s*0\b/i.test(lbl)) return true;
+      if (!lbl && idx === 0) return true;
+      return false;
+    };
+
+    // 1. Agora native camera switch
     if (localVideoRef.current) {
-      const devices = await AgoraRTC.getCameras();
-      if (devices.length < 2) return;
-      const currentLabel = (await localVideoRef.current.getTrackLabel()) || '';
-      const idx = devices.findIndex((d) => d.label === currentLabel);
-      const next = devices[(idx + 1) % devices.length];
-      await localVideoRef.current.setDevice(next.deviceId);
-      return;
+      try {
+        const devices = await AgoraRTC.getCameras();
+
+        let targetDevice: { deviceId: string; label: string } | undefined;
+        if (targetFacing === 'user') {
+          // Find first front camera
+          targetDevice = devices.find((d, i) => isFront(d.label || '', i));
+        } else {
+          // Find primary back camera (avoid auxiliary ultra-wide, telephoto, macro lenses)
+          const backDevices = devices.filter((d, i) => isBack(d.label || '', i));
+          targetDevice =
+            backDevices.find((d) => {
+              const lbl = (d.label || '').toLowerCase();
+              return (
+                !lbl.includes('wide') &&
+                !lbl.includes('tele') &&
+                !lbl.includes('macro') &&
+                !lbl.includes('depth') &&
+                !lbl.includes('virtual')
+              );
+            }) || backDevices[0];
+        }
+
+        if (targetDevice) {
+          await localVideoRef.current.setDevice(targetDevice.deviceId);
+          facingModeRef.current = targetFacing;
+          setFacingMode(targetFacing);
+          const videoArea = document.getElementById('agora-video-area');
+          if (videoArea) {
+            localVideoRef.current.play(videoArea, { fit: 'cover', mirror: false });
+          }
+          return;
+        }
+
+        // Fallback: If device couldn't be determined from list, recreate track with facingMode constraint
+        let newTrack: ICameraVideoTrack | null = null;
+        try {
+          newTrack = await AgoraRTC.createCameraVideoTrack({
+            facingMode: targetFacing,
+            encoderConfig: '720p_2',
+          });
+        } catch {
+          newTrack = await AgoraRTC.createCameraVideoTrack({
+            facingMode: targetFacing,
+            encoderConfig: '720p_1',
+          });
+        }
+
+        if (newTrack) {
+          const oldTrack = localVideoRef.current;
+          if (clientRef.current && oldTrack) {
+            try {
+              await clientRef.current.unpublish([oldTrack]);
+            } catch {}
+          }
+          oldTrack?.stop();
+          oldTrack?.close();
+
+          localVideoRef.current = newTrack;
+          facingModeRef.current = targetFacing;
+          setFacingMode(targetFacing);
+
+          if (clientRef.current) {
+            await clientRef.current.publish([newTrack]);
+          }
+
+          const videoArea = document.getElementById('agora-video-area');
+          if (videoArea) {
+            newTrack.play(videoArea, { fit: 'cover', mirror: false });
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn('[useAgora] Agora switch camera error:', e);
+      }
     }
 
-    // Fallback device switch
-    if (fallbackStreamRef.current && navigator.mediaDevices?.enumerateDevices) {
+    // 2. WebRTC Fallback device switch
+    if (fallbackStreamRef.current && navigator.mediaDevices?.getUserMedia) {
       try {
-        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
-          (d) => d.kind === 'videoinput'
-        );
-        if (devices.length < 2) return;
-        const currentTrack = fallbackStreamRef.current.getVideoTracks()[0];
-        const currentDeviceId = currentTrack?.getSettings()?.deviceId;
-        const idx = devices.findIndex((d) => d.deviceId === currentDeviceId);
-        const nextDevice = devices[(idx + 1) % devices.length];
+        const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
+        const oldTrack = fallbackStreamRef.current.getVideoTracks()[0];
+        oldTrack?.stop();
 
-        currentTrack?.stop();
         const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: nextDevice.deviceId } },
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
+            height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
+            frameRate: { ideal: 30, max: 30 },
+          },
           audio: false,
         });
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
-          fallbackStreamRef.current.removeTrack(currentTrack);
+          fallbackStreamRef.current.removeTrack(oldTrack);
           fallbackStreamRef.current.addTrack(newVideoTrack);
           if (fallbackVideoElRef.current) {
             fallbackVideoElRef.current.srcObject = fallbackStreamRef.current;
@@ -737,6 +833,8 @@ export const useAgora = () => {
               videoSender.replaceTrack(newVideoTrack).catch(() => {});
             }
           });
+          facingModeRef.current = targetFacing;
+          setFacingMode(targetFacing);
         }
       } catch (e) {
         console.warn('[useAgora] Failed to switch fallback camera:', e);
@@ -834,6 +932,7 @@ export const useAgora = () => {
     joined,
     cameraOn,
     micOn,
+    facingMode,
     micOnRef,
     remoteUsers,
     error,

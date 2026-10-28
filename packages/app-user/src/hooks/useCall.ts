@@ -97,7 +97,7 @@ export const useCall = () => {
       const track = remoteVideoTracksRef.current.get(uid);
       if (track) {
         try {
-          track.play(container, { fit: 'cover' });
+          track.play(container, { fit: 'cover', mirror: false });
           return;
         } catch (e) {
           console.warn('[useCall] Agora video play error:', e);
@@ -343,7 +343,7 @@ export const useCall = () => {
       if (el) {
         if (localVideoRef.current) {
           try {
-            localVideoRef.current.play(el, { fit: 'cover' });
+            localVideoRef.current.play(el, { fit: 'cover', mirror: false });
           } catch {
             // retry
           }
@@ -614,15 +614,52 @@ export const useCall = () => {
     currentFacingModeRef.current = nextMode;
     setFacingMode(nextMode);
 
+    const isFront = (label: string, idx: number) => {
+      const lbl = label.toLowerCase();
+      if (/front|user|facetime|selfie|forward/i.test(lbl)) return true;
+      if (/back|rear|environment|world/i.test(lbl)) return false;
+      if (/camera2?\s*1\b/i.test(lbl)) return true;
+      if (!lbl && idx === 1) return true;
+      return false;
+    };
+
+    const isBack = (label: string, idx: number) => {
+      const lbl = label.toLowerCase();
+      if (/back|rear|environment|world/i.test(lbl)) return true;
+      if (/front|user|facetime|selfie|forward/i.test(lbl)) return false;
+      if (/camera2?\s*0\b/i.test(lbl)) return true;
+      if (!lbl && idx === 0) return true;
+      return false;
+    };
+
     // Agora camera switch
     if (localVideoRef.current) {
       try {
         const devices = await AgoraRTC.getCameras();
-        if (devices.length >= 2) {
-          const currentLabel = (await localVideoRef.current.getTrackLabel()) || '';
-          const idx = devices.findIndex((d) => d.label === currentLabel);
-          const nextDevice = devices[(idx + 1) % devices.length];
-          await localVideoRef.current.setDevice(nextDevice.deviceId);
+        let targetDevice: { deviceId: string; label: string } | undefined;
+        if (nextMode === 'user') {
+          targetDevice = devices.find((d, i) => isFront(d.label || '', i));
+        } else {
+          const backDevices = devices.filter((d, i) => isBack(d.label || '', i));
+          targetDevice =
+            backDevices.find((d) => {
+              const lbl = (d.label || '').toLowerCase();
+              return (
+                !lbl.includes('wide') &&
+                !lbl.includes('tele') &&
+                !lbl.includes('macro') &&
+                !lbl.includes('depth') &&
+                !lbl.includes('virtual')
+              );
+            }) || backDevices[0];
+        }
+
+        if (targetDevice) {
+          await localVideoRef.current.setDevice(targetDevice.deviceId);
+          const el = document.getElementById('call-local-video-container');
+          if (el) {
+            localVideoRef.current.play(el, { fit: 'cover', mirror: false });
+          }
           return;
         }
       } catch (e) {
@@ -637,7 +674,7 @@ export const useCall = () => {
         oldTrack?.stop();
 
         const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: nextMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          video: { facingMode: { ideal: nextMode }, width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false,
         });
         const newTrack = newStream.getVideoTracks()[0];
