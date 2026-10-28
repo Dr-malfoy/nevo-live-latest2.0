@@ -17,9 +17,10 @@ export interface RoomMessage {
 
 export interface RoomNotification {
   id: string;
-  kind: 'join' | 'follow' | 'gift';
+  kind: 'join' | 'follow' | 'gift' | 'like';
   text: string;
   avatar?: string;
+  durationMs?: number;
 }
 
 export interface LiveRoomProps {

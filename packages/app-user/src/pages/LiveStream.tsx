@@ -434,7 +434,35 @@ export const LiveStreamPage = () => {
 
       setStreamEndedRecap(recap);
     };
-    const onLike = () => setLikeCount((c) => c + 1);
+    const onLike = (data?: any) => {
+      setLikeCount((c) => c + 1);
+
+      const currentUser = userRef.current;
+      const isSelf = Boolean(
+        currentUser && (
+          (data?.userId && (currentUser._id === data.userId || (currentUser as any).id === data.userId)) ||
+          (data?.nickname && currentUser.nickname === data.nickname)
+        )
+      );
+
+      const senderName = isSelf ? 'You' : (data?.nickname || 'Someone');
+      const avatar = data?.avatar || (isSelf ? currentUser?.avatar : undefined);
+
+      const notifId = `like-${Date.now()}-${Math.random()}`;
+      setNotifications((prev) => [
+        ...prev.slice(-3),
+        {
+          id: notifId,
+          kind: 'like',
+          text: `${senderName} sent love ❤️`,
+          avatar,
+          durationMs: 3500,
+        },
+      ]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }, 3500);
+    };
     const onGiftNotif = (notif: any) => {
       // In-room toast when direct personal notification arrives
       if (notif?.type === 'gift') {
@@ -605,7 +633,14 @@ export const LiveStreamPage = () => {
   }, [socket, id]);
 
   const handleLike = useCallback(() => {
-    if (socket && id) socket.emit('stream:like', { streamId: id });
+    const currentUser = userRef.current;
+    if (socket && id) {
+      socket.emit('stream:like', {
+        streamId: id,
+        nickname: currentUser?.nickname,
+        avatar: currentUser?.avatar,
+      });
+    }
     gamesApi.recordProgress('likes', 1).catch(() => {});
   }, [socket, id]);
 

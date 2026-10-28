@@ -19,6 +19,13 @@ const getBannerTheme = (kind: RoomNotification['kind']) => {
         icon: <GiftIcon className="w-3.5 h-3.5 text-pink-300" />,
         highlightText: 'text-pink-300',
       };
+    case 'like':
+      return {
+        bg: 'bg-gradient-to-r from-[#2c0919]/95 via-[#4a0d2a]/95 to-[#6b123d]/95 border-rose-400/40 shadow-[0_8px_30px_rgba(244,63,94,0.35)]',
+        iconBg: 'bg-rose-500/20 text-rose-300 border border-rose-400/30 shadow-[0_0_12px_rgba(251,113,133,0.5)]',
+        icon: <Heart className="w-3.5 h-3.5 text-rose-400" />,
+        highlightText: 'text-rose-300',
+      };
     case 'follow':
       return {
         bg: 'bg-gradient-to-r from-[#0B1A28]/95 via-[#162D42]/95 to-[#22405C]/95 border-cyan-400/40 shadow-[0_8px_30px_rgba(34,211,238,0.3)]',
@@ -46,12 +53,13 @@ const NotificationBannerItem = ({
   onDismiss: (id: string) => void;
   durationMs?: number;
 }) => {
+  const effectiveDuration = item.durationMs ?? durationMs;
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss(item.id);
-    }, durationMs);
+    }, effectiveDuration);
     return () => clearTimeout(timer);
-  }, [item.id, onDismiss, durationMs]);
+  }, [item.id, onDismiss, effectiveDuration]);
 
   const theme = getBannerTheme(item.kind);
 
@@ -83,6 +91,7 @@ const NotificationBannerItem = ({
           {item.text}
         </p>
         {item.kind === 'gift' && <Sparkle className="w-3.5 h-3.5 text-yellow-300 shrink-0 animate-pulse" />}
+        {item.kind === 'like' && <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />}
       </div>
     </motion.div>
   );

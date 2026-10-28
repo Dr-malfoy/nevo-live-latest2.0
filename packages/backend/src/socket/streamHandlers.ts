@@ -490,11 +490,25 @@ export const registerStreamHandlers = (socket: Socket): void => {
     }
   });
 
-  socket.on('stream:like', ({ streamId }) => {
+  socket.on('stream:like', async ({ streamId, nickname: clientNickname, avatar: clientAvatar }: any) => {
+    let nickname = clientNickname || 'Someone';
+    let avatar = clientAvatar || '';
+    const userId = socket.data.user?.userId;
+
+    if (userId) {
+      try {
+        const u = await getUserProfile(userId);
+        if (u.nickname && u.nickname !== 'Guest') nickname = u.nickname;
+        if (u.avatar) avatar = u.avatar;
+      } catch {}
+    }
+
     // Real-time reaction count — broadcast to the whole room so the host sees
     // every viewer's like (and the sender sees their own).
     getIO().to(`stream:${streamId}`).emit('stream:like-received', {
-      userId: socket.data.user?.userId,
+      userId,
+      nickname,
+      avatar,
     });
   });
 };
