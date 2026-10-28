@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
-import { PiHeartFill as Heart, PiPlusBold as Plus } from 'react-icons/pi';
-import { Avatar, LevelBadge, VerifiedBadge } from '../user';
+import { PiPlusBold as Plus, PiCheckBold as Check } from 'react-icons/pi';
+import { Avatar } from '../user';
 import type { UserPublic } from '../../types';
 
 interface HostCardProps {
@@ -11,7 +11,13 @@ interface HostCardProps {
   onClick?: () => void;
 }
 
-export const HostCard = ({ host, isFollowing, followBusy, onFollowToggle, onClick }: HostCardProps) => (
+export const HostCard = ({
+  host,
+  isFollowing,
+  followBusy,
+  onFollowToggle,
+  onClick,
+}: HostCardProps) => (
   <div
     role={onClick ? 'button' : undefined}
     tabIndex={onClick ? 0 : undefined}
@@ -22,32 +28,46 @@ export const HostCard = ({ host, isFollowing, followBusy, onFollowToggle, onClic
         onClick();
       }
     }}
-    className="relative bg-black/40 rounded-full flex items-center p-1 pr-6 cursor-pointer transition-colors hover:bg-black/60 max-w-[160px]"
+    className="flex items-center gap-2 cursor-pointer select-none"
   >
-    <Avatar src={host.avatar} nickname={host.nickname} size="sm" className="w-8 h-8 rounded-full border-none mr-2" />
-    <div className="flex flex-col justify-center min-w-0 pr-2">
-      <span className="font-bold text-xs text-white leading-tight truncate">{host.nickname}</span>
-      <div className="flex items-center gap-1 mt-0.5">
-        <Heart className="w-3 h-3 text-white/70" />
-        <span className="text-[10px] text-white/90 font-semibold">{host.followers?.length || 15}</span>
-      </div>
+    {/* Avatar */}
+    <Avatar
+      src={host.avatar}
+      nickname={host.nickname}
+      size="sm"
+      className="w-9 h-9 rounded-full border-2 border-white/30 shrink-0"
+    />
+
+    {/* Name pill */}
+    <div className="bg-black/45 backdrop-blur-md rounded-full px-3 py-1 flex items-center gap-2 max-w-[130px]">
+      <span className="font-semibold text-xs text-white leading-tight truncate">
+        {host.nickname}
+      </span>
+
+      {/* Follow button inline */}
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onFollowToggle();
+        }}
+        whileTap={{ scale: 0.88 }}
+        disabled={followBusy}
+        aria-pressed={isFollowing}
+        aria-label={isFollowing ? `Unfollow ${host.nickname}` : `Follow ${host.nickname}`}
+        className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all disabled:opacity-50 ${
+          isFollowing
+            ? 'bg-white/20 text-white/80'
+            : 'bg-[#5b5cff] text-white shadow-[0_0_8px_rgba(91,92,255,0.5)]'
+        }`}
+      >
+        {followBusy ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        ) : isFollowing ? (
+          <Check className="w-2.5 h-2.5" />
+        ) : (
+          <Plus className="w-2.5 h-2.5" />
+        )}
+      </motion.button>
     </div>
-    <motion.button
-      onClick={(e) => {
-        e.stopPropagation();
-        onFollowToggle();
-      }}
-      whileTap={{ scale: 0.9 }}
-      disabled={followBusy}
-      aria-pressed={isFollowing}
-      aria-label={isFollowing ? `Unfollow ${host.nickname}` : `Follow ${host.nickname}`}
-      className={`absolute -right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed z-10 ${
-        isFollowing
-          ? 'bg-white/20 text-white/80'
-          : 'bg-[#5b5cff] text-white'
-      }`}
-    >
-      {followBusy ? <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> : isFollowing ? <span className="text-[10px] font-bold">✓</span> : <Plus className="w-3.5 h-3.5" />}
-    </motion.button>
   </div>
 );
