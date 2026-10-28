@@ -815,8 +815,12 @@ export const LiveStreamPage = () => {
 
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);
+    // Navigate away immediately so the user never sees "Connecting to stream".
+    // fireEnd() runs cleanup in the background (leaveChannel, socket leave, etc.).
+    navigatingAwayRef.current = true;
+    navigate(-1);
     if (id) fireEnd();
-  }, [id, fireEnd]);
+  }, [id, fireEnd, navigate]);
 
   // Robust receiver id for gifts: populated hostId → raw string hostId → host fallback.
   const giftReceiverId =
