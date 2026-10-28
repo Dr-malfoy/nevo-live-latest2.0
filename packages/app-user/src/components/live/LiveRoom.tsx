@@ -121,6 +121,11 @@ export const LiveRoom = ({
     triggerReaction('❤️');
   };
 
+  const handleReact = (emoji: string) => {
+    triggerReaction(emoji);
+    if (emoji === '🔥') burst(3);
+  };
+
   const handleShare = async () => {
     const url = window.location.href;
     try {
@@ -317,6 +322,8 @@ export const LiveRoom = ({
         isFollowing={isFollowing}
         likeCount={likeCount}
         onLike={handleLike}
+        onReact={handleReact}
+        elapsed={elapsed}
         onOpenGift={onOpenGift}
         onShare={handleShare}
         onToggleCamera={onToggleCamera}
