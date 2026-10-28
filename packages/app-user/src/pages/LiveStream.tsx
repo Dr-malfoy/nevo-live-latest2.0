@@ -7,13 +7,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
 import { ReportModal } from '../components/report/ReportModal';
-import { LiveRoom, UserProfileModal } from '../components/live';
+import { LiveRoom, UserProfileModal, StreamEndedRecap } from '../components/live';
 import type { RoomMessage, RoomNotification, TopGifterItem, LiveSpeakerItem, MicRequester } from '../components/live';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { useAgora } from '../hooks/useAgora';
 import { useFollow } from '../hooks/useFollow';
 import { useVideoFilters } from '../hooks/useVideoFilters';
 import { registerLiveSession, endLiveSession } from '../services/liveSession';
+import { getMediaUrl } from '../lib/media';
 import type { LiveStream, Gift as GiftType } from '../types';
 
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
@@ -53,6 +54,16 @@ export const LiveStreamPage = () => {
   const [profileModalUserId, setProfileModalUserId] = useState<string | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [streamEndedRecap, setStreamEndedRecap] = useState<{
+    duration: string;
+    viewers: number;
+    likes: number;
+    hostName: string;
+    hostAvatar?: string;
+    isHost: boolean;
+  } | null>(null);
+  const totalViewersRef = useRef(1);
+  const peakViewersRef = useRef(1);
   const burstTimer = useRef<ReturnType<typeof setTimeout>>();
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
   const sendingGiftRef = useRef(false);
@@ -102,6 +113,16 @@ export const LiveStreamPage = () => {
       : `${m}:${String(sec).padStart(2, '0')}`;
   };
 
+  const formatRecapDuration = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    }
+    return `0:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
   // Start/stop elapsed timer when joining/leaving
   useEffect(() => {
     if (joined) {
@@ -138,7 +159,9 @@ export const LiveStreamPage = () => {
       navigate: () => {
         // Navigating to a profile already happened — don't override it.
         if (navigatingAwayRef.current) return;
-        if (isHostRef.current) navigate('/', { replace: true });
+        // If stream ended and recap is displayed, keep user on recap until they tap "Go Back Home"
+        if (endedRef.current) return;
+        if (isHostRef.current) navigate('/streamer-center', { replace: true });
         else navigate(-1);
       },
     });
@@ -192,6 +215,10 @@ export const LiveStreamPage = () => {
     streamsApi.getStream(id).then(({ data }) => {
       if (data.success && data.data) {
         setStream(data.data);
+        if (typeof data.data.viewerCount === 'number') {
+          peakViewersRef.current = Math.max(peakViewersRef.current, data.data.viewerCount);
+          totalViewersRef.current = Math.max(totalViewersRef.current, data.data.viewerCount);
+        }
         // Now that we know the stream (and thus isHost), fetch the token
         return streamsApi.joinStream(id);
       }
@@ -203,6 +230,8 @@ export const LiveStreamPage = () => {
         setServerIsHost(!!data.data.isHost);
         if (typeof data.data.uid === 'number') setAgoraUid(data.data.uid);
         if (typeof data.data.viewerCount === 'number') {
+          peakViewersRef.current = Math.max(peakViewersRef.current, data.data.viewerCount);
+          totalViewersRef.current = Math.max(totalViewersRef.current, data.data.viewerCount);
           setStream((prev) => (prev ? { ...prev, viewerCount: data.data.viewerCount } : prev));
         }
       }
@@ -337,9 +366,22 @@ export const LiveStreamPage = () => {
       }, 5000);
     };
     const onEnded = () => {
-      showToast('Stream has ended', 'info');
       endedRef.current = true;
-      navigate('/', { replace: true });
+      try {
+        if (timerRef.current) clearInterval(timerRef.current);
+        leaveChannel();
+      } catch {}
+
+      const recap = {
+        duration: formatRecapDuration(elapsedRef.current),
+        viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
+        likes: likeCount,
+        hostName: host?.nickname || 'Streamer',
+        hostAvatar: getMediaUrl(host?.avatar),
+        isHost: false,
+      };
+
+      setStreamEndedRecap(recap);
     };
     const onLike = () => setLikeCount((c) => c + 1);
     const onGiftNotif = (notif: any) => {
@@ -363,6 +405,7 @@ export const LiveStreamPage = () => {
     };
 
     const onViewerJoined = (msg: any) => {
+      totalViewersRef.current += 1;
       if (msg?.nickname) {
         setChatMessages((prev) => [
           ...prev,
@@ -379,9 +422,12 @@ export const LiveStreamPage = () => {
         ]);
       }
       if (typeof msg?.viewerCount === 'number') {
+        peakViewersRef.current = Math.max(peakViewersRef.current, msg.viewerCount);
         setStream((prev) => (prev ? { ...prev, viewerCount: Math.max(0, msg.viewerCount) } : prev));
       } else {
-        setStream((prev) => (prev ? { ...prev, viewerCount: (prev.viewerCount || 0) + 1 } : prev));
+        const nextCount = (stream?.viewerCount || 0) + 1;
+        peakViewersRef.current = Math.max(peakViewersRef.current, nextCount);
+        setStream((prev) => (prev ? { ...prev, viewerCount: nextCount } : prev));
       }
     };
     const onViewerLeft = (msg: any) => {
@@ -393,6 +439,8 @@ export const LiveStreamPage = () => {
     };
     const onViewerCount = (msg: any) => {
       if (typeof msg?.count === 'number') {
+        peakViewersRef.current = Math.max(peakViewersRef.current, msg.count);
+        totalViewersRef.current = Math.max(totalViewersRef.current, msg.count);
         setStream((prev) => (prev ? { ...prev, viewerCount: Math.max(0, msg.count) } : prev));
       }
     };
@@ -644,6 +692,14 @@ export const LiveStreamPage = () => {
   };
 
   // End/Leave request handlers (show confirmation dialogs)
+  // host is the populated object form; when hostId is null/string (orphaned ref),
+  // fall back to the logged-in user's identity so the host card still shows a name.
+  const host = stream && stream.hostId && typeof stream.hostId !== 'string'
+    ? stream.hostId
+    : isHost && user
+      ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
+      : null;
+
   const requestEndStream = useCallback(() => {
     setShowEndConfirm(true);
   }, []);
@@ -652,23 +708,52 @@ export const LiveStreamPage = () => {
     setShowLeaveConfirm(true);
   }, []);
 
-  const confirmEndStream = useCallback(() => {
+  const confirmEndStream = useCallback(async () => {
     setShowEndConfirm(false);
-    if (id) fireEnd();
-  }, [id, fireEnd]);
+    endedRef.current = true;
+
+    const recap = {
+      duration: formatRecapDuration(elapsedRef.current),
+      viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
+      likes: likeCount,
+      hostName: host?.nickname || user?.nickname || 'Streamer',
+      hostAvatar: getMediaUrl(host?.avatar || user?.avatar),
+      isHost: true,
+    };
+
+    // Clean up Agora and session safely
+    try {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      await leaveChannel();
+    } catch (e) {
+      console.warn('[LiveStream] leaveChannel error:', e);
+    }
+
+    try {
+      if (id) {
+        await streamsApi.endStream(id);
+      }
+    } catch (e) {
+      console.warn('[LiveStream] endStream API error:', e);
+    }
+
+    try {
+      if (socket && id) {
+        socket.emit('stream:ended', { streamId: id });
+        socket.emit('stream:leave', { streamId: id });
+      }
+    } catch (e) {
+      console.warn('[LiveStream] socket end error:', e);
+    }
+
+    setStreamEndedRecap(recap);
+  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user]);
 
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);
     if (id) fireEnd();
   }, [id, fireEnd]);
-
-  // host is the populated object form; when hostId is null/string (orphaned ref),
-  // fall back to the logged-in user's identity so the host card still shows a name.
-  const host = stream && stream.hostId && typeof stream.hostId !== 'string'
-    ? stream.hostId
-    : isHost && user
-      ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
-      : null;
 
   // Robust receiver id for gifts: populated hostId → raw string hostId → host fallback.
   const giftReceiverId =
@@ -691,6 +776,22 @@ export const LiveStreamPage = () => {
     applyFilter(id);
     setShowFilters(false);
   };
+
+  if (streamEndedRecap) {
+    return (
+      <StreamEndedRecap
+        duration={streamEndedRecap.duration}
+        viewers={streamEndedRecap.viewers}
+        likes={streamEndedRecap.likes}
+        hostName={streamEndedRecap.hostName}
+        hostAvatar={streamEndedRecap.hostAvatar}
+        isHost={streamEndedRecap.isHost}
+        onGoHome={() => {
+          navigate('/', { replace: true });
+        }}
+      />
+    );
+  }
 
   return (
     <div className="h-screen bg-black text-white">
