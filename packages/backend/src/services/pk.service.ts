@@ -36,20 +36,10 @@ export const pkService = {
     startOfDay.setHours(0, 0, 0, 0);
 
     // Find all battles conducted today (or active)
-    let battles = await PkBattle.find({
+    const battles = await PkBattle.find({
       createdAt: { $gte: startOfDay },
       status: { $in: ['active', 'ended'] },
     }).lean();
-
-    // Fallback: If no battles today yet, show recent battles for a populated leaderboard
-    if (battles.length === 0) {
-      battles = await PkBattle.find({
-        status: { $in: ['active', 'ended'] },
-      })
-        .sort({ createdAt: -1 })
-        .limit(100)
-        .lean();
-    }
 
     const hostStatsMap = new Map<
       string,
@@ -79,7 +69,9 @@ export const pkService = {
       }
     }
 
-    const sortedStats = Array.from(hostStatsMap.values()).sort((a, b) => b.totalScore - a.totalScore);
+    const sortedStats = Array.from(hostStatsMap.values())
+      .filter((s) => s.totalScore > 0)
+      .sort((a, b) => b.totalScore - a.totalScore);
     const userIds = sortedStats.map((s) => s.userId);
 
     const users = await User.find({ _id: { $in: userIds } })

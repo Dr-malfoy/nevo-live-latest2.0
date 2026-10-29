@@ -196,6 +196,56 @@ export const LiveRoom = ({
     };
   }, [messages, viewers.length, stream?.viewerCount]);
 
+  // Top 3 gifts received in this live session (for Gift Gallery)
+  const sessionTopGifts = useMemo(() => {
+    const giftMap = new Map<string, {
+      id: string;
+      name: string;
+      icon: string;
+      count: number;
+      totalDiamonds: number;
+      topSender?: { userId: string; nickname: string; avatar?: string };
+    }>();
+
+    for (const m of messages) {
+      if (!m.isGift || !m.gift) continue;
+      const gId = m.gift._id || m.gift.name || 'unknown';
+      const count = m.count || 1;
+      const diamonds = (m.gift.diamondPrice || 10) * count;
+      const existing = giftMap.get(gId);
+      if (existing) {
+        existing.count += count;
+        existing.totalDiamonds += diamonds;
+        if (m.userId && m.nickname) {
+          existing.topSender = {
+            userId: m.userId,
+            nickname: m.nickname,
+            avatar: m.avatar,
+          };
+        }
+      } else {
+        giftMap.set(gId, {
+          id: gId,
+          name: m.gift.name || 'Gift',
+          icon: m.gift.icon || m.gift.animation || '🎁',
+          count,
+          totalDiamonds: diamonds,
+          topSender: m.userId
+            ? {
+                userId: m.userId,
+                nickname: m.nickname,
+                avatar: m.avatar,
+              }
+            : undefined,
+        });
+      }
+    }
+
+    return [...giftMap.values()]
+      .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
+      .slice(0, 3);
+  }, [messages]);
+
   return (
     <motion.div
       drag={isMinimized}
@@ -233,7 +283,9 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
+        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full ${
+          mirrorOn ? '[&_video]:!-scale-x-100' : ''
+        }`}
         style={{
           filter: combinedFilterCss,
           transform: mirrorOn ? 'scaleX(-1)' : undefined,
@@ -534,6 +586,7 @@ export const LiveRoom = ({
       {/* Live Room Audience Messenger Modal */}
       <LiveRoomMessengerModal
         isOpen={showMessenger}
+        open={showMessenger}
         onClose={() => setShowMessenger(false)}
         viewers={viewers}
         streamTitle={streamTitle || stream?.title}
@@ -542,14 +595,17 @@ export const LiveRoom = ({
       {/* Beauty & Filters Controls Modal */}
       <BeautyModal
         isOpen={showBeauty}
+        open={showBeauty}
         onClose={() => setShowBeauty(false)}
         smoothness={smoothness}
         onSmoothnessChange={setSmoothness}
         whitening={whitening}
         onWhiteningChange={setWhitening}
         mirrorOn={mirrorOn}
+        isMirrored={mirrorOn}
         onToggleMirror={() => setMirrorOn((m) => !m)}
         noiseReductionOn={noiseReductionOn}
+        noiseReduction={noiseReductionOn}
         onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
       />
 
@@ -571,6 +627,7 @@ export const LiveRoom = ({
       <GiftGalleryModal
         isOpen={showGiftGallery}
         onClose={() => setShowGiftGallery(false)}
+        topGifts={sessionTopGifts}
       />
 
       {/* Audience Reward Modal */}

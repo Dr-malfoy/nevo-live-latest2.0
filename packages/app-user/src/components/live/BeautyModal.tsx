@@ -3,33 +3,49 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PiXBold as X, PiMagicWandFill as WandIcon, PiSparkleFill as Sparkle, PiArrowsLeftRightBold as FlipIcon, PiWaveformBold as NoiseIcon, PiArrowCounterClockwiseBold as ResetIcon } from 'react-icons/pi';
 
 interface BeautyModalProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   smoothness: number;
   onSmoothnessChange: (val: number) => void;
   whitening: number;
   onWhiteningChange: (val: number) => void;
-  isMirrored: boolean;
-  onToggleMirror: () => void;
-  noiseReduction: boolean;
-  onToggleNoiseReduction: () => void;
-  onReset: () => void;
+  isMirrored?: boolean;
+  mirrorOn?: boolean;
+  onToggleMirror?: () => void;
+  noiseReduction?: boolean;
+  noiseReductionOn?: boolean;
+  onToggleNoiseReduction?: () => void;
+  onReset?: () => void;
 }
 
 export const BeautyModal: React.FC<BeautyModalProps> = ({
   open,
+  isOpen,
   onClose,
   smoothness,
   onSmoothnessChange,
   whitening,
   onWhiteningChange,
   isMirrored,
+  mirrorOn,
   onToggleMirror,
   noiseReduction,
+  noiseReductionOn,
   onToggleNoiseReduction,
   onReset,
 }) => {
-  if (!open) return null;
+  const isModalOpen = Boolean(isOpen ?? open);
+  const mirrored = Boolean(mirrorOn ?? isMirrored);
+  const noiseActive = Boolean(noiseReductionOn ?? noiseReduction);
+
+  if (!isModalOpen) return null;
+
+  const handleReset = () => {
+    onSmoothnessChange(0);
+    onWhiteningChange(0);
+    onReset?.();
+  };
 
   return (
     <AnimatePresence>
@@ -65,7 +81,7 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onReset}
+                onClick={handleReset}
                 title="Reset to default"
                 className="p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white/70 hover:text-white"
               >
@@ -141,7 +157,7 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
               type="button"
               onClick={onToggleMirror}
               className={`p-3 rounded-2xl border flex items-center justify-between gap-2 transition-all ${
-                isMirrored
+                mirrored
                   ? 'bg-purple-600/25 border-purple-500/50 text-white'
                   : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
               }`}
@@ -152,10 +168,10 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
               </div>
               <span
                 className={`px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-wide ${
-                  isMirrored ? 'bg-purple-500 text-white shadow-xs' : 'bg-white/10 text-white/50'
+                  mirrored ? 'bg-purple-500 text-white shadow-xs' : 'bg-white/10 text-white/50'
                 }`}
               >
-                {isMirrored ? 'ON' : 'OFF'}
+                {mirrored ? 'ON' : 'OFF'}
               </span>
             </button>
 
@@ -164,7 +180,7 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
               type="button"
               onClick={onToggleNoiseReduction}
               className={`p-3 rounded-2xl border flex items-center justify-between gap-2 transition-all ${
-                noiseReduction
+                noiseActive
                   ? 'bg-emerald-600/25 border-emerald-500/50 text-white'
                   : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'
               }`}
@@ -175,10 +191,10 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
               </div>
               <span
                 className={`px-1.5 py-0.5 rounded-md text-[9px] font-black tracking-wide ${
-                  noiseReduction ? 'bg-emerald-500 text-white shadow-xs' : 'bg-white/10 text-white/50'
+                  noiseActive ? 'bg-emerald-500 text-white shadow-xs' : 'bg-white/10 text-white/50'
                 }`}
               >
-                {noiseReduction ? 'ON' : 'OFF'}
+                {noiseActive ? 'ON' : 'OFF'}
               </span>
             </button>
           </div>

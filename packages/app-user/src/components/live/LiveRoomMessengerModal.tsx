@@ -13,24 +13,29 @@ interface ViewerUser {
 }
 
 interface LiveRoomMessengerModalProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   viewers: ViewerUser[];
   onOpenDirectChat?: (userId: string) => void;
+  streamTitle?: string;
 }
 
 export const LiveRoomMessengerModal: React.FC<LiveRoomMessengerModalProps> = ({
   open,
+  isOpen,
   onClose,
-  viewers,
+  viewers = [],
   onOpenDirectChat,
+  streamTitle,
 }) => {
   const showToast = useUIStore((s) => s.showToast);
   const [selectedUser, setSelectedUser] = useState<ViewerUser | null>(null);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
 
-  if (!open) return null;
+  const isModalOpen = Boolean(isOpen ?? open);
+  if (!isModalOpen) return null;
 
   const handleSendDirectMessage = async () => {
     if (!selectedUser || !messageText.trim()) return;

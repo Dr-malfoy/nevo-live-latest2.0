@@ -242,8 +242,8 @@ export const PKRankModal: React.FC<PKRankModalProps> = ({
           )}
         </div>
 
-        {/* Bottom Pinned: Current User's Rank */}
-        {myRank && (
+        {/* Bottom Pinned: Current User's Rank (Only shown if scored today) */}
+        {myRank && myRank.score > 0 && (
           <div className="px-5 py-3.5 bg-[#170e28] border-t border-white/10 shrink-0 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center font-black text-xs text-amber-300">

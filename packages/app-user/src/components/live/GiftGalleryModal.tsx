@@ -36,36 +36,8 @@ export const GiftGalleryModal: React.FC<GiftGalleryModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  // Fallback defaults if no gifts yet
-  const displayGifts: GalleryGiftItem[] =
-    topGifts.length > 0
-      ? topGifts.slice(0, 3)
-      : [
-          {
-            id: 'g1',
-            name: 'Luxury Yacht',
-            icon: '🛥️',
-            count: 12,
-            totalDiamonds: 24000,
-            topSender: { userId: '1', nickname: 'Alex VIP', avatar: '' },
-          },
-          {
-            id: 'g2',
-            name: 'Rocket Launch',
-            icon: '🚀',
-            count: 28,
-            totalDiamonds: 14000,
-            topSender: { userId: '2', nickname: 'Star_Gazer', avatar: '' },
-          },
-          {
-            id: 'g3',
-            name: 'Golden Rose',
-            icon: '🌹',
-            count: 85,
-            totalDiamonds: 8500,
-            topSender: { userId: '3', nickname: 'Luna_Fan', avatar: '' },
-          },
-        ];
+  // By default, no mock gifts are shown — only real gifts sent by audience in this stream!
+  const displayGifts: GalleryGiftItem[] = topGifts.slice(0, 3);
 
   const rankThemes = [
     {
@@ -139,70 +111,84 @@ export const GiftGalleryModal: React.FC<GiftGalleryModalProps> = ({
 
         {/* Top 3 Gifts Showcase */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-          {displayGifts.map((gift, idx) => {
-            const theme = rankThemes[idx] || rankThemes[2];
-            return (
-              <motion.div
-                key={gift.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className={`relative p-4 rounded-2xl bg-gradient-to-r ${theme.bgGrad} border ${theme.borderColor} shadow-lg flex items-center justify-between gap-4`}
-              >
-                {/* Left: Rank & Big Gift Icon */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative shrink-0 flex flex-col items-center">
-                    <Crown className={`w-5 h-5 mb-0.5 ${theme.crownColor}`} />
-                    <div className="w-14 h-14 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-3xl shadow-inner">
-                      {gift.icon.startsWith('http') ? (
-                        <img
-                          src={getMediaUrl(gift.icon)}
-                          alt={gift.name}
-                          className="w-10 h-10 object-contain"
-                        />
-                      ) : (
-                        <span>{gift.icon}</span>
+          {displayGifts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-3xl">
+                <GiftIcon className="w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white/80">No Gifts in Gallery Yet</p>
+                <p className="text-xs text-white/40 mt-1 max-w-xs">
+                  Gifts sent by audience during this stream will appear here in the Top 3 showcase.
+                </p>
+              </div>
+            </div>
+          ) : (
+            displayGifts.map((gift, idx) => {
+              const theme = rankThemes[idx] || rankThemes[2];
+              return (
+                <motion.div
+                  key={gift.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className={`relative p-4 rounded-2xl bg-gradient-to-r ${theme.bgGrad} border ${theme.borderColor} shadow-lg flex items-center justify-between gap-4`}
+                >
+                  {/* Left: Rank & Big Gift Icon */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative shrink-0 flex flex-col items-center">
+                      <Crown className={`w-5 h-5 mb-0.5 ${theme.crownColor}`} />
+                      <div className="w-14 h-14 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-3xl shadow-inner">
+                        {gift.icon.startsWith('http') ? (
+                          <img
+                            src={getMediaUrl(gift.icon)}
+                            alt={gift.name}
+                            className="w-10 h-10 object-contain"
+                          />
+                        ) : (
+                          <span>{gift.icon}</span>
+                        )}
+                      </div>
+                      <span
+                        className={`mt-1 px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase text-white shadow ${
+                          idx === 0 ? 'bg-amber-500' : idx === 1 ? 'bg-slate-400' : 'bg-amber-800'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0">
+                      <h4 className="text-base font-extrabold text-white truncate">{gift.name}</h4>
+                      <p className="text-xs font-bold text-white/70 mt-0.5">
+                        Received: <span className="text-white font-black">{gift.count}x</span>
+                      </p>
+
+                      {gift.topSender && (
+                        <div className="flex items-center gap-1.5 mt-2 bg-black/30 px-2 py-1 rounded-xl w-fit border border-white/5">
+                          <Sparkle className="w-3 h-3 text-amber-300" />
+                          <span className="text-[10px] text-white/60">Top Sender:</span>
+                          <span className="text-[10px] font-bold text-white truncate max-w-[90px]">
+                            {gift.topSender.nickname}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <span
-                      className={`mt-1 px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase text-white shadow ${
-                        idx === 0 ? 'bg-amber-500' : idx === 1 ? 'bg-slate-400' : 'bg-amber-800'
-                      }`}
-                    >
-                      #{idx + 1}
+                  </div>
+
+                  {/* Right: Diamonds Value */}
+                  <div className="text-right shrink-0">
+                    <div className={`text-base font-black ${theme.textColor} tabular-nums`}>
+                      💎 {gift.totalDiamonds.toLocaleString()}
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold block">
+                      Total Diamonds
                     </span>
                   </div>
-
-                  <div className="min-w-0">
-                    <h4 className="text-base font-extrabold text-white truncate">{gift.name}</h4>
-                    <p className="text-xs font-bold text-white/70 mt-0.5">
-                      Received: <span className="text-white font-black">{gift.count}x</span>
-                    </p>
-
-                    {gift.topSender && (
-                      <div className="flex items-center gap-1.5 mt-2 bg-black/30 px-2 py-1 rounded-xl w-fit border border-white/5">
-                        <Sparkle className="w-3 h-3 text-amber-300" />
-                        <span className="text-[10px] text-white/60">Top Sender:</span>
-                        <span className="text-[10px] font-bold text-white truncate max-w-[90px]">
-                          {gift.topSender.nickname}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right: Diamonds Value */}
-                <div className="text-right shrink-0">
-                  <div className={`text-base font-black ${theme.textColor} tabular-nums`}>
-                    💎 {gift.totalDiamonds.toLocaleString()}
-                  </div>
-                  <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold block">
-                    Total Diamonds
-                  </span>
-                </div>
-              </motion.div>
-            );
-          })}
+                </motion.div>
+              );
+            })
+          )}
         </div>
       </motion.div>
     </div>

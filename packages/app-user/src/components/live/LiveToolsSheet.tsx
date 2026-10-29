@@ -195,16 +195,6 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
               </span>
               <div className="grid grid-cols-4 gap-y-4 gap-x-2">
                 <ToolButton
-                  id="admins"
-                  label="Admins"
-                  icon={<Backpack className="w-6 h-6 text-sky-400" />}
-                  onClick={() => {
-                    onClose();
-                    onOpenAdmins?.();
-                  }}
-                />
-
-                <ToolButton
                   id="live_data"
                   label="Live Data"
                   icon={<Star className="w-6 h-6 text-amber-400 fill-current" />}
@@ -222,15 +212,6 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   icon={<MusicNote className="w-6 h-6 text-purple-400" />}
                   onClick={() => {
                     showToast('Ambient background music active', 'info');
-                  }}
-                />
-
-                <ToolButton
-                  id="fan_club"
-                  label="Fan Club"
-                  icon={<Heart className="w-6 h-6 text-pink-400 fill-current" />}
-                  onClick={() => {
-                    showToast('Fan Club management', 'info');
                   }}
                 />
               </div>
@@ -402,17 +383,6 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
               />
 
               <ToolButton
-                id="vip"
-                label="VIP"
-                icon={<Diamond className="w-6 h-6 text-purple-400" />}
-                onClick={() => {
-                  onClose();
-                  if (onOpenVIP) onOpenVIP();
-                  else navigate('/vip');
-                }}
-              />
-
-              <ToolButton
                 id="bag"
                 label="Bag"
                 icon={<Backpack className="w-6 h-6 text-sky-400" />}
@@ -432,19 +402,6 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                 onClick={() => {
                   onClose();
                   onOpenGiftGallery?.();
-                }}
-              />
-
-              <ToolButton
-                id="lucky_box"
-                label="Lucky Box"
-                icon={<Cube className="w-6 h-6 text-amber-400" />}
-                badge="FREE"
-                badgeColor="bg-emerald-500"
-                onClick={() => {
-                  onClose();
-                  if (onOpenLuckyBox) onOpenLuckyBox();
-                  else showToast('Lucky Box available every 10 minutes!', 'info');
                 }}
               />
             </div>
