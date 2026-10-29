@@ -5,8 +5,23 @@ import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
 import { getIO } from '../socket';
 import { calculateWealthLevel } from '../utils/userLevels';
-import { resolveAgencyTier, AGENCY_TIERS, AgencyTier, getAgencyCommissionByLevel } from '../utils/agencyTiers';
-export { getAgencyCommissionByLevel };
+import {
+  resolveAgencyTier,
+  AGENCY_TIERS,
+  AgencyTier,
+  getAgencyCommissionByLevel,
+  getCurrentMonthCycle,
+  getAgencyCommissionByMonthlyCoins,
+  getMonthlyCommissionInfo,
+  AGENCY_MONTHLY_COMMISSION_TIERS,
+} from '../utils/agencyTiers';
+export {
+  getAgencyCommissionByLevel,
+  getCurrentMonthCycle,
+  getAgencyCommissionByMonthlyCoins,
+  getMonthlyCommissionInfo,
+  AGENCY_MONTHLY_COMMISSION_TIERS,
+};
 
 export function calculateAgencyLevel(totalContribution: number, totalLiveHours: number = 0) {
   const score = (totalContribution || 0) + Math.floor((totalLiveHours || 0) * 1000);
@@ -310,7 +325,9 @@ export const agencyService = {
         memberCount,
         tier: a.tier || tierConfig.tier,
         tierInfo: tierConfig,
-        commission: getAgencyCommissionByLevel(Math.max(a.level || 1, levelInfo.level)),
+        commission: a.commission ?? getAgencyCommissionByMonthlyCoins(a.monthlyLiveGiftCoins || 0),
+        monthlyLiveGiftCoins: a.monthlyLiveGiftCoins || 0,
+        monthlyCommissionCycle: a.monthlyCommissionCycle || getCurrentMonthCycle(),
         totalContribution: a.totalContribution || 0,
         totalLiveHours: Math.round((a.totalLiveHours || 0) * 10) / 10,
         agent: {

@@ -30,7 +30,123 @@ import {
 } from 'react-icons/pi';
 import { getMediaUrl } from '../../lib/media';
 import { MicRequestBanner } from './MicRequestBanner';
+import { useUIStore } from '../../stores';
 import type { LiveHost, RoomMessage } from './types';
+
+/** Creates an animated 30fps canvas stream as fallback when camera hardware is absent or occupied */
+function createLiveCanvasStream(title: string): MediaStream {
+  if (typeof document === 'undefined') return new MediaStream();
+  const canvas = document.createElement('canvas');
+  canvas.width = 720;
+  canvas.height = 1280;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new MediaStream();
+
+  let hue = 260;
+  let angle = 0;
+  let animId: number;
+
+  const draw = () => {
+    angle += 0.05;
+    hue = (hue + 0.4) % 360;
+
+    // Vibrant Live Gradient
+    const grad = ctx.createLinearGradient(0, 0, 720, 1280);
+    grad.addColorStop(0, `hsl(${hue}, 80%, 14%)`);
+    grad.addColorStop(0.5, '#0b0616');
+    grad.addColorStop(1, `hsl(${(hue + 60) % 360}, 80%, 10%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 720, 1280);
+
+    // Glowing pulsing outer ring
+    const pulse = 135 + Math.sin(angle) * 18;
+    ctx.beginPath();
+    ctx.arc(360, 480, pulse, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue}, 85%, 60%, 0.22)`;
+    ctx.fill();
+
+    // Center circular avatar container
+    ctx.beginPath();
+    ctx.arc(360, 480, 105, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${hue}, 70%, 40%)`;
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+
+    // Host initial monogram
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 85px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((title || 'Host').charAt(0).toUpperCase(), 360, 480);
+
+    // Equalizer voice bars
+    const barCount = 7;
+    const barWidth = 14;
+    const gap = 10;
+    const startX = 360 - ((barCount * (barWidth + gap)) / 2);
+    for (let i = 0; i < barCount; i++) {
+      const h = 25 + Math.abs(Math.sin(angle * 2.2 + i * 0.8)) * 55;
+      const x = startX + i * (barWidth + gap);
+      const y = 650 - h / 2;
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      if ((ctx as any).roundRect) {
+        (ctx as any).roundRect(x, y, barWidth, h, 6);
+      } else {
+        ctx.rect(x, y, barWidth, h);
+      }
+      ctx.fill();
+    }
+
+    // Host Name
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(title || 'Host', 360, 750);
+
+    // Live Status
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText('🔴 LIVE IN BATTLE', 360, 800);
+
+    animId = requestAnimationFrame(draw);
+  };
+
+  animId = requestAnimationFrame(draw);
+  const stream: MediaStream = (canvas as any).captureStream
+    ? (canvas as any).captureStream(30)
+    : (canvas as any).mozCaptureStream(30);
+
+  (stream as any)._stopCanvas = () => cancelAnimationFrame(animId);
+  return stream;
+}
+
+/** Renders gift icon as image when URL/path is provided, or as emoji/icon */
+function renderGiftIcon(iconStr?: string) {
+  if (!iconStr) return <span className="text-sm shrink-0">🎁</span>;
+  const isUrl =
+    iconStr.startsWith('http://') ||
+    iconStr.startsWith('https://') ||
+    iconStr.startsWith('/') ||
+    iconStr.startsWith('data:') ||
+    /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(iconStr);
+
+  if (isUrl) {
+    return (
+      <img
+        src={getMediaUrl(iconStr)}
+        alt="Gift"
+        className="w-5 h-5 object-contain shrink-0 rounded"
+        onError={(e) => {
+          const target = e.currentTarget;
+          target.style.display = 'none';
+        }}
+      />
+    );
+  }
+  return <span className="text-sm shrink-0">{iconStr}</span>;
+}
 
 export interface PKHostData {
   userId: string;
@@ -169,8 +285,55 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(null);
 
   const [textInput, setTextInput] = useState('');
+
+  // Determine Host IDs and active sides
+  const hostAId = leftHost.userId || (leftHost as any)._id;
+  const hostBId = rightHost.userId || (rightHost as any)._id;
+
+  const isCurrentHostA = Boolean(currentUserId && hostAId && currentUserId === hostAId);
+  const isCurrentHostB = Boolean(currentUserId && hostBId && currentUserId === hostBId);
+  const isCurrentHost = isHost || isCurrentHostA || isCurrentHostB;
+
+  // Which side is this client's primary stream?
+  // Left = Host A, Right = Host B
+  const isSideA = isCurrentHostA || (!isCurrentHostB && (currentStreamId ? currentStreamId === streamIdA : true));
+  const mySide = isSideA ? 'left' : 'right';
+  const opponentSide = isSideA ? 'right' : 'left';
+  const opponentStreamId = isSideA ? streamIdB : streamIdA;
+
+  // Stable refs for WebRTC to prevent connection tearing down on state re-renders
+  const isCurrentHostRef = useRef(isCurrentHost);
+  isCurrentHostRef.current = isCurrentHost;
+
+  const isSideARef = useRef(isSideA);
+  isSideARef.current = isSideA;
+
+  const mySideRef = useRef(mySide);
+  mySideRef.current = mySide;
+
+  const opponentSideRef = useRef(opponentSide);
+  opponentSideRef.current = opponentSide;
+
+  const currentStreamIdRef = useRef(currentStreamId);
+  currentStreamIdRef.current = currentStreamId;
+
+  const streamIdARef = useRef(streamIdA);
+  streamIdARef.current = streamIdA;
+
+  const streamIdBRef = useRef(streamIdB);
+  streamIdBRef.current = streamIdB;
+
+  const localMediaStreamRef = useRef(localMediaStream);
+  localMediaStreamRef.current = localMediaStream;
+
+  const leftNicknameRef = useRef(leftHost.nickname);
+  leftNicknameRef.current = leftHost.nickname;
+
+  const rightNicknameRef = useRef(rightHost.nickname);
+  rightNicknameRef.current = rightHost.nickname;
+
   const [selectedSide, setSelectedSide] = useState<'left' | 'right'>(
-    currentUserId === rightHost.userId ? 'right' : 'left'
+    isCurrentHostB ? 'right' : 'left'
   );
 
   // Keep callback refs stable across frequent re-renders
@@ -181,24 +344,89 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     onQuitPKRef.current = onQuitPK;
   });
 
-  // Score computation
-  const leftScore = Math.max(0, Number(leftHost.score) || 0);
-  const rightScore = Math.max(0, Number(rightHost.score) || 0);
+  // Score computation: monotonically accumulating scores that ONLY INCREASE, never decrease!
+  const [liveScoreA, setLiveScoreA] = useState<number>(() => Math.max(0, Number(leftHost.score) || 0));
+  const [liveScoreB, setLiveScoreB] = useState<number>(() => Math.max(0, Number(rightHost.score) || 0));
+
+  useEffect(() => {
+    const s = Math.max(0, Number(leftHost.score) || 0);
+    setLiveScoreA((prev) => Math.max(prev, s));
+  }, [leftHost.score]);
+
+  useEffect(() => {
+    const s = Math.max(0, Number(rightHost.score) || 0);
+    setLiveScoreB((prev) => Math.max(prev, s));
+  }, [rightHost.score]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onPkLiveScore = (data: any) => {
+      if (data.battleId && battleId && data.battleId !== battleId) return;
+      if (typeof data.scoreA === 'number') {
+        setLiveScoreA((prev) => Math.max(prev, data.scoreA));
+      }
+      if (typeof data.scoreB === 'number') {
+        setLiveScoreB((prev) => Math.max(prev, data.scoreB));
+      }
+    };
+    socket.on('pk:live:score', onPkLiveScore);
+    return () => {
+      socket.off('pk:live:score', onPkLiveScore);
+    };
+  }, [socket, battleId]);
+
+  const leftScore = liveScoreA;
+  const rightScore = liveScoreB;
   const totalScore = leftScore + rightScore;
   const leadDiff = Math.abs(leftScore - rightScore);
   const leadSide = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
   const winner = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
 
-  // Gap-based PK Score Gauge:
-  // Both sides start at 0% when score is 0, creating a wide empty track / gap between them.
-  // Each fills toward the center divider based on its score relative to the leader.
-  const maxScore = Math.max(leftScore, rightScore, 100);
-  const leftFillPct = leftScore > 0 ? Math.min(46, Math.max(4, (leftScore / maxScore) * 46)) : 0;
-  const rightFillPct = rightScore > 0 ? Math.min(46, Math.max(4, (rightScore / maxScore) * 46)) : 0;
+  // Monotonically growing gauge bar:
+  // Each host's progress bar ONLY GROWS as their score increases, and NEVER shrinks backwards!
+  const getFillPercentage = (score: number) => {
+    if (score <= 0) return 0;
+    // Starts at 8% with first score, smoothly climbs toward center (max 46%), never goes down!
+    return Math.min(46, Math.max(8, Math.round(8 + Math.log10(Math.max(1, score / 50) + 1) * 32)));
+  };
+
+  const leftFillPct = getFillPercentage(leftScore);
+  const rightFillPct = getFillPercentage(rightScore);
 
   // Real Dynamic Viewer Count calculation (per host & merged)
-  const leftViewers = Math.max(0, Number(leftHost.viewerCount) || 0);
-  const rightViewers = Math.max(0, Number(rightHost.viewerCount) || 0);
+  const [liveLeftViewers, setLiveLeftViewers] = useState<number>(
+    Math.max(0, Number(leftHost.viewerCount) || 0)
+  );
+  const [liveRightViewers, setLiveRightViewers] = useState<number>(
+    Math.max(0, Number(rightHost.viewerCount) || 0)
+  );
+
+  useEffect(() => {
+    setLiveLeftViewers(Math.max(0, Number(leftHost.viewerCount) || 0));
+  }, [leftHost.viewerCount]);
+
+  useEffect(() => {
+    setLiveRightViewers(Math.max(0, Number(rightHost.viewerCount) || 0));
+  }, [rightHost.viewerCount]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onPkViewerCount = ({ streamId, count, side }: any) => {
+      const num = Math.max(0, Number(count) || 0);
+      if (side === 'left' || streamId === streamIdA) {
+        setLiveLeftViewers(num);
+      } else if (side === 'right' || streamId === streamIdB) {
+        setLiveRightViewers(num);
+      }
+    };
+    socket.on('pk:live:viewer-count', onPkViewerCount);
+    return () => {
+      socket.off('pk:live:viewer-count', onPkViewerCount);
+    };
+  }, [socket, streamIdA, streamIdB]);
+
+  const leftViewers = liveLeftViewers;
+  const rightViewers = liveRightViewers;
   const mergedViewerCount = leftViewers + rightViewers;
 
   const formatViewerNumber = (count: number) => {
@@ -268,19 +496,50 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // PK Dual-Video Streaming & WebRTC Connection Effect
+  const showToast = useUIStore((s) => s.showToast);
+  const [hasGivenPkLove, setHasGivenPkLove] = useState(false);
+  const syntheticStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    setHasGivenPkLove(false);
+  }, [battleId]);
+
+  const handleHeartClick = () => {
+    onLike?.();
+
+    if (hasGivenPkLove) {
+      showToast('You already sent your Love points for this battle! (1 per battle) ❤️', 'info');
+      return;
+    }
+
+    setHasGivenPkLove(true);
+    const targetSide = selectedSide === 'left' ? 'A' : 'B';
+    const targetNickname = selectedSide === 'left' ? leftHost.nickname : rightHost.nickname;
+    const targetStream = selectedSide === 'left' ? streamIdA : streamIdB;
+
+    if (socket && battleId) {
+      socket.emit('pk:live:like', {
+        battleId,
+        side: targetSide,
+        streamId: targetStream,
+      });
+    }
+    showToast(`+100 PK Points sent to ${targetNickname}! ❤️`, 'success');
+  };
+
+  // PK Dual-Video Streaming & Dedicated WebRTC Connection Effect
   useEffect(() => {
     let opponentPc: RTCPeerConnection | null = null;
-    let sendPc: RTCPeerConnection | null = null;
+    const sendingPcs = new Map<string, RTCPeerConnection>();
 
     const leftContainer = document.getElementById('pk-video-left');
     const rightContainer = document.getElementById('pk-video-right');
-    const agoraArea = document.getElementById('agora-video-area');
 
     if (!leftContainer || !rightContainer) return;
 
     // Helper to safely play a MediaStream inside a container without moving existing nodes
     const renderStreamInContainer = (container: HTMLElement, stream: MediaStream, isMuted: boolean) => {
+      if (!container || !stream) return;
       let videoEl = container.querySelector('video') as HTMLVideoElement;
       if (!videoEl) {
         videoEl = document.createElement('video');
@@ -293,9 +552,11 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         container.appendChild(videoEl);
       }
       videoEl.muted = isMuted;
-      if (videoEl.srcObject !== stream) {
-        videoEl.srcObject = stream;
+      if (videoEl.srcObject === stream) {
+        // Stream already attached — do not reassign to prevent decoder flush / blanking
+        return;
       }
+      videoEl.srcObject = stream;
       videoEl.play().catch(() => {
         if (!isMuted) {
           videoEl.muted = true;
@@ -304,42 +565,47 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       });
     };
 
-    // Determine Host IDs
-    const hostAId = leftHost.userId || (leftHost as any)._id;
-    const hostBId = rightHost.userId || (rightHost as any)._id;
-
-    const isCurrentHostA = Boolean(currentUserId && hostAId && currentUserId === hostAId);
-    const isCurrentHostB = Boolean(currentUserId && hostBId && currentUserId === hostBId);
-    const isCurrentHost = isHost || isCurrentHostA || isCurrentHostB;
-
-    // Which side is this client's primary stream?
-    // Left = Host A, Right = Host B
-    const isSideA = isCurrentHostA || (!isCurrentHostB && (currentStreamId ? currentStreamId === streamIdA : true));
-    const mySide = isSideA ? 'left' : 'right';
-    const opponentSide = isSideA ? 'right' : 'left';
-    const opponentStreamId = isSideA ? streamIdB : streamIdA;
-
-    // 1. Render Current Stream (the one this client already has)
-    const renderMyStream = () => {
-      const myContainer = mySide === 'left' ? leftContainer : rightContainer;
-      if (isCurrentHost && localMediaStream) {
-        // Local host camera stream
-        renderStreamInContainer(myContainer, localMediaStream, true);
-      } else if (agoraArea) {
-        // Viewer or remote stream from main room
-        const existingVideo = agoraArea.querySelector('video') as HTMLVideoElement;
-        if (existingVideo && existingVideo.srcObject) {
-          renderStreamInContainer(myContainer, existingVideo.srcObject as MediaStream, false);
-        } else if (localMediaStream) {
-          renderStreamInContainer(myContainer, localMediaStream, true);
+    // Helper to resolve the live local media stream across localMediaStream, Agora DOM video, and tracks
+    const getActiveLocalStream = (): MediaStream | null => {
+      if (localMediaStream && localMediaStream.getTracks().length > 0) {
+        const vTrack = localMediaStream.getVideoTracks()[0];
+        if (vTrack && vTrack.readyState === 'live') {
+          return localMediaStream;
         }
+      }
+      if (typeof document !== 'undefined') {
+        const agoraAreaEl = document.getElementById('agora-video-area');
+        const existingVideo = agoraAreaEl?.querySelector('video') as HTMLVideoElement;
+        if (existingVideo && existingVideo.srcObject instanceof MediaStream && existingVideo.srcObject.getTracks().length > 0) {
+          return existingVideo.srcObject;
+        }
+      }
+      return null;
+    };
+
+    // 1. Render Current Stream (Host's own stream or viewer's primary room stream)
+    let streamRendered = false;
+    const renderMyStream = () => {
+      const mySide = mySideRef.current;
+      const myContainer = mySide === 'left' ? leftContainer : rightContainer;
+      const activeStream = getActiveLocalStream();
+      if (activeStream && activeStream.getVideoTracks().length > 0) {
+        renderStreamInContainer(myContainer, activeStream, true);
+        streamRendered = true;
+      } else if (!streamRendered) {
+        if (!syntheticStreamRef.current) {
+          syntheticStreamRef.current = createLiveCanvasStream(
+            mySide === 'left' ? leftNicknameRef.current : rightNicknameRef.current
+          );
+        }
+        renderStreamInContainer(myContainer, syntheticStreamRef.current, true);
       }
     };
 
     renderMyStream();
-    const intervalCheck = setInterval(renderMyStream, 1000);
+    const intervalCheck = setInterval(renderMyStream, 1500);
 
-    // 2. Connect to the OPPONENT stream via WebRTC P2P
+    // 2. Connect to the OPPONENT stream via Dedicated PK WebRTC Signaling
     const RTC_CONFIG: RTCConfiguration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -355,137 +621,187 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       // Handle receiving opponent stream tracks
       pc.ontrack = (event) => {
         const stream = event.streams[0] || new MediaStream([event.track]);
-        const targetContainer = opponentSide === 'left' ? leftContainer : rightContainer;
+        const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+        // Unmuted so host and viewers can hear the opponent
         renderStreamInContainer(targetContainer, stream, false);
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('stream:signal:candidate', {
-            toSocketId: (opponentPc as any)?._remoteSocketId,
+        if (event.candidate && (opponentPc as any)?._remoteSocketId) {
+          socket.emit('pk:signal:candidate', {
+            toSocketId: (opponentPc as any)._remoteSocketId,
             candidate: event.candidate,
+            battleId,
             streamId: opponentStreamId,
           });
         }
       };
 
-      // Handler when opponent host sends an offer
+      // Handler when opponent host sends an offer for their stream
+      let isProcessingOffer = false;
       const onOpponentOffer = async ({ fromSocketId, offer }: any) => {
-        if (!offer) return;
+        if (!offer || fromSocketId === socket.id) return;
+        if (isProcessingOffer) return;
+        isProcessingOffer = true;
         try {
           (pc as any)._remoteSocketId = fromSocketId;
+          if (pc.signalingState === 'have-remote-offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('pk:signal:answer', {
+              toSocketId: fromSocketId,
+              answer,
+              battleId,
+              streamId: opponentStreamId,
+            });
+            return;
+          }
+          if (pc.signalingState !== 'stable') {
+            try {
+              await pc.setLocalDescription({ type: 'rollback' } as any);
+            } catch {}
+          }
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit('stream:signal:answer', {
-            toSocketId: fromSocketId,
-            answer,
-            streamId: opponentStreamId,
-          });
+          if (pc.signalingState === 'have-remote-offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('pk:signal:answer', {
+              toSocketId: fromSocketId,
+              answer,
+              battleId,
+              streamId: opponentStreamId,
+            });
+          }
         } catch (err) {
           console.warn('[PKBattleView] WebRTC answer error for opponent:', err);
+        } finally {
+          isProcessingOffer = false;
         }
       };
 
-      // Handler for ICE candidate from opponent
-      const onOpponentCandidate = async ({ candidate }: any) => {
-        if (candidate && pc.remoteDescription) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) {
-            console.warn('[PKBattleView] WebRTC ICE candidate error:', err);
+      // Handler when a peer (opponent host or audience) requests our stream
+      const onPeerJoinedForMe = async ({ peerSocketId, streamId }: any) => {
+        if (!isCurrentHostRef.current || !peerSocketId || peerSocketId === socket.id) return;
+        const myStreamId = isSideARef.current ? streamIdARef.current : streamIdBRef.current;
+        if (streamId && myStreamId && streamId !== myStreamId) return;
+
+        const existingPc = sendingPcs.get(peerSocketId);
+        if (existingPc && (existingPc.connectionState === 'connected' || existingPc.iceConnectionState === 'connected')) {
+          return;
+        }
+
+        let streamToShare = getActiveLocalStream();
+        if (!streamToShare || streamToShare.getVideoTracks().length === 0) {
+          if (!syntheticStreamRef.current) {
+            syntheticStreamRef.current = createLiveCanvasStream(
+              mySideRef.current === 'left' ? leftNicknameRef.current : rightNicknameRef.current
+            );
           }
+          streamToShare = syntheticStreamRef.current;
         }
-      };
+        if (!streamToShare) return;
 
-      socket.on('stream:signal:offer', onOpponentOffer);
-      socket.on('stream:signal:candidate', onOpponentCandidate);
-
-      // If we are a host, also listen for incoming stream requests to BROADCAST our camera
-      const onPeerJoinedForMe = async ({ peerSocketId }: any) => {
-        if (!isCurrentHost || !localMediaStream || !peerSocketId) return;
         try {
-          if (sendPc) {
-            sendPc.close();
-            sendPc = null;
+          const oldPc = sendingPcs.get(peerSocketId);
+          if (oldPc) {
+            oldPc.close();
+            sendingPcs.delete(peerSocketId);
           }
-          const sPc = new RTCPeerConnection(RTC_CONFIG);
-          sendPc = sPc;
 
-          localMediaStream.getTracks().forEach((track) => sPc.addTrack(track, localMediaStream));
+          const sPc = new RTCPeerConnection(RTC_CONFIG);
+          sendingPcs.set(peerSocketId, sPc);
+
+          streamToShare.getTracks().forEach((track) => sPc.addTrack(track, streamToShare!));
 
           sPc.onicecandidate = (event) => {
             if (event.candidate) {
-              socket.emit('stream:signal:candidate', {
+              socket.emit('pk:signal:candidate', {
                 toSocketId: peerSocketId,
                 candidate: event.candidate,
-                streamId: currentStreamId,
+                battleId,
+                streamId: myStreamId,
               });
             }
           };
 
           const offer = await sPc.createOffer();
           await sPc.setLocalDescription(offer);
-          socket.emit('stream:signal:offer', {
+          socket.emit('pk:signal:offer', {
             toSocketId: peerSocketId,
             offer,
-            streamId: currentStreamId,
+            battleId,
+            streamId: myStreamId,
           });
-
-          const onAnswer = async ({ fromSocketId, answer }: any) => {
-            if (fromSocketId === peerSocketId && answer) {
-              try {
-                await sPc.setRemoteDescription(new RTCSessionDescription(answer));
-              } catch {}
-              socket.off('stream:signal:answer', onAnswer);
-            }
-          };
-          socket.on('stream:signal:answer', onAnswer);
         } catch (err) {
           console.warn('[PKBattleView] Failed to broadcast stream to peer:', err);
         }
       };
-      socket.on('stream:signal:peer-joined', onPeerJoinedForMe);
 
-      // Now request the opponent stream from their room!
-      socket.emit('stream:signal:request-stream', { streamId: opponentStreamId });
-
-      const retryTimer = setTimeout(() => {
-        if (pc.connectionState !== 'connected') {
-          socket.emit('stream:signal:request-stream', { streamId: opponentStreamId });
+      // Handler when peer returns answer
+      const onPkAnswer = async ({ fromSocketId, answer }: any) => {
+        const sPc = sendingPcs.get(fromSocketId);
+        if (sPc && answer && sPc.signalingState === 'have-local-offer') {
+          try {
+            await sPc.setRemoteDescription(new RTCSessionDescription(answer));
+          } catch (e) {
+            console.warn('[PKBattleView] Failed to set remote description on sender:', e);
+          }
         }
-      }, 2000);
+      };
+
+      // Bidirectional ICE candidate routing
+      const onPkCandidate = async ({ fromSocketId, candidate }: any) => {
+        if (!candidate) return;
+        if (pc && (pc as any)._remoteSocketId === fromSocketId && pc.remoteDescription) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            return;
+          } catch {}
+        }
+        const sPc = sendingPcs.get(fromSocketId);
+        if (sPc && sPc.remoteDescription) {
+          try {
+            await sPc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch {}
+        }
+      };
+
+      socket.on('pk:signal:offer', onOpponentOffer);
+      socket.on('pk:signal:answer', onPkAnswer);
+      socket.on('pk:signal:candidate', onPkCandidate);
+      socket.on('pk:signal:peer-joined', onPeerJoinedForMe);
+
+      // Initial request for opponent's stream
+      socket.emit('pk:signal:request-stream', { streamId: opponentStreamId, battleId });
+
+      // Gentle retry if opponent video is not playing after 3 seconds
+      const retryTimer = setInterval(() => {
+        const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+        const video = targetContainer.querySelector('video');
+        if (!video || video.paused || video.readyState < 2) {
+          socket.emit('pk:signal:request-stream', { streamId: opponentStreamId, battleId });
+        }
+      }, 3000);
 
       return () => {
         clearInterval(intervalCheck);
-        clearTimeout(retryTimer);
-        socket.off('stream:signal:offer', onOpponentOffer);
-        socket.off('stream:signal:candidate', onOpponentCandidate);
-        socket.off('stream:signal:peer-joined', onPeerJoinedForMe);
+        clearInterval(retryTimer);
+        socket.off('pk:signal:offer', onOpponentOffer);
+        socket.off('pk:signal:answer', onPkAnswer);
+        socket.off('pk:signal:candidate', onPkCandidate);
+        socket.off('pk:signal:peer-joined', onPeerJoinedForMe);
         if (opponentPc) opponentPc.close();
-        if (sendPc) sendPc.close();
-        leftContainer.querySelectorAll('video').forEach((v) => v.remove());
-        rightContainer.querySelectorAll('video').forEach((v) => v.remove());
+        sendingPcs.forEach((pc) => pc.close());
+        sendingPcs.clear();
       };
     }
 
     return () => {
       clearInterval(intervalCheck);
-      leftContainer.querySelectorAll('video').forEach((v) => v.remove());
-      rightContainer.querySelectorAll('video').forEach((v) => v.remove());
+      sendingPcs.forEach((pc) => pc.close());
+      sendingPcs.clear();
     };
-  }, [
-    socket,
-    battleId,
-    streamIdA,
-    streamIdB,
-    currentStreamId,
-    currentUserId,
-    isHost,
-    leftHost.userId,
-    rightHost.userId,
-    localMediaStream,
-  ]);
+  }, [socket, battleId, opponentStreamId]);
 
   // Process and separate received gifts for Host A (Left) and Host B (Right)
   const { leftGifts, rightGifts, leftGiftTotal, rightGiftTotal } = useMemo(() => {
@@ -605,9 +921,6 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             <TimerIcon className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
             <span className="text-sm sm:text-base font-black tracking-widest text-amber-300 tabular-nums drop-shadow">
               {formatTime(timeLeft)}
-            </span>
-            <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-[9px] font-black text-amber-300 uppercase tracking-wider border border-amber-400/30">
-              PK LIVE
             </span>
           </div>
           <span className="text-[9px] font-extrabold text-white/50 uppercase tracking-widest mt-0.5">
@@ -1034,8 +1347,8 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
                     animate={{ opacity: 1, x: 0 }}
                     className="flex items-center justify-between p-1 rounded-lg bg-purple-900/30 border border-purple-500/20 hover:bg-purple-900/40 transition-colors"
                   >
-                    <div className="flex items-center gap-1 min-w-0">
-                      <span className="text-sm shrink-0">{g.icon}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {renderGiftIcon(g.icon)}
                       <div className="min-w-0">
                         <p className="text-[9px] font-black text-white truncate leading-none">
                           {g.name} <span className="text-purple-300">x{g.count || 1}</span>
@@ -1089,8 +1402,8 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
                     animate={{ opacity: 1, x: 0 }}
                     className="flex items-center justify-between p-1 rounded-lg bg-pink-900/30 border border-pink-500/20 hover:bg-pink-900/40 transition-colors"
                   >
-                    <div className="flex items-center gap-1 min-w-0">
-                      <span className="text-sm shrink-0">{g.icon}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {renderGiftIcon(g.icon)}
                       <div className="min-w-0">
                         <p className="text-[9px] font-black text-white truncate leading-none">
                           {g.name} <span className="text-pink-300">x{g.count || 1}</span>
@@ -1261,15 +1574,20 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             </button>
           )}
 
-          {/* Like / Heart Button */}
+          {/* Like / Heart Button (Tapping sends +100 PK score to selected host once per battle) */}
           <button
             type="button"
-            onClick={onLike}
-            className="w-10 h-10 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-90 transition-all flex flex-col items-center justify-center text-rose-400 shrink-0 border border-white/5"
+            onClick={handleHeartClick}
+            className={`w-10 h-10 rounded-2xl active:scale-90 transition-all flex flex-col items-center justify-center shrink-0 border ${
+              hasGivenPkLove
+                ? 'bg-rose-500/25 border-rose-400 text-rose-300 shadow-md shadow-rose-500/30'
+                : 'bg-white/5 hover:bg-white/10 text-rose-400 border-white/5'
+            }`}
+            title={hasGivenPkLove ? 'Love Points Sent (+100 PK)' : 'Tap to send +100 PK Love Points!'}
           >
-            <Heart className="w-4 h-4 fill-current" />
+            <Heart className={`w-4 h-4 fill-current ${hasGivenPkLove ? 'animate-bounce' : ''}`} />
             <span className="text-[8px] font-bold text-white/70 leading-none">
-              {likeCount > 999 ? `${(likeCount / 1000).toFixed(1)}k` : likeCount}
+              {hasGivenPkLove ? '+100' : (likeCount > 999 ? `${(likeCount / 1000).toFixed(1)}k` : likeCount)}
             </span>
           </button>
 

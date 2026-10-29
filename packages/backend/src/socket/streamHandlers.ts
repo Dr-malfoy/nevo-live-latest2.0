@@ -58,6 +58,8 @@ export interface StreamSpeaker {
 const streamGiftersMap = new Map<string, Map<string, StreamGifter>>();
 const streamSpeakersMap = new Map<string, Map<string, StreamSpeaker>>();
 const streamLikesMap = new Map<string, Set<string>>();
+// Track 1 like per user per PK battle: battleId -> Set<userId | socketId>
+const pkBattleLikesMap = new Map<string, Set<string>>();
 
 const getTopGifters = (streamId: string): StreamGifter[] => {
   const gifters = streamGiftersMap.get(streamId);
@@ -86,6 +88,29 @@ export const cleanupStreamUser = (streamId: string, userId: string) => {
   }
 };
 
+const syncPkViewerCount = async (streamId: string, count: number) => {
+  try {
+    const { PkBattle } = await import('../models/PkBattle');
+    const activePk = await PkBattle.findOne({
+      $or: [{ streamIdA: streamId }, { streamIdB: streamId }],
+      status: 'active',
+    }).select('streamIdA streamIdB').lean();
+
+    if (activePk) {
+      const sA = activePk.streamIdA?.toString();
+      const sB = activePk.streamIdB?.toString();
+      const isSideA = sA === streamId;
+      const payload = {
+        streamId,
+        count,
+        side: isSideA ? 'left' : 'right',
+      };
+      if (sA) getIO().to(`stream:${sA}`).emit('pk:live:viewer-count', payload);
+      if (sB) getIO().to(`stream:${sB}`).emit('pk:live:viewer-count', payload);
+    }
+  } catch {}
+};
+
 export const registerStreamHandlers = (socket: Socket): void => {
   socket.on('stream:join', async ({ streamId }) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel, isVip, diamonds, coins } = await getUserProfile(socket.data.user?.userId);
@@ -95,6 +120,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
 
     getIO().to(`stream:${streamId}`).emit('stream:viewer-count', { count });
+    syncPkViewerCount(streamId, count);
     socket.to(`stream:${streamId}`).emit('stream:viewer-joined', {
       userId,
       nickname,
@@ -140,19 +166,30 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
 
     getIO().to(`stream:${streamId}`).emit('stream:viewer-count', { count });
+    syncPkViewerCount(streamId, count);
     socket.to(`stream:${streamId}`).emit('stream:viewer-left', {
       userId,
       viewerCount: count,
     });
   });
 
-  // WebRTC P2P fallback signaling relays (when Agora is offline / dev mode & PK battle)
-  socket.on('stream:signal:request-stream', ({ streamId }) => {
-    getIO().to(`stream:${streamId}`).emit('stream:signal:peer-joined', {
+  // WebRTC P2P fallback signaling relays (when Agora is offline / dev mode)
+  socket.on('stream:signal:request-stream', async ({ streamId }) => {
+    if (!streamId) return;
+    const payload = {
       peerSocketId: socket.id,
       peerUserId: socket.data.user?.userId,
       streamId,
-    });
+    };
+    getIO().to(`stream:${streamId}`).emit('stream:signal:peer-joined', payload);
+
+    // Also notify host directly by user room if known
+    try {
+      const streamDoc = await LiveStream.findById(streamId).select('hostId').lean();
+      if (streamDoc?.hostId) {
+        getIO().to(`user:${streamDoc.hostId.toString()}`).emit('stream:signal:peer-joined', payload);
+      }
+    } catch {}
   });
 
   socket.on('stream:signal:offer', ({ toSocketId, offer, streamId }) => {
@@ -180,6 +217,60 @@ export const registerStreamHandlers = (socket: Socket): void => {
       getIO().to(toSocketId).emit('stream:signal:candidate', {
         fromSocketId: socket.id,
         candidate,
+        streamId,
+      });
+    }
+  });
+
+  // Dedicated PK Battle Dual-Video WebRTC Signaling Relays (Isolated from normal room live streams)
+  socket.on('pk:signal:request-stream', async ({ streamId, battleId }) => {
+    if (!streamId) return;
+    const payload = {
+      peerSocketId: socket.id,
+      peerUserId: socket.data.user?.userId,
+      streamId,
+      battleId,
+    };
+    try {
+      const streamDoc = await LiveStream.findById(streamId).select('hostId').lean();
+      let target = getIO().to(`stream:${streamId}`);
+      if (streamDoc?.hostId) {
+        target = target.to(`user:${streamDoc.hostId.toString()}`);
+      }
+      target.emit('pk:signal:peer-joined', payload);
+    } catch {
+      getIO().to(`stream:${streamId}`).emit('pk:signal:peer-joined', payload);
+    }
+  });
+
+  socket.on('pk:signal:offer', ({ toSocketId, offer, battleId, streamId }) => {
+    if (toSocketId) {
+      getIO().to(toSocketId).emit('pk:signal:offer', {
+        fromSocketId: socket.id,
+        offer,
+        battleId,
+        streamId,
+      });
+    }
+  });
+
+  socket.on('pk:signal:answer', ({ toSocketId, answer, battleId, streamId }) => {
+    if (toSocketId) {
+      getIO().to(toSocketId).emit('pk:signal:answer', {
+        fromSocketId: socket.id,
+        answer,
+        battleId,
+        streamId,
+      });
+    }
+  });
+
+  socket.on('pk:signal:candidate', ({ toSocketId, candidate, battleId, streamId }) => {
+    if (toSocketId) {
+      getIO().to(toSocketId).emit('pk:signal:candidate', {
+        fromSocketId: socket.id,
+        candidate,
+        battleId,
         streamId,
       });
     }
@@ -603,6 +694,85 @@ export const registerStreamHandlers = (socket: Socket): void => {
       isCounted: isFirstLike,
       totalLikes: likesSet.size,
     });
+
+    // If an active PK battle is ongoing on this stream and this is user's first like for this battle:
+    try {
+      const { PkBattle } = await import('../models/PkBattle');
+      const activePk = await PkBattle.findOne({
+        $or: [{ streamIdA: streamId }, { streamIdB: streamId }],
+        status: 'active',
+      });
+      if (activePk) {
+        const battleId = activePk._id.toString();
+        if (!pkBattleLikesMap.has(battleId)) {
+          pkBattleLikesMap.set(battleId, new Set<string>());
+        }
+        const bSet = pkBattleLikesMap.get(battleId)!;
+        if (!bSet.has(userKey)) {
+          bSet.add(userKey);
+          const targetSide = activePk.streamIdA?.toString() === streamId ? 'A' : 'B';
+          const { pkService } = await import('../services/pk.service');
+          await pkService.addLivePkScore({
+            battleId,
+            targetSide,
+            amount: 100,
+            senderName: nickname,
+            senderAvatar: avatar,
+            giftName: 'Love ❤️',
+            giftIcon: '❤️',
+          });
+        }
+      }
+    } catch (pkLikeErr) {
+      console.warn('[stream:like] pk score add error:', pkLikeErr);
+    }
+  });
+
+  // Dedicated 1-time Love press in PK Battle (+100 PK score per user)
+  socket.on('pk:live:like', async ({ battleId, side, streamId }: { battleId: string; side?: 'A' | 'B'; streamId?: string }) => {
+    try {
+      if (!battleId) return;
+      const rawUserId = socket.data.user?.userId;
+      const userKey = rawUserId ? String(rawUserId) : socket.id;
+
+      if (!pkBattleLikesMap.has(battleId)) {
+        pkBattleLikesMap.set(battleId, new Set<string>());
+      }
+      const battleLikes = pkBattleLikesMap.get(battleId)!;
+
+      if (battleLikes.has(userKey)) {
+        socket.emit('pk:live:like:error', { message: 'You have already added Love points for this battle! (1 per battle)' });
+        return;
+      }
+
+      battleLikes.add(userKey);
+
+      const { PkBattle } = await import('../models/PkBattle');
+      const { pkService } = await import('../services/pk.service');
+      const battle = await PkBattle.findById(battleId);
+      if (!battle || battle.status !== 'active') return;
+
+      let targetSide: 'A' | 'B' = side === 'B' ? 'B' : 'A';
+      if (streamId) {
+        targetSide = battle.streamIdA?.toString() === streamId ? 'A' : 'B';
+      }
+
+      const profile = await getUserProfile(rawUserId);
+
+      await pkService.addLivePkScore({
+        battleId,
+        targetSide,
+        amount: 100,
+        senderName: profile?.nickname || 'Supporter',
+        senderAvatar: profile?.avatar || '',
+        giftName: 'Love ❤️',
+        giftIcon: '❤️',
+      });
+
+      socket.emit('pk:live:like:success', { battleId, points: 100, targetSide });
+    } catch (err: any) {
+      console.warn('[pk:live:like error]:', err?.message || err);
+    }
   });
 
   // ── LIVE PK BATTLE SOCKET EVENTS ──────────────────────────────────

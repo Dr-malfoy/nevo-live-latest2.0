@@ -20,23 +20,16 @@ interface StreamState {
   setCurrentStream: (stream: LiveStream | null) => void;
 }
 
-/** Stale-heartbeat window (matches the backend reaper). */
-const HEARTBEAT_STALE_MS = 60_000;
-
 /**
  * Safety layer: one card per host — keep the latest valid live session.
- * Also drops ended and stale-heartbeat streams so the list never shows
- * streams whose host has gone silent.
+ * Drops ended streams so the list only displays active live streams.
  */
 const dedupeByHost = (streams: LiveStream[]): LiveStream[] => {
   const byHost = new Map<string, LiveStream>();
-  const staleBefore = Date.now() - HEARTBEAT_STALE_MS;
   for (const s of streams) {
     if (s.status !== 'live') continue;
-    if (s.hostId === null || typeof s.hostId === 'string') continue; // orphaned — skip
-    // Skip streams whose host hasn't heartbeated recently (offline).
-    if (s.heartbeatAt && new Date(s.heartbeatAt).getTime() < staleBefore) continue;
-    const key = (s.hostId as any)._id || (s.hostId as any).uid;
+    const hostObj = (s as any).host || (typeof s.hostId === 'object' ? s.hostId : null);
+    const key = (hostObj as any)?._id || (hostObj as any)?.uid || (typeof s.hostId === 'string' ? s.hostId : s._id);
     if (!key) continue;
     const existing = byHost.get(key);
     if (!existing || new Date(s.startedAt) > new Date(existing.startedAt)) {

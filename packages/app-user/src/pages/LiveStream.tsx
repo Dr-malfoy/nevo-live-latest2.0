@@ -197,7 +197,10 @@ export const LiveStreamPage = ({
 
   // Host heartbeat — keeps the session fresh server-side while live
   useEffect(() => {
-    if (!joined || !isHost || !id) return;
+    if (!isHost || !id) return;
+    // Send immediate heartbeat on mount/identity settlement
+    streamsApi.heartbeat(id).catch(() => {});
+
     heartbeatRef.current = setInterval(() => {
       streamsApi.heartbeat(id).catch(() => {
         // Heartbeat failure is non-fatal — the next tick will retry
@@ -206,7 +209,7 @@ export const LiveStreamPage = ({
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
-  }, [joined, isHost, id]);
+  }, [isHost, id]);
 
   // Live Activity & Task Progress Tracking (watches live / streams live)
   useEffect(() => {
@@ -422,6 +425,7 @@ export const LiveStreamPage = ({
   useEffect(() => {
     if (!socket || !id) return;
     joinRoom(`stream:${id}`, { streamId: id });
+    socket.emit('stream:join', { streamId: id });
 
     const onChat = (msg: any) => {
       // Self messages are already appended optimistically — skip the socket echo
@@ -804,12 +808,14 @@ export const LiveStreamPage = ({
     const onPkScore = (data: any) => {
       setPkBattle((prev: any) => {
         if (!prev) return prev;
+        const newScoreA = Math.max(prev.scoreA || 0, Number(data.scoreA) || 0);
+        const newScoreB = Math.max(prev.scoreB || 0, Number(data.scoreB) || 0);
         return {
           ...prev,
-          scoreA: data.scoreA,
-          scoreB: data.scoreB,
-          hostA: { ...prev.hostA, score: data.scoreA },
-          hostB: { ...prev.hostB, score: data.scoreB },
+          scoreA: newScoreA,
+          scoreB: newScoreB,
+          hostA: { ...prev.hostA, score: newScoreA },
+          hostB: { ...prev.hostB, score: newScoreB },
           recentGifts: [...(prev.recentGifts || []), data.recentGift].filter(Boolean).slice(-8),
         };
       });

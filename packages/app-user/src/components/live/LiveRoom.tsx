@@ -577,6 +577,7 @@ export const LiveRoom = ({
         onEnd={onEnd}
         onChatSend={onChatSend}
         onOpenMenu={() => setToolsOpen(true)}
+        onOpenPK={isHost ? () => setShowPKModal(true) : () => setShowPKRank(true)}
       />
 
       {/* Camera enhancement pickers (host only) */}

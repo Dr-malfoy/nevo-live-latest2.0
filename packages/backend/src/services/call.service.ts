@@ -6,7 +6,7 @@ import { getIO } from '../socket';
 import { chatService } from './chat.service';
 import { pushNotificationService } from './pushNotification.service';
 import { referralService } from './referral.service';
-import { calculateGiftCoinDistribution, getAgencyCommissionByLevel } from '../utils/agencyTiers';
+import { calculateGiftCoinDistribution, getAgencyCommissionByLevel, getCurrentMonthCycle } from '../utils/agencyTiers';
 import { calculateAgencyLevel } from './agency.service';
 import { calculateWealthLevel } from '../utils/userLevels';
 import crypto from 'crypto';
@@ -624,10 +624,23 @@ export const callService = {
         }
       }
 
-      // Calculate coin distribution based on agency tier (1 diamond = 1 coin):
+      if (agency) {
+        const currentCycle = getCurrentMonthCycle();
+        if (agency.monthlyCommissionCycle !== currentCycle) {
+          agency.monthlyCommissionCycle = currentCycle;
+          agency.monthlyLiveGiftCoins = 0;
+          agency.commission = 4;
+          await Agency.updateOne(
+            { _id: agency._id },
+            { $set: { monthlyCommissionCycle: currentCycle, monthlyLiveGiftCoins: 0, commission: 4 } }
+          );
+        }
+      }
+
+      // Calculate coin distribution based on monthly targets (1 diamond = 1 coin):
       // Host: 70% in coins
-      // Agency (Agent): 4% to 20% tier-wise directly to agent account
-      // Admin: Remainder (10% to 26% tier-wise, or 30% if no agency)
+      // Agency (Agent): 4% to 20% target-wise directly to agent account (refreshes monthly)
+      // Admin: Remainder (10% to 26%, or 30% if no agency)
       const distribution = calculateGiftCoinDistribution(totalDiamonds, agency);
       const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
 
@@ -679,17 +692,16 @@ export const callService = {
         });
       }
 
-      // Increment agency total contribution and sync dynamic level & commission
+      // Increment agency total contribution and sync agency level
       if (agency) {
         const newContrib = (agency.totalContribution || 0) + totalDiamonds;
         const levelInfo = calculateAgencyLevel(newContrib, agency.totalLiveHours || 0);
         const newLevel = Math.max(agency.level || 1, levelInfo.level);
-        const newCommission = getAgencyCommissionByLevel(newLevel);
         await Agency.updateOne(
           { _id: agency._id },
           {
             $inc: { totalContribution: totalDiamonds },
-            $set: { level: newLevel, commission: newCommission }
+            $set: { level: newLevel }
           }
         );
       }

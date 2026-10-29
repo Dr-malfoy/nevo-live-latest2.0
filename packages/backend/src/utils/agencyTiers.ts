@@ -11,23 +11,86 @@ export interface AgencyTierConfig {
   milestoneDescription: string;
 }
 
-const LEVEL_COMMISSIONS: Record<number, number> = {
-  1: 4,
-  2: 6,
-  3: 8,
-  4: 10,
-  5: 12,
-  6: 14,
-  7: 16,
-  8: 18,
-  9: 19,
-  10: 20,
-};
+export interface AgencyCommissionMilestone {
+  minCoins: number;
+  percent: number;
+  label: string;
+  desc: string;
+  shortLabel: string;
+}
 
-export function getAgencyCommissionByLevel(level: number = 1): number {
-  const lvl = Math.max(1, Math.floor(level || 1));
-  if (lvl >= 10) return 20;
-  return LEVEL_COMMISSIONS[lvl] ?? 4;
+/**
+ * Monthly Live Gift Target-based Agency Commission Ladder:
+ * - Starting Base: 4%
+ * - 20 Lakh (2,000,000) Coins: 8%
+ * - 1 Crore (10,000,000) Coins: 12%
+ * - 4 Crore (40,000,000) Coins: 16%
+ * - 10 Crore (100,000,000) Coins: 20% (Max Elite)
+ *
+ * Cycle: Refreshes monthly. In the next calendar month, agency resets to 4%
+ * until monthly live gift milestones are achieved again.
+ */
+export const AGENCY_MONTHLY_COMMISSION_TIERS: AgencyCommissionMilestone[] = [
+  { minCoins: 0,           percent: 4,  label: 'Starting (Base)',       shortLabel: 'Base', desc: 'Starting base commission for all agencies' },
+  { minCoins: 2_000_000,   percent: 8,  label: '20 Lakh Coins',         shortLabel: '2M',   desc: 'Agency hosts reach 20 Lakh (2,000,000) live gift coins' },
+  { minCoins: 10_000_000,  percent: 12, label: '1 Crore (10M) Coins',   shortLabel: '10M',  desc: 'Agency hosts reach 1 Crore (10,000,000) live gift coins' },
+  { minCoins: 40_000_000,  percent: 16, label: '4 Crore (40M) Coins',   shortLabel: '40M',  desc: 'Agency hosts reach 4 Crore (40,000,000) live gift coins' },
+  { minCoins: 100_000_000, percent: 20, label: '10 Crore (100M) Coins', shortLabel: '100M', desc: 'Agency hosts reach 10 Crore (100,000,000) live gift coins (Max Elite)' },
+];
+
+export function getCurrentMonthCycle(date: Date = new Date()): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+export function getAgencyCommissionByMonthlyCoins(monthlyCoins: number = 0): number {
+  const coins = Math.max(0, Math.floor(monthlyCoins || 0));
+  if (coins >= 100_000_000) return 20;
+  if (coins >= 40_000_000) return 16;
+  if (coins >= 10_000_000) return 12;
+  if (coins >= 2_000_000) return 8;
+  return 4;
+}
+
+export function getMonthlyCommissionInfo(monthlyCoins: number = 0) {
+  const coins = Math.max(0, Math.floor(monthlyCoins || 0));
+  const currentCommission = getAgencyCommissionByMonthlyCoins(coins);
+
+  let currentTier = AGENCY_MONTHLY_COMMISSION_TIERS[0];
+  let nextTier: AgencyCommissionMilestone | null = AGENCY_MONTHLY_COMMISSION_TIERS[1];
+
+  for (let i = 0; i < AGENCY_MONTHLY_COMMISSION_TIERS.length; i++) {
+    const tier = AGENCY_MONTHLY_COMMISSION_TIERS[i];
+    if (coins >= tier.minCoins) {
+      currentTier = tier;
+      nextTier = i < AGENCY_MONTHLY_COMMISSION_TIERS.length - 1 ? AGENCY_MONTHLY_COMMISSION_TIERS[i + 1] : null;
+    }
+  }
+
+  let progress = 100;
+  let coinsNeeded = 0;
+  if (nextTier) {
+    const range = nextTier.minCoins - currentTier.minCoins;
+    const gained = coins - currentTier.minCoins;
+    progress = range > 0 ? Math.min(100, Math.max(0, Math.round((gained / range) * 100))) : 0;
+    coinsNeeded = Math.max(0, nextTier.minCoins - coins);
+  }
+
+  return {
+    currentCommission,
+    monthlyCoins: coins,
+    currentTier,
+    nextTier,
+    progress,
+    coinsNeeded,
+  };
+}
+
+export function getAgencyCommissionByLevel(_level: number = 1): number {
+  // Agency level system is separate from commission criteria.
+  // Commission defaults to starting 4% unless live gift milestone is reached.
+  return 4;
 }
 
 export const AGENCY_TIERS: Record<AgencyTier, AgencyTierConfig> = {
@@ -168,6 +231,8 @@ export function calculateGiftCoinDistribution(
     hosts?: any[];
     totalContribution?: number;
     isBanned?: boolean;
+    monthlyLiveGiftCoins?: number;
+    monthlyCommissionCycle?: string;
   } | null
 ) {
   const hostCoins = Math.floor(totalCostDiamonds * 0.70);
@@ -183,14 +248,21 @@ export function calculateGiftCoinDistribution(
       hostShareRate: 0.70,
       agencyShareRate: 0,
       adminShareRate: 0.30,
+      agencyCommissionPercent: 0,
     };
   }
 
-  // Calculate dynamic commission percentage based on agency level or custom commission
-  const agencyLevel = agency.level || 1;
-  const agencyPercent = typeof agency.commission === 'number' && agency.commission > 0
-    ? agency.commission
-    : getAgencyCommissionByLevel(agencyLevel);
+  // Calculate dynamic commission percentage based on monthly targets (refreshes monthly)
+  const currentCycle = getCurrentMonthCycle();
+  let agencyPercent = 4;
+  if (agency.monthlyCommissionCycle === currentCycle) {
+    agencyPercent = typeof agency.commission === 'number' && agency.commission >= 4
+      ? agency.commission
+      : getAgencyCommissionByMonthlyCoins(agency.monthlyLiveGiftCoins || 0);
+  } else {
+    // Starting commission is 4% in a new month cycle
+    agencyPercent = 4;
+  }
   const agencyShareRate = agencyPercent / 100;
   const adminShareRate = Math.max(0, 0.30 - agencyShareRate);
 
@@ -219,5 +291,6 @@ export function calculateGiftCoinDistribution(
     hostShareRate: 0.70,
     agencyShareRate,
     adminShareRate,
+    agencyCommissionPercent: agencyPercent,
   };
 }

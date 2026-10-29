@@ -4,7 +4,12 @@ import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { notificationService } from './notification.service';
 import { calculateWealthLevel } from '../utils/userLevels';
-import { calculateGiftCoinDistribution, getAgencyCommissionByLevel } from '../utils/agencyTiers';
+import {
+  calculateGiftCoinDistribution,
+  getAgencyCommissionByLevel,
+  getCurrentMonthCycle,
+  getAgencyCommissionByMonthlyCoins,
+} from '../utils/agencyTiers';
 import { calculateAgencyLevel } from './agency.service';
 import { referralService } from './referral.service';
 
@@ -95,10 +100,23 @@ export const giftService = {
       }
     }
 
-    // Calculate coin distribution based on agency tier (1 diamond = 1 coin)
+    if (agency) {
+      const currentCycle = getCurrentMonthCycle();
+      if (agency.monthlyCommissionCycle !== currentCycle) {
+        agency.monthlyCommissionCycle = currentCycle;
+        agency.monthlyLiveGiftCoins = 0;
+        agency.commission = 4;
+        await Agency.updateOne(
+          { _id: agency._id },
+          { $set: { monthlyCommissionCycle: currentCycle, monthlyLiveGiftCoins: 0, commission: 4 } }
+        );
+      }
+    }
+
+    // Calculate coin distribution based on monthly targets (1 diamond = 1 coin)
     // Host: 70% in coins
-    // Agency (Agent): 4% to 20% tier-wise directly to agent account
-    // Admin: Remainder (10% to 26% tier-wise, or 30% if no agency)
+    // Agency (Agent): 4% to 20% target-wise directly to agent account (refreshes monthly)
+    // Admin: Remainder (10% to 26%, or 30% if no agency)
     const distribution = calculateGiftCoinDistribution(totalCost, agency);
     const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
 
@@ -155,19 +173,37 @@ export const giftService = {
       }
     }
 
-    // Increment agency total contribution and sync dynamic level & commission
+    // Increment agency total contribution and sync monthly live gift coins & commission
     if (agency) {
+      const currentCycle = getCurrentMonthCycle();
+      const isNewCycle = agency.monthlyCommissionCycle !== currentCycle;
+      const liveGiftAdd = (sourceType === 'live') ? totalCost : 0;
+      const updatedMonthlyLiveCoins = (isNewCycle ? 0 : (agency.monthlyLiveGiftCoins || 0)) + liveGiftAdd;
+      const newCommission = getAgencyCommissionByMonthlyCoins(updatedMonthlyLiveCoins);
+
       const newContrib = (agency.totalContribution || 0) + totalCost;
       const levelInfo = calculateAgencyLevel(newContrib, agency.totalLiveHours || 0);
       const newLevel = Math.max(agency.level || 1, levelInfo.level);
-      const newCommission = getAgencyCommissionByLevel(newLevel);
+
       await Agency.updateOne(
         { _id: agency._id },
         {
-          $inc: { totalContribution: totalCost },
-          $set: { level: newLevel, commission: newCommission }
+          $inc: {
+            totalContribution: totalCost,
+            ...(!isNewCycle && liveGiftAdd > 0 ? { monthlyLiveGiftCoins: liveGiftAdd } : {})
+          },
+          $set: {
+            level: newLevel,
+            commission: newCommission,
+            monthlyCommissionCycle: currentCycle,
+            ...(isNewCycle ? { monthlyLiveGiftCoins: updatedMonthlyLiveCoins } : {})
+          }
         }
       );
+      agency.level = newLevel;
+      agency.commission = newCommission;
+      agency.monthlyLiveGiftCoins = updatedMonthlyLiveCoins;
+      agency.monthlyCommissionCycle = currentCycle;
     }
 
     // 3. Platform wallet receives admin cut in coins

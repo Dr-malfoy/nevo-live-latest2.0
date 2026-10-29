@@ -7,6 +7,7 @@ import {
   PiMicrophoneFill as Mic,
   PiMicrophoneSlashFill as MicOff,
   PiArrowsClockwiseBold as Repeat,
+  PiCameraRotateFill as CameraRotate,
   PiMagicWandFill as Wand2,
   PiShareNetworkFill as Share2,
   PiGiftFill as Gift,
@@ -375,7 +376,7 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                 <ToolButton
                   id="switch_camera"
                   label="Switch Camera"
-                  icon={<Repeat className="w-6 h-6 text-cyan-300" />}
+                  icon={<CameraRotate className="w-6 h-6 text-cyan-300" />}
                   onClick={() => {
                     onSwitchCamera();
                     showToast('Camera switched', 'info');

@@ -127,6 +127,7 @@ export const useAgora = () => {
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const fallbackVideoElRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoElRef = useRef<HTMLVideoElement | null>(null);
+  const cachedLocalStreamRef = useRef<MediaStream | null>(null);
 
   // Fallback WebRTC P2P connections
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -207,8 +208,32 @@ export const useAgora = () => {
     if (role === 'host') {
       // Host side signaling handlers
       const onPeerJoined = async ({ peerSocketId }: { peerSocketId: string }) => {
-        if (!peerSocketId || !fallbackStreamRef.current) return;
+        if (!peerSocketId) return;
         try {
+          // Resolve stream to broadcast: fallback stream, Agora native tracks, or DOM video srcObject
+          let streamToShare: MediaStream | null = fallbackStreamRef.current;
+          if (!streamToShare || streamToShare.getTracks().length === 0) {
+            const tracks: MediaStreamTrack[] = [];
+            try {
+              const vTrack = (localVideoRef.current as any)?.getMediaStreamTrack?.();
+              if (vTrack) tracks.push(vTrack);
+            } catch {}
+            try {
+              const aTrack = (localAudioRef.current as any)?.getMediaStreamTrack?.();
+              if (aTrack) tracks.push(aTrack);
+            } catch {}
+            if (tracks.length > 0) {
+              streamToShare = new MediaStream(tracks);
+            }
+          }
+          if (!streamToShare || streamToShare.getTracks().length === 0) {
+            const el = document.getElementById('agora-video-area')?.querySelector('video');
+            if (el && el.srcObject instanceof MediaStream && el.srcObject.getTracks().length > 0) {
+              streamToShare = el.srcObject;
+            }
+          }
+          if (!streamToShare || streamToShare.getTracks().length === 0) return;
+
           // Close existing connection to this peer if any
           const existingPc = peerConnectionsRef.current.get(peerSocketId);
           if (existingPc) existingPc.close();
@@ -216,8 +241,8 @@ export const useAgora = () => {
           const pc = new RTCPeerConnection(RTC_CONFIG);
           peerConnectionsRef.current.set(peerSocketId, pc);
 
-          fallbackStreamRef.current.getTracks().forEach((track) => {
-            pc.addTrack(track, fallbackStreamRef.current!);
+          streamToShare.getTracks().forEach((track) => {
+            pc.addTrack(track, streamToShare!);
           });
 
           pc.onicecandidate = (event) => {
@@ -242,7 +267,7 @@ export const useAgora = () => {
 
       const onSignalAnswer = async ({ fromSocketId, answer }: { fromSocketId: string; answer: any }) => {
         const pc = peerConnectionsRef.current.get(fromSocketId);
-        if (pc && answer) {
+        if (pc && answer && pc.signalingState === 'have-local-offer') {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
           } catch (e) {
@@ -253,11 +278,11 @@ export const useAgora = () => {
 
       const onSignalCandidate = async ({ fromSocketId, candidate }: { fromSocketId: string; candidate: any }) => {
         const pc = peerConnectionsRef.current.get(fromSocketId);
-        if (pc && candidate) {
+        if (pc && candidate && pc.remoteDescription) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
           } catch (e) {
-            console.warn('[useAgora] Failed to add ICE candidate from viewer:', e);
+            // Silently ignore late or redundant candidate
           }
         }
       };
@@ -621,6 +646,10 @@ export const useAgora = () => {
           if (localVideoRef.current) {
             await client.publish([localVideoRef.current]);
           }
+        }
+
+        if (socket && streamId) {
+          setupFallbackP2P(role, socket, streamId);
         }
 
         setJoined(true);
@@ -1055,13 +1084,17 @@ export const useAgora = () => {
       }
 
       if (localVideoRef.current) {
-        localVideoRef.current.stop();
-        localVideoRef.current.close();
+        try {
+          localVideoRef.current.stop();
+          localVideoRef.current.close();
+        } catch {}
         localVideoRef.current = null;
       }
       if (localAudioRef.current) {
-        localAudioRef.current.stop();
-        localAudioRef.current.close();
+        try {
+          localAudioRef.current.stop();
+          localAudioRef.current.close();
+        } catch {}
         localAudioRef.current = null;
       }
       if (clientRef.current) {
@@ -1153,7 +1186,39 @@ export const useAgora = () => {
     toggleMic,
     switchCamera,
     leaveChannel,
-    getLocalStream: () => fallbackStreamRef.current,
+    getLocalStream: () => {
+      // 1. Fallback stream if active with tracks
+      if (fallbackStreamRef.current && fallbackStreamRef.current.getTracks().length > 0) {
+        return fallbackStreamRef.current;
+      }
+      // 2. Agora camera & audio tracks converted to native MediaStream
+      const tracks: MediaStreamTrack[] = [];
+      try {
+        const vTrack = (localVideoRef.current as any)?.getMediaStreamTrack?.();
+        if (vTrack) tracks.push(vTrack);
+      } catch {}
+      try {
+        const aTrack = (localAudioRef.current as any)?.getMediaStreamTrack?.();
+        if (aTrack) tracks.push(aTrack);
+      } catch {}
+      if (tracks.length > 0) {
+        if (cachedLocalStreamRef.current) {
+          const curTracks = cachedLocalStreamRef.current.getTracks();
+          const same = curTracks.length === tracks.length && curTracks.every((t, i) => t.id === tracks[i].id && t.readyState === 'live');
+          if (same) return cachedLocalStreamRef.current;
+        }
+        cachedLocalStreamRef.current = new MediaStream(tracks);
+        return cachedLocalStreamRef.current;
+      }
+      // 3. Extract stream directly from DOM video element in agora-video-area
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById('agora-video-area')?.querySelector('video');
+        if (el && el.srcObject instanceof MediaStream && el.srcObject.getTracks().length > 0) {
+          return el.srcObject;
+        }
+      }
+      return fallbackStreamRef.current;
+    },
     applyBeautyOptions,
   };
 };

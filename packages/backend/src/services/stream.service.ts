@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 
 import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
 
-const HEARTBEAT_STALE_MS = 60_000;
+const HEARTBEAT_STALE_MS = 180_000; // 3 minutes grace window prevents premature reaping of active streams
 const REAP_INTERVAL_MS = 30_000;
 
 let reaperStarted = false;
@@ -100,6 +100,7 @@ const toStreamDTO = (doc: any) => {
       hostBadgeType: rawHost.hostBadgeType || 'none',
       isVip: Boolean(rawHost.isVip || rawHost.hasPurchasedDiamonds || (rawHost.diamonds && rawHost.diamonds > 0)),
     };
+    dto.host = dto.hostId;
   }
   dto.thumbnail = dto.cover || host?.avatar || '';
   dto.viewerCount = Math.max(0, dto.viewerCount ?? 0);

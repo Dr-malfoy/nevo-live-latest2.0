@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiHeartFill as Heart,
   PiGiftFill as GiftIcon,
-  PiArrowsLeftRightBold as FlipHorizontal,
+  PiCameraRotateFill as CameraRotate,
   PiSquaresFourFill as Grid,
 } from 'react-icons/pi';
 import { MouthIcon, MouthOffIcon } from './MouthIcons';
@@ -31,6 +31,7 @@ interface BottomToolbarProps {
   onEnd: () => void;
   onChatSend: (message: string) => void;
   onOpenMenu?: () => void;
+  onOpenPK?: () => void;
   elapsed?: string;
 }
 
@@ -193,8 +194,22 @@ export const BottomToolbar = ({
         {/* Switch camera (host only) */}
         {isHost && videoEnabled && (
           <RoundBtn label="Switch Camera" onClick={onSwitchCamera}>
-            <FlipHorizontal className="w-5 h-5 text-white/90" />
+            <CameraRotate className="w-5 h-5 text-white/90" />
           </RoundBtn>
+        )}
+
+        {/* PK Battle button */}
+        {onOpenPK && (
+          <motion.button
+            whileTap={{ scale: 0.88 }}
+            aria-label="PK Battle"
+            onClick={onOpenPK}
+            className="w-9 h-9 rounded-full bg-gradient-to-tr from-purple-600 via-fuchsia-600 to-indigo-600 border border-purple-300/40 shadow-[0_0_12px_rgba(168,85,247,0.55)] flex items-center justify-center shrink-0 active:scale-90 transition-transform"
+          >
+            <span className="text-[11px] font-black tracking-wider text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+              PK
+            </span>
+          </motion.button>
         )}
 
         {/* ❤️ Love button (placed beside gift) */}
