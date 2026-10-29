@@ -39,8 +39,17 @@ export interface CallChatMessage {
 }
 
 /**
+ * Resolves whether a camera feed should be mirrored horizontally.
+ * - Front camera ('user'): mirrored when mirrorEnabled is true (natural selfie reflection).
+ * - Back camera ('environment'): NEVER mirrored horizontally, so panning right pans right naturally.
+ */
+const shouldMirrorFeed = (facingMode: 'user' | 'environment', mirrorEnabled: boolean) => {
+  return facingMode === 'user' && mirrorEnabled;
+};
+
+/**
  * Cross-browser video mirror styler.
- * Directly applies scaleX(-1) / none with !important to guarantee instant mirroring
+ * Directly applies scaleX(-1) / none with !important to guarantee exact mirroring
  * across Agora and WebRTC video tracks on both front and rear cameras.
  */
 const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
@@ -115,7 +124,8 @@ export const useCall = () => {
         return;
       }
 
-      const shouldMirror = remoteMirrorRef.current;
+      const remoteFacing = remoteFacingModesRef.current.get(String(uid)) || remoteFacingMode || 'user';
+      const shouldMirror = shouldMirrorFeed(remoteFacing, remoteMirrorRef.current);
 
       // 1. Check Agora remote video track
       const track = remoteVideoTracksRef.current.get(uid);
@@ -305,9 +315,12 @@ export const useCall = () => {
     socketRef.current = socket;
     callIdRef.current = callId;
 
-    const applyRemoteMirror = (mirror: boolean) => {
+    const applyRemoteMirror = () => {
       document.querySelectorAll('[id^="remote-container-"]').forEach((container) => {
-        setElementMirror(container as HTMLElement, mirror);
+        const id = container.id.replace('remote-container-', '');
+        const remoteFacing = remoteFacingModesRef.current.get(id) || 'user';
+        const shouldMirror = shouldMirrorFeed(remoteFacing, remoteMirrorRef.current);
+        setElementMirror(container as HTMLElement, shouldMirror);
       });
     };
 
@@ -317,14 +330,14 @@ export const useCall = () => {
       if (senderId) {
         remoteFacingModesRef.current.set(String(senderId), facingMode);
       }
-      applyRemoteMirror(remoteMirrorRef.current);
+      applyRemoteMirror();
     });
 
     socket.off('call:camera:mirror');
     socket.on('call:camera:mirror', ({ mirror }: { mirror: boolean }) => {
       remoteMirrorRef.current = mirror;
       setRemoteMirror(mirror);
-      applyRemoteMirror(mirror);
+      applyRemoteMirror();
     });
 
     // Broadcast our initial camera state to the room
@@ -342,12 +355,11 @@ export const useCall = () => {
     async (type: 'audio' | 'video', socket?: any, callId?: string) => {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
           const stream = await navigator.mediaDevices.getUserMedia({
             video: type === 'video' ? {
               facingMode: currentFacingModeRef.current,
-              width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
-              height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
               frameRate: { ideal: 30, max: 30 },
             } : false,
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -379,7 +391,8 @@ export const useCall = () => {
                   container.appendChild(fallbackVideoElRef.current);
                 }
               }
-              setElementMirror(container, mirrorOnRef.current);
+              const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, mirrorOnRef.current);
+              setElementMirror(container, shouldMirror);
             } else if (attempt < 15) {
               setTimeout(() => playFallbackPreview(attempt + 1), 120);
             }
@@ -411,7 +424,7 @@ export const useCall = () => {
     const tryPlay = (attempt: number) => {
       const el = document.getElementById('call-local-video-container');
       if (el) {
-        const shouldMirror = mirrorOnRef.current;
+        const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, mirrorOnRef.current);
         if (localVideoRef.current) {
           try {
             localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
@@ -580,19 +593,19 @@ export const useCall = () => {
         // 2. Camera track (with graceful error handling)
         if (type === 'video') {
           try {
-            const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
             let videoTrack: ICameraVideoTrack | null = null;
             try {
+              // High definition 720p 30fps with native uncropped wide angle FOV
               videoTrack = await AgoraRTC.createCameraVideoTrack({
                 encoderConfig: {
-                  width: isPortrait ? { ideal: 1080, min: 480, max: 1920 } : { ideal: 1920, min: 640, max: 1920 },
-                  height: isPortrait ? { ideal: 1920, min: 640, max: 1920 } : { ideal: 1080, min: 480, max: 1080 },
-                  frameRate: { ideal: 30, max: 30 },
-                  bitrateMin: 1200,
-                  bitrateMax: 3000,
-                  optimizationMode: 'detail',
+                  width: 1280,
+                  height: 720,
+                  frameRate: 30,
+                  bitrateMin: 1000,
+                  bitrateMax: 2400,
                 },
                 facingMode: currentFacingModeRef.current,
+                optimizationMode: 'detail',
               });
             } catch {
               videoTrack = await AgoraRTC.createCameraVideoTrack({
@@ -759,7 +772,7 @@ export const useCall = () => {
               return nextMode === 'user'
                 ? /front|user|facetime|selfie|forward/i.test(lbl) || /camera2?\s*1\b/i.test(lbl)
                 : (/back|rear|environment|world/i.test(lbl) || /camera2?\s*0\b/i.test(lbl)) &&
-                    !lbl.includes('wide') && !lbl.includes('tele') && !lbl.includes('macro') && !lbl.includes('depth');
+                    !lbl.includes('tele') && !lbl.includes('macro') && !lbl.includes('depth') && !lbl.includes('zoom');
             }) || devices[0];
             if (target?.deviceId) {
               await localVideoRef.current.setDevice(target.deviceId);
@@ -767,15 +780,16 @@ export const useCall = () => {
           }
         }
 
-        // Replay local preview with correct mirror configuration for front or rear camera
+        const shouldMirror = shouldMirrorFeed(nextMode, mirrorOnRef.current);
+        // Replay local preview with correct mirror configuration (Front: mirrored, Rear: natural unmirrored)
         const el = document.getElementById('call-local-video-container');
         if (el) {
           try {
-            localVideoRef.current.play(el, { fit: 'cover', mirror: mirrorOnRef.current });
+            localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
           } catch {}
-          setElementMirror(el, mirrorOnRef.current);
-          setTimeout(() => setElementMirror(el, mirrorOnRef.current), 150);
-          setTimeout(() => setElementMirror(el, mirrorOnRef.current), 350);
+          setElementMirror(el, shouldMirror);
+          setTimeout(() => setElementMirror(el, shouldMirror), 150);
+          setTimeout(() => setElementMirror(el, shouldMirror), 350);
         }
         return;
       } catch (e) {
@@ -798,7 +812,8 @@ export const useCall = () => {
         }
         const el = document.getElementById('call-local-video-container');
         if (el) {
-          setElementMirror(el, mirrorOnRef.current);
+          const shouldMirror = shouldMirrorFeed(nextMode, mirrorOnRef.current);
+          setElementMirror(el, shouldMirror);
         }
 
         peerConnectionsRef.current.forEach((pc) => {
@@ -822,7 +837,8 @@ export const useCall = () => {
     // 1. Immediately apply mirror transform to local preview
     const localEl = document.getElementById('call-local-video-container');
     if (localEl) {
-      setElementMirror(localEl, next);
+      const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, next);
+      setElementMirror(localEl, shouldMirror);
     }
     playLocalPreview();
 

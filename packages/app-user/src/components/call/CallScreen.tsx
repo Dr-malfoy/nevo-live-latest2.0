@@ -574,7 +574,19 @@ export const CallScreen = ({
     };
   }, [callConnected, isAudience, coinsPerMinute, session?.callId, socket, updateUser]);
 
-  // Ringtone lifecycle
+  // 1-minute (60 seconds) unanswered call auto-hangup for outgoing calls
+  useEffect(() => {
+    if (outgoing && !callConnected) {
+      const timeout = setTimeout(() => {
+        if (!callConnected && !endedRef.current) {
+          handleHangup();
+        }
+      }, 60_000);
+      return () => clearTimeout(timeout);
+    }
+  }, [outgoing, callConnected, handleHangup]);
+
+  // Ringtone lifecycle & 60s timeout for incoming calls
   useEffect(() => {
     if (incoming && ringing && !callConnected) {
       ringtone.start(true);
@@ -582,20 +594,14 @@ export const CallScreen = ({
         if (!callConnected && !endedRef.current) {
           handleReject();
         }
-      }, 45000);
+      }, 60_000);
       return () => {
         clearTimeout(timeout);
         ringtone.stop();
       };
     } else if (outgoing && ringing && !callConnected && isTargetOnline) {
       ringtone.start(false);
-      const timeout = setTimeout(() => {
-        if (!callConnected && !endedRef.current) {
-          handleHangup();
-        }
-      }, 45000);
       return () => {
-        clearTimeout(timeout);
         ringtone.stop();
       };
     } else {
@@ -604,7 +610,7 @@ export const CallScreen = ({
     return () => {
       ringtone.stop();
     };
-  }, [incoming, outgoing, ringing, callConnected, isTargetOnline]);
+  }, [incoming, outgoing, ringing, callConnected, isTargetOnline, handleReject]);
 
   const handleAccept = useCallback(async () => {
     if (!incoming) return;
