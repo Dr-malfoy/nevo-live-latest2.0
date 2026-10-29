@@ -1411,15 +1411,6 @@ export const Chats = () => {
             </div>
           </div>
 
-          {/* Earnings calculator preview */}
-          <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs flex items-center justify-between">
-            <span className="text-slate-700 font-medium">Host Earning (10m Call, 70% in Coins):</span>
-            <span className="font-black text-amber-600 flex items-center gap-1 text-sm">
-              <CoinIcon className="w-4 h-4 text-amber-500" />
-              {Math.floor(callPriceInput * 10 * 0.7).toLocaleString()} Coins
-            </span>
-          </div>
-
           <div className="flex gap-2 pt-1">
             <button
               type="button"
