@@ -43,41 +43,80 @@ interface UseAgoraOptions {
 }
 
 /**
+ * Cross-browser video mirror styler.
+ * Directly applies scaleX(-1) / none with !important to guarantee instant mirroring
+ * across Agora and WebRTC video tracks on Android WebView and browsers.
+ */
+const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
+  if (!container) return;
+  const elements = container.querySelectorAll('video, .agora_video_player');
+  elements.forEach((el: any) => {
+    const transformVal = mirror ? 'scaleX(-1)' : 'none';
+    el.style.setProperty('transform', transformVal, 'important');
+    el.style.setProperty('-webkit-transform', transformVal, 'important');
+  });
+};
+
+/**
  * Creates high-definition camera video track optimized for vertical mobile live-streaming.
- * Prioritizes 1080p Full HD -> 720p HD -> Agora standard presets with 'detail' optimization
- * to ensure crisp, crystal-clear video clarity without compression artifacts or blurriness.
+ * Prioritizes native 9:16 portrait configurations (720x1280, 540x960, 1080x1920) so mobile cameras
+ * never crop or zoom into the host's face, preventing landscape aspect ratio mismatches.
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
   const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
 
-  // 1. Try portrait HD with flexible ideal constraints (avoids OverconstrainedError & landscape crop)
-  try {
-    return await AgoraRTC.createCameraVideoTrack({
-      facingMode,
-      encoderConfig: {
-        width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: 1280, min: 640, max: 1920 },
-        height: isPortrait ? { ideal: 1280, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
-        frameRate: { ideal: 30, max: 30 },
-        bitrateMin: 1200,
-        bitrateMax: 3500,
-        optimizationMode: 'detail',
-      },
-    });
-  } catch (errFlexible) {
-    console.warn('[useAgora] Flexible portrait camera track failed, trying native camera:', errFlexible);
+  // Portrait configurations: strictly 9:16 portrait ratios with exact integer dimensions
+  // so Agora SDK does not fail internal validation and does not fall back to 4:3 landscape (which caused extreme zoom).
+  const configs = isPortrait
+    ? [
+        { width: 720, height: 1280, frameRate: 30, bitrateMin: 1200, bitrateMax: 2800 },
+        { width: 540, height: 960, frameRate: 30, bitrateMin: 800, bitrateMax: 1800 },
+        { width: 1080, height: 1920, frameRate: 30, bitrateMin: 2000, bitrateMax: 4000 },
+        { width: 480, height: 854, frameRate: 24, bitrateMin: 600, bitrateMax: 1400 },
+      ]
+    : [
+        { width: 1280, height: 720, frameRate: 30, bitrateMin: 1200, bitrateMax: 2800 },
+        { width: 960, height: 540, frameRate: 30, bitrateMin: 800, bitrateMax: 1800 },
+        { width: 1920, height: 1080, frameRate: 30, bitrateMin: 2000, bitrateMax: 4000 },
+      ];
+
+  for (const enc of configs) {
+    try {
+      return await AgoraRTC.createCameraVideoTrack({
+        facingMode,
+        encoderConfig: enc,
+      });
+    } catch (errCfg) {
+      console.warn(`[useAgora] Camera track creation failed for ${enc.width}x${enc.height}:`, errCfg);
+    }
   }
 
-  // 2. Safe fallback: open device camera directly with facingMode (native sensor aspect ratio)
+  // Fallback with custom portrait constraints via getUserMedia
   try {
-    return await AgoraRTC.createCameraVideoTrack({
-      facingMode,
-    });
-  } catch (errNative) {
-    console.warn('[useAgora] Native facingMode camera failed, using minimal fallback:', errNative);
+    if (navigator?.mediaDevices?.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: isPortrait ? 720 : 1280 },
+          height: { ideal: isPortrait ? 1280 : 720 },
+          aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+        audio: false,
+      });
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        return AgoraRTC.createCustomVideoTrack({
+          mediaStreamTrack: track,
+        }) as unknown as ICameraVideoTrack;
+      }
+    }
+  } catch (errGUM) {
+    console.warn('[useAgora] Portrait getUserMedia fallback failed:', errGUM);
   }
 
-  // 3. Absolute fallback
-  return await AgoraRTC.createCameraVideoTrack();
+  // Absolute fallback
+  return await AgoraRTC.createCameraVideoTrack({ facingMode });
 }
 
 let beautyExtensionInstance: any = null;
@@ -118,12 +157,24 @@ export const useAgora = () => {
   const cameraOnRef = useRef(false);
   const micOnRef = useRef(false);
   const facingModeRef = useRef<'user' | 'environment'>('user');
+  const mirrorRef = useRef(true);
   const joiningRef = useRef(false);
   const togglingMicRef = useRef(false);
   const networkLostRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
+
+  const setMirror = useCallback((m: boolean) => {
+    mirrorRef.current = m;
+    const shouldMirror = m && facingModeRef.current === 'user';
+    const videoArea = document.getElementById('agora-video-area');
+    if (videoArea) {
+      setElementMirror(videoArea, shouldMirror);
+      setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+      setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
+    }
+  }, []);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [joined, setJoined] = useState(false);
@@ -653,12 +704,17 @@ export const useAgora = () => {
   // Play local video into the container
   const playLocalVideo = useCallback((containerId: string) => {
     const tryPlay = (attempt: number) => {
+      const shouldMirror = mirrorRef.current && facingModeRef.current === 'user';
+
       // 1. If Agora native track is available
       if (localVideoRef.current) {
         try {
           const container = document.getElementById(containerId);
           if (container) {
-            localVideoRef.current.play(container, { fit: 'cover', mirror: false });
+            localVideoRef.current.play(container, { fit: 'cover', mirror: shouldMirror });
+            setElementMirror(container, shouldMirror);
+            setTimeout(() => setElementMirror(container, shouldMirror), 150);
+            setTimeout(() => setElementMirror(container, shouldMirror), 350);
             return;
           }
         } catch (e) {
@@ -679,13 +735,14 @@ export const useAgora = () => {
             videoEl.style.height = '100%';
             videoEl.style.objectFit = 'cover';
             videoEl.style.imageRendering = '-webkit-optimize-contrast';
-            videoEl.style.transform = 'translateZ(0)';
+            videoEl.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
             videoEl.srcObject = fallbackStreamRef.current;
             container.appendChild(videoEl);
             fallbackVideoElRef.current = videoEl;
           } else if (fallbackVideoElRef.current.parentElement !== container) {
             container.appendChild(fallbackVideoElRef.current);
           }
+          setElementMirror(container, shouldMirror);
           return;
         }
       }
@@ -701,11 +758,15 @@ export const useAgora = () => {
   const refreshVideoTracks = useCallback((containerId: string = 'agora-video-area') => {
     const videoArea = document.getElementById(containerId);
     if (!videoArea) return;
+    const shouldMirror = mirrorRef.current && facingModeRef.current === 'user';
 
     // 1. If host local camera track
     if (localVideoRef.current && cameraOnRef.current) {
       try {
-        localVideoRef.current.play(videoArea, { fit: 'cover', mirror: false });
+        localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
+        setElementMirror(videoArea, shouldMirror);
+        setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+        setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
       } catch (e) {
         console.warn('[useAgora] refresh local video error:', e);
       }
@@ -719,6 +780,7 @@ export const useAgora = () => {
       try {
         fallbackVideoElRef.current.play().catch(() => {});
       } catch {}
+      setElementMirror(videoArea, shouldMirror);
     }
 
     // 3. If remote users exist
@@ -764,7 +826,13 @@ export const useAgora = () => {
         }
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
-        if (videoArea) videoTrack.play(videoArea, { fit: 'cover', mirror: false });
+        if (videoArea) {
+          const shouldMirror = mirrorRef.current && facingModeRef.current === 'user';
+          videoTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
+          setElementMirror(videoArea, shouldMirror);
+          setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+          setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
+        }
       } catch (e) {
         console.warn('[useAgora] live camera enable error:', e);
       }
@@ -951,19 +1019,22 @@ export const useAgora = () => {
           try {
             const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
             await localVideoRef.current.setEncoderConfiguration({
-              width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: 1280, min: 640, max: 1920 },
-              height: isPortrait ? { ideal: 1280, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
-              frameRate: { ideal: 30, max: 30 },
+              width: isPortrait ? 720 : 1280,
+              height: isPortrait ? 1280 : 720,
+              frameRate: 30,
               bitrateMin: 1200,
-              bitrateMax: 3500,
-              optimizationMode: 'detail',
+              bitrateMax: 2800,
             });
           } catch {}
           facingModeRef.current = targetFacing;
           setFacingMode(targetFacing);
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea) {
-            localVideoRef.current.play(videoArea, { fit: 'cover', mirror: false });
+            const shouldMirror = targetFacing === 'user' && mirrorRef.current;
+            localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
+            setElementMirror(videoArea, shouldMirror);
+            setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+            setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
           }
           return;
         }
@@ -1000,7 +1071,11 @@ export const useAgora = () => {
 
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea) {
-            newTrack.play(videoArea, { fit: 'cover', mirror: false });
+            const shouldMirror = targetFacing === 'user' && mirrorRef.current;
+            newTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
+            setElementMirror(videoArea, shouldMirror);
+            setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+            setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
           }
           return;
         }
@@ -1021,8 +1096,9 @@ export const useAgora = () => {
           newStream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: isPortrait ? { ideal: 1080, min: 720 } : { ideal: 1920, min: 1080 },
-              height: isPortrait ? { ideal: 1920, min: 1080 } : { ideal: 1080, min: 720 },
+              width: { ideal: isPortrait ? 720 : 1280 },
+              height: { ideal: isPortrait ? 1280 : 720 },
+              aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false,
@@ -1031,8 +1107,9 @@ export const useAgora = () => {
           newStream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: isPortrait ? { ideal: 720, min: 480 } : { ideal: 1280, min: 640 },
-              height: isPortrait ? { ideal: 1280, min: 640 } : { ideal: 720, min: 480 },
+              width: { ideal: isPortrait ? 540 : 960 },
+              height: { ideal: isPortrait ? 960 : 540 },
+              aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false,
@@ -1045,6 +1122,8 @@ export const useAgora = () => {
           if (fallbackVideoElRef.current) {
             fallbackVideoElRef.current.srcObject = fallbackStreamRef.current;
           }
+          const shouldMirror = targetFacing === 'user' && mirrorRef.current;
+          setElementMirror(document.getElementById('agora-video-area'), shouldMirror);
           // Update peers with new video track
           peerConnectionsRef.current.forEach((pc) => {
             const senders = pc.getSenders();
@@ -1178,6 +1257,7 @@ export const useAgora = () => {
     toggleCamera,
     toggleMic,
     switchCamera,
+    setMirror,
     leaveChannel,
     getLocalStream: () => {
       // 1. Fallback stream if active with tracks

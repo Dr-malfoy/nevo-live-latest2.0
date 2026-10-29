@@ -301,6 +301,41 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   const opponentSide = isSideA ? 'right' : 'left';
   const opponentStreamId = isSideA ? streamIdB : streamIdA;
 
+  // Direct video mirroring for host's local side on Android WebView
+  useEffect(() => {
+    const shouldMirrorLeft = isMirrored && isHost && isSideA;
+    const shouldMirrorRight = isMirrored && isHost && !isSideA;
+
+    const apply = () => {
+      const leftEl = document.getElementById('pk-video-left');
+      if (leftEl) {
+        leftEl.querySelectorAll('video, .agora_video_player').forEach((el: any) => {
+          const val = shouldMirrorLeft ? 'scaleX(-1)' : 'none';
+          el.style.setProperty('transform', val, 'important');
+          el.style.setProperty('-webkit-transform', val, 'important');
+        });
+      }
+      const rightEl = document.getElementById('pk-video-right');
+      if (rightEl) {
+        rightEl.querySelectorAll('video, .agora_video_player').forEach((el: any) => {
+          const val = shouldMirrorRight ? 'scaleX(-1)' : 'none';
+          el.style.setProperty('transform', val, 'important');
+          el.style.setProperty('-webkit-transform', val, 'important');
+        });
+      }
+    };
+
+    apply();
+    const t1 = setTimeout(apply, 150);
+    const t2 = setTimeout(apply, 350);
+    const t3 = setTimeout(apply, 700);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [isMirrored, isHost, isSideA]);
+
   // Stable refs for WebRTC to prevent connection tearing down on state re-renders
   const isCurrentHostRef = useRef(isCurrentHost);
   isCurrentHostRef.current = isCurrentHost;
@@ -1019,11 +1054,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             {/* Live Video Mount Point (Agora/WebRTC video streams attach here) */}
             <div
               id="pk-video-left"
-              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1] transition-transform duration-300 ease-in-out"
-              style={{
-                transform: isMirrored && isHost && isSideA ? 'scaleX(-1)' : 'none',
-                transformOrigin: 'center center',
-              }}
+              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1]"
             />
 
             {/* Ambient Background & Animated Poster Fallback */}
@@ -1134,11 +1165,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             {/* Live Video Mount Point */}
             <div
               id="pk-video-right"
-              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1] transition-transform duration-300 ease-in-out"
-              style={{
-                transform: isMirrored && isHost && !isSideA ? 'scaleX(-1)' : 'none',
-                transformOrigin: 'center center',
-              }}
+              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1]"
             />
 
             {/* Ambient Background & Animated Poster Fallback */}

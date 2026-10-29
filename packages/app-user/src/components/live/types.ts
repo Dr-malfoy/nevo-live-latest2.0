@@ -104,4 +104,6 @@ export interface LiveRoomProps {
   socket?: any;
   currentStreamId?: string;
   localMediaStream?: MediaStream | null;
+  facingMode?: 'user' | 'environment';
+  onSetMirror?: (mirror: boolean) => void;
 }

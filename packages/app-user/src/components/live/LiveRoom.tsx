@@ -91,6 +91,8 @@ export const LiveRoom = ({
   socket,
   currentStreamId,
   localMediaStream,
+  facingMode = 'user',
+  onSetMirror,
 }: LiveRoomProps) => {
   const [showAudience, setShowAudience] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -123,13 +125,59 @@ export const LiveRoom = ({
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
 
+  // Directly sets transform: scaleX(-1) on video elements to ensure instant, reliable mirroring on Android WebView & browsers
+  const applyVideoMirror = useCallback((mirror: boolean) => {
+    const videoArea = document.getElementById('agora-video-area');
+    if (videoArea) {
+      const elements = videoArea.querySelectorAll('video, .agora_video_player');
+      elements.forEach((el: any) => {
+        const val = mirror ? 'scaleX(-1)' : 'none';
+        el.style.setProperty('transform', val, 'important');
+        el.style.setProperty('-webkit-transform', val, 'important');
+      });
+    }
+
+    // Mirror local container in PK Battle if active
+    ['pk-video-left', 'pk-video-right'].forEach((id) => {
+      const isLocalSide = (id === 'pk-video-left' && isSideA) || (id === 'pk-video-right' && !isSideA);
+      const el = document.getElementById(id);
+      if (el) {
+        const elements = el.querySelectorAll('video, .agora_video_player');
+        elements.forEach((v: any) => {
+          const val = isLocalSide && mirror ? 'scaleX(-1)' : 'none';
+          v.style.setProperty('transform', val, 'important');
+          v.style.setProperty('-webkit-transform', val, 'important');
+        });
+      }
+    });
+  }, [isSideA]);
+
   const handleToggleMirror = useCallback(() => {
     setMirrorOn((m) => {
       const next = !m;
+      onSetMirror?.(next);
+      const shouldMirror = isHost && facingMode === 'user' && next;
+      applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast]);
+  }, [showToast, onSetMirror, isHost, facingMode, applyVideoMirror]);
+
+  useEffect(() => {
+    const shouldMirror = isHost && facingMode === 'user' && mirrorOn;
+    onSetMirror?.(mirrorOn);
+    applyVideoMirror(shouldMirror);
+
+    const t1 = setTimeout(() => applyVideoMirror(shouldMirror), 150);
+    const t2 = setTimeout(() => applyVideoMirror(shouldMirror), 350);
+    const t3 = setTimeout(() => applyVideoMirror(shouldMirror), 700);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [mirrorOn, isHost, facingMode, isSideA, onSetMirror, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
@@ -330,11 +378,9 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full transition-transform duration-300 ease-in-out"
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
         style={{
           filter: combinedFilterCss,
-          transform: mirrorOn ? 'scaleX(-1)' : 'none',
-          transformOrigin: 'center center',
         }}
       />
 

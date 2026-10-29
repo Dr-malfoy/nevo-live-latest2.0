@@ -114,9 +114,11 @@ export const LiveStreamPage = ({
     toggleCamera,
     toggleMic,
     switchCamera,
+    setMirror,
     leaveChannel,
     getLocalStream,
     applyBeautyOptions,
+    facingMode,
   } = useAgora();
 
   const micOnRef = useRef(micOn);
@@ -1408,6 +1410,8 @@ export const LiveStreamPage = ({
         activeFilterId={activeFilter.id}
         onSelectFilter={handleSelectFilter}
         onApplyBeautyEffect={applyBeautyOptions}
+        facingMode={facingMode}
+        onSetMirror={setMirror}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters((v) => !v)}
         pkBattle={pkBattle}

@@ -487,7 +487,6 @@
     object-fit: cover !important;
     object-position: center center !important;
     image-rendering: -webkit-optimize-contrast;
-    transform: translateZ(0);
     backface-visibility: hidden;
   }
 }
