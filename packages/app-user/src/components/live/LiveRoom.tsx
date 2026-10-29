@@ -24,6 +24,7 @@ import { PKBattleView } from './PKBattleView';
 import { GiftGalleryModal } from './GiftGalleryModal';
 import { AudienceRewardModal } from './AudienceRewardModal';
 import { ShareModal } from './ShareModal';
+import { useUIStore } from '../../stores';
 import type { LiveRoomProps } from './types';
 
 export const LiveRoom = ({
@@ -107,11 +108,28 @@ export const LiveRoom = ({
   const [showGiftGallery, setShowGiftGallery] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
 
+  // Automatically close matchmaking modal when PK Battle begins
+  useEffect(() => {
+    if (pkBattle) {
+      setShowPKModal(false);
+      setToolsOpen(false);
+    }
+  }, [pkBattle]);
+
   // Beauty, Mirror, Noise Reduction State
+  const showToast = useUIStore((s) => s.showToast);
   const [smoothness, setSmoothness] = useState(0);
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(false);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
+
+  const handleToggleMirror = useCallback(() => {
+    setMirrorOn((m) => {
+      const next = !m;
+      showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
+      return next;
+    });
+  }, [showToast]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
@@ -312,12 +330,11 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full ${
-          mirrorOn ? '[&_video]:!-scale-x-100' : ''
-        }`}
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full transition-transform duration-300 ease-in-out"
         style={{
           filter: combinedFilterCss,
-          transform: mirrorOn ? 'scaleX(-1)' : undefined,
+          transform: mirrorOn ? 'scaleX(-1)' : 'none',
+          transformOrigin: 'center center',
         }}
       />
 
@@ -588,7 +605,7 @@ export const LiveRoom = ({
         onOpenLiveData={() => setShowLiveData(true)}
         onOpenMessenger={() => setShowMessenger(true)}
         onOpenBeauty={() => setShowBeauty(true)}
-        onToggleMirror={() => setMirrorOn((m) => !m)}
+        onToggleMirror={handleToggleMirror}
         mirrorOn={mirrorOn}
         onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
         noiseReductionOn={noiseReductionOn}
@@ -640,7 +657,7 @@ export const LiveRoom = ({
         onWhiteningChange={handleWhiteningChange}
         mirrorOn={mirrorOn}
         isMirrored={mirrorOn}
-        onToggleMirror={() => setMirrorOn((m) => !m)}
+        onToggleMirror={handleToggleMirror}
         noiseReductionOn={noiseReductionOn}
         noiseReduction={noiseReductionOn}
         onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
@@ -652,6 +669,7 @@ export const LiveRoom = ({
         isOpen={showPKModal}
         onClose={() => setShowPKModal(false)}
         streamId={stream?._id || ''}
+        pkBattle={pkBattle}
       />
 
       {/* Daily PK Ranking Leaderboard Modal */}
@@ -808,6 +826,7 @@ export const LiveRoom = ({
           onOpenPKRank={() => setShowPKRank(true)}
           onOpenGift={onOpenGift}
           onShare={() => setShowShareModal(true)}
+          isMirrored={mirrorOn}
         />
       )}
 

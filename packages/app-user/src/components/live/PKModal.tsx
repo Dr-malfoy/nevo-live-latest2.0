@@ -19,6 +19,7 @@ interface PKModalProps {
   onClose: () => void;
   streamId: string;
   onInviteSent?: (opponent: LiveOpponentHost, duration: number) => void;
+  pkBattle?: any;
 }
 
 type TabType = 'friends' | 'random' | 'custom';
@@ -28,6 +29,7 @@ export const PKModal: React.FC<PKModalProps> = ({
   onClose,
   streamId,
   onInviteSent,
+  pkBattle,
 }) => {
   const showToast = useUIStore((s) => s.showToast);
   const [tab, setTab] = useState<TabType>('friends');
@@ -77,6 +79,13 @@ export const PKModal: React.FC<PKModalProps> = ({
 
   // Countdown timer for pending request
   useEffect(() => {
+    if (pkBattle) {
+      setPendingOpponent(null);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      onClose();
+      return;
+    }
+
     if (!pendingOpponent) {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       return;

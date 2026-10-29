@@ -96,6 +96,7 @@ export interface PKBattleViewProps {
   onOpenPKRank?: () => void;
   onOpenGift?: () => void;
   onShare?: () => void;
+  isMirrored?: boolean;
 }
 
 export const PKBattleView: React.FC<PKBattleViewProps> = ({
@@ -111,6 +112,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   leftHost,
   rightHost,
   isHost,
+  isMirrored = false,
   currentUserId,
   messages = [],
   onSendMessage,
@@ -646,7 +648,11 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             {/* Live Video Mount Point (Agora/WebRTC video streams attach here) */}
             <div
               id="pk-video-left"
-              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1]"
+              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1] transition-transform duration-300 ease-in-out"
+              style={{
+                transform: isMirrored && isHost && isSideA ? 'scaleX(-1)' : 'none',
+                transformOrigin: 'center center',
+              }}
             />
 
             {/* Ambient Background & Animated Poster Fallback */}
@@ -757,7 +763,11 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             {/* Live Video Mount Point */}
             <div
               id="pk-video-right"
-              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1]"
+              className="absolute inset-0 w-full h-full overflow-hidden [&_video]:!w-full [&_video]:!h-full [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full z-[1] transition-transform duration-300 ease-in-out"
+              style={{
+                transform: isMirrored && isHost && !isSideA ? 'scaleX(-1)' : 'none',
+                transformOrigin: 'center center',
+              }}
             />
 
             {/* Ambient Background & Animated Poster Fallback */}

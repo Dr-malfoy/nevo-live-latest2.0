@@ -13,7 +13,6 @@ import {
   PiFlagFill as Flag,
   PiStarFill as Star,
   PiGearSixFill as Gear,
-  PiMusicNoteFill as MusicNote,
   PiBroadcastFill as Broadcast,
   PiSlidersBold as Sliders,
   PiTrophyFill as Trophy,
@@ -203,15 +202,6 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   onClick={() => {
                     onClose();
                     onOpenLiveData?.();
-                  }}
-                />
-
-                <ToolButton
-                  id="ambient_sound"
-                  label="Ambient Sound"
-                  icon={<MusicNote className="w-6 h-6 text-purple-400" />}
-                  onClick={() => {
-                    showToast('Ambient background music active', 'info');
                   }}
                 />
               </div>

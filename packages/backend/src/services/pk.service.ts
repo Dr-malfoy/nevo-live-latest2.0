@@ -427,6 +427,18 @@ export const pkService = {
     if (streamA) io.to(`stream:${streamA}`).emit('pk:live:start', startPayload);
     if (streamB) io.to(`stream:${streamB}`).emit('pk:live:start', startPayload);
 
+    // Also broadcast directly to each host's personal socket room so neither host is ever stuck waiting
+    const userA = battle.teamA[0]?.toString();
+    const userB = battle.teamB[0]?.toString();
+    if (userA) {
+      io.to(userA).emit('pk:live:start', startPayload);
+      io.to(`user:${userA}`).emit('pk:live:start', startPayload);
+    }
+    if (userB) {
+      io.to(userB).emit('pk:live:start', startPayload);
+      io.to(`user:${userB}`).emit('pk:live:start', startPayload);
+    }
+
     // Guaranteed backend auto-end when time expires
     setTimeout(async () => {
       try {
