@@ -125,6 +125,10 @@ export const LiveRoom = ({
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
 
+  const isSideA = pkBattle
+    ? (pkBattle.hostA?.userId === user?._id || (currentStreamId ? currentStreamId === pkBattle.streamIdA : pkBattle.streamIdA === stream?._id))
+    : true;
+
   // Directly sets transform: scaleX(-1) on video elements to ensure instant, reliable mirroring on Android WebView & browsers
   const applyVideoMirror = useCallback((mirror: boolean) => {
     const videoArea = document.getElementById('agora-video-area');
@@ -156,15 +160,15 @@ export const LiveRoom = ({
     setMirrorOn((m) => {
       const next = !m;
       onSetMirror?.(next);
-      const shouldMirror = isHost && facingMode === 'user' && next;
+      const shouldMirror = isHost && next;
       applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast, onSetMirror, isHost, facingMode, applyVideoMirror]);
+  }, [showToast, onSetMirror, isHost, applyVideoMirror]);
 
   useEffect(() => {
-    const shouldMirror = isHost && facingMode === 'user' && mirrorOn;
+    const shouldMirror = isHost && mirrorOn;
     onSetMirror?.(mirrorOn);
     applyVideoMirror(shouldMirror);
 
@@ -177,7 +181,7 @@ export const LiveRoom = ({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [mirrorOn, isHost, facingMode, isSideA, onSetMirror, applyVideoMirror]);
+  }, [mirrorOn, isHost, isSideA, onSetMirror, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
