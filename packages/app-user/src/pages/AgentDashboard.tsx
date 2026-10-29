@@ -847,9 +847,14 @@ export const AgentDashboard = () => {
                 <div className="w-px bg-slate-200 mx-3" />
                 <div className="flex-1">
                   <p className="text-xs text-slate-500">Total Live Hours</p>
-                  <p className="text-2xl font-black text-slate-900 tabular-nums">
-                    {myAgency.totalLiveHours || 0}h
-                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-2xl font-black text-slate-900 tabular-nums">
+                      {Number(myAgency.totalLiveHours || 0).toFixed(1)}h
+                    </p>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      {myAgency.totalLiveStreams || (myAgency as any)?.liveStreamCount || 0} Lives
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1200,7 +1205,7 @@ export const AgentDashboard = () => {
                       <p className="text-[10px] text-slate-400 font-medium mt-1">Total points earned</p>
                     </div>
 
-                    {/* Total Live Stream Hours */}
+                    {/* Total Live Stream Hours & Total Live Count */}
                     <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
                       <div className="flex items-center justify-between gap-1 mb-2">
                         <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
@@ -1210,10 +1215,17 @@ export const AgentDashboard = () => {
                           <ClockIcon className="w-3.5 h-3.5" />
                         </div>
                       </div>
-                      <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
-                        {myAgency?.totalLiveHours || 0}h
+                      <div className="flex items-baseline justify-between gap-1">
+                        <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                          {Number(myAgency?.totalLiveHours || 0).toFixed(1)}h
+                        </p>
+                        <span className="text-[11px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md tabular-nums">
+                          {myAgency?.totalLiveStreams || (myAgency as any)?.liveStreamCount || 0} Lives
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">
+                        Total broadcast time (Hosts & Agent)
                       </p>
-                      <p className="text-[10px] text-slate-400 font-medium mt-1">Total broadcast time</p>
                     </div>
 
                     {/* Total Members Count */}
@@ -1766,10 +1778,15 @@ export const AgentDashboard = () => {
                                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                                   UID: <strong className="text-slate-700">{member.uid}</strong>
                                 </p>
-                                {liveHours > 0 && (
+                                {(liveHours > 0 || ((h as any)?.liveStreams || 0) > 0) ? (
                                   <p className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
                                     <ClockIcon className="w-3 h-3" />
-                                    <span>{liveHours.toFixed(1)}h broadcasted</span>
+                                    <span>{liveHours.toFixed(1)}h broadcasted ({Number((h as any)?.liveStreams || 0)} lives)</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5 flex items-center gap-1">
+                                    <ClockIcon className="w-3 h-3 text-slate-300" />
+                                    <span>0.0h broadcasted (0 lives)</span>
                                   </p>
                                 )}
                               </div>

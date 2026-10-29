@@ -24,6 +24,7 @@ export interface IAgencyDocument extends Document {
   hosts: Schema.Types.ObjectId[];
   totalContribution: number;
   totalLiveHours: number;
+  totalLiveStreams?: number;
   monthlyLiveGiftCoins?: number;
   monthlyCommissionCycle?: string;
   welcomeBanner?: IAgencyWelcomeBanner;
@@ -63,6 +64,7 @@ const agencySchema = new Schema<IAgencyDocument>(
     hosts: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     totalContribution: { type: Number, default: 0, min: 0, index: true },
     totalLiveHours: { type: Number, default: 0, min: 0 },
+    totalLiveStreams: { type: Number, default: 0, min: 0 },
     monthlyLiveGiftCoins: { type: Number, default: 0, min: 0 },
     monthlyCommissionCycle: { type: String, default: '' },
     welcomeBanner: {

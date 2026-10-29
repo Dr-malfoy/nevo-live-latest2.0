@@ -81,8 +81,11 @@ export const LiveStreamPage = ({
     hostName: string;
     hostAvatar?: string;
     image?: string;
+    streamTitle?: string;
     isHost: boolean;
   } | null>(null);
+  const streamRef = useRef<Stream | null>(null);
+  const hostRef = useRef<any>(null);
   const totalViewersRef = useRef(1);
   const peakViewersRef = useRef(1);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -150,6 +153,15 @@ export const LiveStreamPage = ({
     }
     return `0:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
+
+  useEffect(() => {
+    streamRef.current = stream;
+    if (stream?.hostId && typeof stream.hostId !== 'string') {
+      hostRef.current = stream.hostId;
+    } else if ((stream as any)?.host && typeof (stream as any).host !== 'string') {
+      hostRef.current = (stream as any).host;
+    }
+  }, [stream]);
 
   // Start/stop elapsed timer when joining/leaving
   useEffect(() => {
@@ -306,16 +318,20 @@ export const LiveStreamPage = ({
         // If the stream was ended and current viewer is not the host, display the recap directly
         if (data.data.status === 'ended' && !amIHost) {
           endedRef.current = true;
-          const titlePicture = data.data.cover || data.data.thumbnail;
-          const profilePicture = data.data.host?.avatar;
-          const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+          const hostData = data.data.host || data.data.hostId;
+          const rawCover = data.data.cover && data.data.cover.trim() !== '' ? data.data.cover : '';
+          const rawAvatar = hostData?.avatar;
+          const titlePicture = rawCover ? getMediaUrl(rawCover) : '';
+          const profilePicture = rawAvatar ? getMediaUrl(rawAvatar) : '';
+
           setStreamEndedRecap({
             duration: 'Ended',
             viewers: Math.max(data.data.totalViewers || 0, data.data.viewerCount || 0, 1),
             likes: data.data.likeCount || 0,
-            hostName: data.data.host?.nickname || 'Streamer',
-            hostAvatar: resolvedImage,
-            image: resolvedImage,
+            hostName: hostData?.nickname || 'Streamer',
+            hostAvatar: profilePicture || undefined,
+            image: titlePicture || undefined,
+            streamTitle: data.data.title,
             isHost: false,
           });
           return;
@@ -513,12 +529,8 @@ export const LiveStreamPage = ({
         leaveChannel();
       } catch {}
 
-      // If user is currently in minimized window (or browsing other pages):
-      // Immediately close and remove the floating mini player without taking over the screen!
-      const currentPath = window.location.pathname;
-      const isViewingFullScreen = currentPath.startsWith('/live/') || currentPath.startsWith('/stream/');
-
-      if (isMinimized || !isViewingFullScreen) {
+      // If user is currently in floating minimized mini-player, close cleanly
+      if (isMinimized) {
         closeStream();
         onCloseProp?.();
         showToast('Live stream has ended', 'info');
@@ -527,17 +539,23 @@ export const LiveStreamPage = ({
 
       setMinimized(false);
 
-      const titlePicture = stream?.cover || stream?.thumbnail || (stream as any)?.coverImage;
-      const profilePicture = host?.avatar || user?.avatar;
-      const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+      const currentStream = streamRef.current || stream;
+      const currentHost = hostRef.current || host || (currentStream?.hostId as any) || (currentStream as any)?.host;
+
+      // If live has a custom cover picture, use it. Otherwise, use host's profile avatar.
+      const rawCover = currentStream?.cover && currentStream.cover.trim() !== '' ? currentStream.cover : '';
+      const rawAvatar = currentHost?.avatar || userRef.current?.avatar;
+      const titlePicture = rawCover ? getMediaUrl(rawCover) : '';
+      const profilePicture = rawAvatar ? getMediaUrl(rawAvatar) : '';
 
       const recap = {
         duration: formatRecapDuration(elapsedRef.current),
-        viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
+        viewers: Math.max(totalViewersRef.current, peakViewersRef.current, currentStream?.viewerCount || 0, 1),
         likes: likeCount,
-        hostName: host?.nickname || 'Streamer',
-        hostAvatar: resolvedImage,
-        image: resolvedImage,
+        hostName: currentHost?.nickname || 'Streamer',
+        hostAvatar: profilePicture || undefined,
+        image: titlePicture || undefined,
+        streamTitle: currentStream?.title,
         isHost: false,
       };
 
@@ -1034,9 +1052,17 @@ export const LiveStreamPage = ({
   // fall back to the logged-in user's identity so the host card still shows a name.
   const host = stream && stream.hostId && typeof stream.hostId !== 'string'
     ? stream.hostId
-    : isHost && user
-      ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
-      : null;
+    : (stream as any)?.host && typeof (stream as any).host !== 'string'
+      ? (stream as any).host
+      : isHost && user
+        ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
+        : null;
+
+  useEffect(() => {
+    if (host) {
+      hostRef.current = host;
+    }
+  }, [host]);
 
   const [isClosing, setIsClosing] = useState(false);
 
@@ -1045,6 +1071,7 @@ export const LiveStreamPage = ({
     setIsClosing(true);
     navigatingAwayRef.current = true;
     endedRef.current = true;
+    setStreamEndedRecap(null);
     closeStream();
     onCloseProp?.();
     if (id) fireEnd();
@@ -1055,17 +1082,22 @@ export const LiveStreamPage = ({
     setShowEndConfirm(false);
     endedRef.current = true;
 
-    const titlePicture = stream?.cover || stream?.thumbnail || (stream as any)?.coverImage;
-    const profilePicture = host?.avatar || user?.avatar;
-    const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+    const currentStream = streamRef.current || stream;
+    const currentHost = hostRef.current || host || user;
+
+    const rawCover = currentStream?.cover && currentStream.cover.trim() !== '' ? currentStream.cover : '';
+    const rawAvatar = currentHost?.avatar || user?.avatar;
+    const titlePicture = rawCover ? getMediaUrl(rawCover) : '';
+    const profilePicture = rawAvatar ? getMediaUrl(rawAvatar) : '';
 
     const recap = {
       duration: formatRecapDuration(elapsedRef.current),
-      viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
+      viewers: Math.max(totalViewersRef.current, peakViewersRef.current, currentStream?.viewerCount || 0, 1),
       likes: likeCount,
-      hostName: host?.nickname || user?.nickname || 'Streamer',
-      hostAvatar: resolvedImage,
-      image: resolvedImage,
+      hostName: currentHost?.nickname || user?.nickname || 'Streamer',
+      hostAvatar: profilePicture || undefined,
+      image: titlePicture || undefined,
+      streamTitle: currentStream?.title,
       isHost: true,
     };
 
@@ -1172,6 +1204,7 @@ export const LiveStreamPage = ({
         hostName={streamEndedRecap.hostName}
         hostAvatar={streamEndedRecap.hostAvatar}
         image={streamEndedRecap.image}
+        streamTitle={streamEndedRecap.streamTitle}
         isHost={streamEndedRecap.isHost}
         onGoHome={() => {
           setIsClosing(true);

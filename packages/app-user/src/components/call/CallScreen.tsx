@@ -29,7 +29,7 @@ import { useVideoFilters, FILTERS } from '../../hooks/useVideoFilters';
 import { callApi, type CallParticipant } from '../../api/call.api';
 import { useSocketStore, useAuthStore } from '../../stores';
 import { CoinsFinishedOverlay } from './CoinsFinishedOverlay';
-import { ringtone } from '../../lib/ringtone';
+import { ringtone, reconnectSound } from '../../lib/ringtone';
 
 interface CallScreenProps {
   /** Incoming call payload (from socket) — callee answers with accept. */
@@ -114,6 +114,19 @@ export const CallScreen = ({
   const currentUser = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
 
+  const session = incoming
+    ? { callId: incoming.callId, channel: incoming.channel, type: incoming.type, token: incoming.token }
+    : outgoing
+      ? { callId: outgoing.callId, channel: outgoing.channel, type: outgoing.type, token: outgoing.token }
+      : undefined;
+
+  const other = incoming?.initiator || outgoing?.callee;
+  const isVideo = incoming?.type === 'video' || outgoing?.type === 'video';
+
+  const freeMinuteActive = Boolean(
+    isFreeMinuteApplied ?? (incoming?.isFreeMinuteApplied || outgoing?.isFreeMinuteApplied)
+  );
+
   const [answering, setAnswering] = useState(Boolean(accepted));
   const [ringing, setRinging] = useState(!accepted && (!!incoming || !!outgoing));
   const [callConnected, setCallConnected] = useState(Boolean(accepted));
@@ -137,6 +150,7 @@ export const CallScreen = ({
   useEffect(() => {
     return () => {
       ringtone.stop();
+      reconnectSound.stop();
       try {
         (window as any).NevoNativeBridge?.stopRingtone?.();
       } catch {}
@@ -158,7 +172,7 @@ export const CallScreen = ({
   const billingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const endedRef = useRef(false);
-  const callIdRef = useRef<string>('');
+  const callIdRef = useRef<string>(session?.callId || '');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Network grace: 30-second reconnect countdown
@@ -172,16 +186,24 @@ export const CallScreen = ({
   const isReconnectingRef = useRef(false);
 
   const handleNetworkLost = useCallback((reason: string = 'Internet connection lost') => {
+    // Only start 30s grace if the call was already connected (not while dialing or ringing)
+    if (!callConnected) return;
+
+    // If browser is online and this was a generic 'Internet connection lost', ignore false positive
+    if (typeof navigator !== 'undefined' && navigator.onLine && reason === 'Internet connection lost') {
+      return;
+    }
+
     // If already in 30s grace reconnecting mode, don't restart timer
     if (networkTimerRef.current || isReconnectingRef.current) return;
-
-    // Only start 30s grace if the call was already connected or joined
-    if (!joined && !callConnected) return;
 
     isReconnectingRef.current = true;
     setIsReconnecting(true);
     setReconnectCountdown(30);
     setReconnectNotice(reason);
+
+    // Play distinct network disconnect / reconnecting audio alert
+    reconnectSound.start();
 
     let remaining = 30;
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
@@ -199,6 +221,7 @@ export const CallScreen = ({
       networkTimerRef.current = undefined;
       isReconnectingRef.current = false;
       setIsReconnecting(false);
+      reconnectSound.stop();
 
       if (!endedRef.current) {
         endedRef.current = true;
@@ -206,7 +229,7 @@ export const CallScreen = ({
         endCall().finally(() => onClose('ended'));
       }
     }, 30_000);
-  }, [joined, callConnected, endCall, onClose]);
+  }, [callConnected, endCall, onClose]);
 
   const handleNetworkRecovered = useCallback(() => {
     if (networkTimerRef.current) {
@@ -225,31 +248,22 @@ export const CallScreen = ({
       setConnectionRestoredNotice(true);
       setTimeout(() => setConnectionRestoredNotice(false), 3000);
 
+      // Stop warning sound and play connection restored chime
+      reconnectSound.playRestoredChime();
+
       // Re-verify and rejoin socket call room
       if (session?.callId) {
         joinCallRoom(session.callId);
       }
+    } else {
+      reconnectSound.stop();
     }
   }, [session?.callId, joinCallRoom]);
-
-  const freeMinuteActive = Boolean(
-    isFreeMinuteApplied ?? (incoming?.isFreeMinuteApplied || outgoing?.isFreeMinuteApplied)
-  );
 
   const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && !(freeMinuteActive && elapsed < 60) && (
     isLowBalance ||
     (currentUser?.diamonds != null && currentUser.diamonds < coinsPerMinute * 2)
   );
-
-  const session = incoming
-    ? { callId: incoming.callId, channel: incoming.channel, type: incoming.type, token: incoming.token }
-    : outgoing
-      ? { callId: outgoing.callId, channel: outgoing.channel, type: outgoing.type, token: outgoing.token }
-      : undefined;
-  callIdRef.current = session?.callId || '';
-
-  const other = incoming?.initiator || outgoing?.callee;
-  const isVideo = incoming?.type === 'video' || outgoing?.type === 'video';
 
   // Join per-call socket room
   useEffect(() => {
@@ -340,6 +354,7 @@ export const CallScreen = ({
     const onCallEnded = (payload: any) => {
       if (payload?.callId !== session.callId) return;
       ringtone.stop();
+      reconnectSound.stop();
       if (!endedRef.current) {
         endedRef.current = true;
         endCall().finally(() => onClose('ended'));
@@ -394,8 +409,8 @@ export const CallScreen = ({
     socket.on('balance:update', onBalanceUpdate);
 
     const onSocketDisconnect = (reason: string) => {
-      if (reason !== 'io client disconnect') {
-        handleNetworkLost('Server connection interrupted');
+      if (reason !== 'io client disconnect' && callConnected && typeof navigator !== 'undefined' && !navigator.onLine) {
+        handleNetworkLost('Internet connection lost');
       }
     };
     const onSocketConnect = () => {
@@ -419,7 +434,7 @@ export const CallScreen = ({
       socket.off('disconnect', onSocketDisconnect);
       socket.off('connect', onSocketConnect);
     };
-  }, [socket, session?.callId, chatOpen, currentUser?._id, endCall, onClose, updateUser, handleNetworkLost, handleNetworkRecovered]);
+  }, [socket, session?.callId, chatOpen, currentUser?._id, callConnected, endCall, onClose, updateUser, handleNetworkLost, handleNetworkRecovered]);
 
   // Window online/offline network detection
   useEffect(() => {
@@ -427,7 +442,9 @@ export const CallScreen = ({
       handleNetworkRecovered();
     };
     const onOffline = () => {
-      handleNetworkLost('Internet connection lost');
+      if (callConnected) {
+        handleNetworkLost('Internet connection lost');
+      }
     };
 
     window.addEventListener('online', onOnline);
@@ -437,29 +454,17 @@ export const CallScreen = ({
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
     };
-  }, [handleNetworkLost, handleNetworkRecovered]);
+  }, [callConnected, handleNetworkLost, handleNetworkRecovered]);
 
-  // Agora RTC connection state monitor
+  // Agora RTC connection state monitor: ONLY trigger reconnecting if Agora is actively RECONNECTING during connected call
   useEffect(() => {
-    if (connectionState === 'RECONNECTING' || connectionState === 'DISCONNECTED') {
-      if (joined || callConnected) {
-        handleNetworkLost('Call connection interrupted');
-      }
+    if (!callConnected) return;
+    if (connectionState === 'RECONNECTING') {
+      handleNetworkLost('Call connection reconnecting…');
     } else if (connectionState === 'CONNECTED') {
       handleNetworkRecovered();
     }
-  }, [connectionState, joined, callConnected, handleNetworkLost, handleNetworkRecovered]);
-
-  // Monitor remote user presence in active connected 1:1 call
-  useEffect(() => {
-    if (callConnected && joined && !ringing && !incoming) {
-      if (remoteUsers.length === 0) {
-        handleNetworkLost('Other user is reconnecting…');
-      } else {
-        handleNetworkRecovered();
-      }
-    }
-  }, [remoteUsers.length, callConnected, joined, ringing, incoming, handleNetworkLost, handleNetworkRecovered]);
+  }, [connectionState, callConnected, handleNetworkLost, handleNetworkRecovered]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -633,6 +638,7 @@ export const CallScreen = ({
 
   const handleReject = async () => {
     ringtone.stop();
+    reconnectSound.stop();
     if (endedRef.current) return;
     endedRef.current = true;
     if (incoming) await callApi.end(incoming.callId, 'rejected').catch(() => {});
@@ -644,6 +650,7 @@ export const CallScreen = ({
     if (endedRef.current) return;
     endedRef.current = true;
     ringtone.stop();
+    reconnectSound.stop();
     if (session) {
       await callApi.end(session.callId, 'ended').catch(() => {});
       if (isAudience && coinsPerMinute > 0) {
@@ -1334,18 +1341,18 @@ export const CallScreen = ({
       )}
 
       {/* 11. Luxury Responsive Floating Bottom Control Dock */}
-      <footer className="absolute bottom-6 sm:bottom-8 inset-x-0 z-30 flex items-center justify-center px-4 pointer-events-none">
+      <footer className="absolute bottom-3 sm:bottom-8 inset-x-0 z-30 flex items-center justify-center px-2 sm:px-4 pointer-events-none">
         {incoming && ringing && !answering ? (
           /* Incoming Call Action Controls (Decline & Accept) */
-          <div className="pointer-events-auto flex items-center justify-around w-full max-w-sm px-6 py-4 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.8)]">
+          <div className="pointer-events-auto flex items-center justify-around w-full max-w-xs sm:max-w-sm px-6 py-4 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.8)]">
             {/* Decline Action */}
             <div className="flex flex-col items-center gap-2">
               <button
                 onClick={handleReject}
                 aria-label="Decline call"
-                className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-500 to-red-700 shadow-[0_0_30px_rgba(244,63,94,0.5)] border border-rose-400/40 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-rose-500 to-red-700 shadow-[0_0_30px_rgba(244,63,94,0.5)] border border-rose-400/40 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all"
               >
-                <PhoneOff className="w-7 h-7" />
+                <PhoneOff className="w-6 h-6 sm:w-7 sm:h-7" />
               </button>
               <span className="text-xs font-black text-rose-400 tracking-wide">Decline</span>
             </div>
@@ -1355,26 +1362,26 @@ export const CallScreen = ({
               <button
                 onClick={handleAccept}
                 aria-label="Accept call"
-                className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_35px_rgba(16,185,129,0.7)] border border-emerald-300/50 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all animate-pulse"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_35px_rgba(16,185,129,0.7)] border border-emerald-300/50 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all animate-pulse"
               >
-                <PhoneCall className="w-7 h-7" />
+                <PhoneCall className="w-6 h-6 sm:w-7 sm:h-7" />
               </button>
               <span className="text-xs font-black text-emerald-400 tracking-wide">Accept</span>
             </div>
           </div>
         ) : (
           /* Active / Connected Call Control Dock */
-          <div className="pointer-events-auto flex items-center gap-2.5 sm:gap-3.5 px-4 sm:px-5 py-3 rounded-full bg-neutral-950/75 backdrop-blur-3xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.85)]">
+          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-3.5 px-2 sm:px-5 py-2 sm:py-3 rounded-full bg-neutral-950/80 backdrop-blur-3xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.85)] max-w-[calc(100vw-1rem)] sm:max-w-fit overflow-x-auto no-scrollbar">
             {/* NEXT Match button (Random Match Mode) */}
             {joined && onNext && (
               <button
                 onClick={onNext}
                 aria-label="Next match"
-                className="h-11 sm:h-12 px-3.5 rounded-full flex items-center gap-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white font-black text-xs shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all"
+                className="shrink-0 h-9 sm:h-12 px-2.5 sm:px-3.5 rounded-full flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white font-black text-[11px] sm:text-xs shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all"
                 title="Next match"
               >
                 <span>NEXT</span>
-                <FastForwardIcon className="w-4 h-4" />
+                <FastForwardIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             )}
 
@@ -1387,16 +1394,16 @@ export const CallScreen = ({
                     setFilterPickerOpen(false);
                   }}
                   aria-label="Toggle text chat"
-                  className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`relative shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                     chatOpen
                       ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_18px_rgba(168,85,247,0.6)]'
                       : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                   }`}
                   title="In-call chat"
                 >
-                  <ChatIcon className="w-5 h-5" />
+                  <ChatIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   {unreadChatCount > 0 && !chatOpen && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-pink-500 text-white text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] px-1 rounded-full bg-pink-500 text-white text-[9px] sm:text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
                       {unreadChatCount}
                     </span>
                   )}
@@ -1407,10 +1414,10 @@ export const CallScreen = ({
                   <button
                     onClick={switchCamera}
                     aria-label={`Switch camera to ${facingMode === 'user' ? 'rear' : 'front'}`}
-                    className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
+                    className="shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
                     title={`Flip Camera (${facingMode === 'user' ? 'Front -> Back' : 'Back -> Front'})`}
                   >
-                    <CameraRotate className="w-5 h-5" />
+                    <CameraRotate className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1419,14 +1426,14 @@ export const CallScreen = ({
                   <button
                     onClick={toggleMirror}
                     aria-label={mirrorOn ? 'Disable mirror mode' : 'Enable mirror mode'}
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                       mirrorOn
                         ? 'bg-purple-600/25 text-purple-300 border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.4)]'
                         : 'bg-white/10 text-white/70 border-white/10 hover:bg-white/20'
                     }`}
                     title={mirrorOn ? 'Mirroring: ON (natural movement)' : 'Mirroring: OFF'}
                   >
-                    <MirrorIcon className="w-5 h-5" />
+                    <MirrorIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1438,14 +1445,14 @@ export const CallScreen = ({
                       setChatOpen(false);
                     }}
                     aria-label="Beauty filter"
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                       filterPickerOpen || activeFilter.id !== 'natural'
                         ? 'bg-pink-500 text-white border-pink-400 shadow-[0_0_18px_rgba(236,72,153,0.7)]'
                         : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                     }`}
                     title="Beauty filters"
                   >
-                    <Sparkles className="w-5 h-5" />
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1454,14 +1461,14 @@ export const CallScreen = ({
                   <button
                     onClick={toggleCamera}
                     aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                       cameraOn
                         ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                         : 'bg-rose-500/25 text-rose-400 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.3)]'
                     }`}
                     title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
                   >
-                    {cameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+                    {cameraOn ? <Video className="w-4 h-4 sm:w-5 sm:h-5" /> : <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" />}
                   </button>
                 )}
 
@@ -1469,40 +1476,40 @@ export const CallScreen = ({
                 <button
                   onClick={toggleMic}
                   aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                     micOn
                       ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                       : 'bg-rose-500/25 text-rose-400 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.3)]'
                   }`}
                   title={micOn ? 'Mute microphone' : 'Unmute microphone'}
                 >
-                  {micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                  {micOn ? <Mic className="w-4 h-4 sm:w-5 sm:h-5" /> : <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
 
                 {/* 6. Loudspeaker Toggle */}
                 <button
                   onClick={toggleSpeaker}
                   aria-label={speakerOn ? 'Turn loudspeaker off' : 'Turn loudspeaker on'}
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
                     speakerOn
                       ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
                       : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                   }`}
                   title={speakerOn ? 'Loudspeaker: ON' : 'Loudspeaker: OFF (Earpiece mode)'}
                 >
-                  {speakerOn ? <SpeakerIcon className="w-5 h-5" /> : <SpeakerSlashIcon className="w-5 h-5" />}
+                  {speakerOn ? <SpeakerIcon className="w-4 h-4 sm:w-5 sm:h-5" /> : <SpeakerSlashIcon className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
               </>
             )}
 
-            {/* 6. End Call Button */}
+            {/* 7. End Call Button */}
             <button
               onClick={handleHangup}
               aria-label="End call"
-              className="w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-rose-600 via-red-600 to-rose-700 shadow-[0_0_24px_rgba(225,29,72,0.7)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
+              className="shrink-0 w-10 h-10 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-rose-600 via-red-600 to-rose-700 shadow-[0_0_24px_rgba(225,29,72,0.7)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
               title="End call"
             >
-              <PhoneOff className="w-6 h-6" />
+              <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
         )}

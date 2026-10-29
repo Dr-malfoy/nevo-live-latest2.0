@@ -77,6 +77,9 @@ export interface AgentHostRow {
   partyDurationSec: number;
   earnings: number;
   commission: number;
+  liveHours?: number;
+  durationHours?: number;
+  liveStreams?: number;
 }
 
 export interface HostApplication {

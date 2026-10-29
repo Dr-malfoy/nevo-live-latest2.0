@@ -677,6 +677,7 @@ export const LiveRoom = ({
         onClose={() => setShowPKModal(false)}
         streamId={stream?._id || ''}
         pkBattle={pkBattle}
+        socket={socket}
       />
 
       {/* Daily PK Ranking Leaderboard Modal */}

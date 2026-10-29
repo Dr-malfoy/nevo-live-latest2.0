@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiXBold as X,
@@ -9,6 +9,7 @@ import {
   PiTimerBold as Timer,
   PiCircleNotchBold as Spinner,
   PiClockCountdownBold as CountdownIcon,
+  PiFastForwardBold as SkipForward,
 } from 'react-icons/pi';
 import { pkApi, type LiveOpponentHost } from '../../api/pk.api';
 import { useUIStore } from '../../stores';
@@ -20,6 +21,7 @@ interface PKModalProps {
   streamId: string;
   onInviteSent?: (opponent: LiveOpponentHost, duration: number) => void;
   pkBattle?: any;
+  socket?: any;
 }
 
 type TabType = 'friends' | 'random' | 'custom';
@@ -30,6 +32,7 @@ export const PKModal: React.FC<PKModalProps> = ({
   streamId,
   onInviteSent,
   pkBattle,
+  socket,
 }) => {
   const showToast = useUIStore((s) => s.showToast);
   const [tab, setTab] = useState<TabType>('friends');
@@ -41,19 +44,55 @@ export const PKModal: React.FC<PKModalProps> = ({
   const [friends, setFriends] = useState<LiveOpponentHost[]>([]);
   const [randomHosts, setRandomHosts] = useState<LiveOpponentHost[]>([]);
 
-  // Single pending match-request (only 1 host can be challenged at a time!)
+  // Sequential Matchmaking Queue State
+  const [isMatchmaking, setIsMatchmaking] = useState(false);
+  const [matchQueue, setMatchQueue] = useState<LiveOpponentHost[]>([]);
+  const [matchIndex, setMatchIndex] = useState(0);
+
+  // Active Pending Host State (for either sequential matchmaking or single friend invite)
   const [pendingOpponent, setPendingOpponent] = useState<LiveOpponentHost | null>(null);
-  const [pendingCountdown, setPendingCountdown] = useState<number>(15);
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const [pendingCountdown, setPendingCountdown] = useState<number>(12);
+
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMatchmakingRef = useRef(false);
+  const matchQueueRef = useRef<LiveOpponentHost[]>([]);
+  const matchIndexRef = useRef(0);
 
   // Custom search
   const [searchUid, setSearchUid] = useState('');
   const [searchedHost, setSearchedHost] = useState<LiveOpponentHost | null>(null);
   const [searching, setSearching] = useState(false);
 
+  // Clear timer safely
+  const clearCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, []);
+
+  // Stop matchmaking completely
+  const stopMatchmaking = useCallback(
+    (reason?: string) => {
+      clearCountdown();
+      isMatchmakingRef.current = false;
+      setIsMatchmaking(false);
+      setPendingOpponent(null);
+      setPendingCountdown(12);
+      setMatchQueue([]);
+      setMatchIndex(0);
+      setInvitingId(null);
+      if (reason) showToast(reason, 'info');
+    },
+    [clearCountdown, showToast]
+  );
+
   // Fetch opponents when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      stopMatchmaking();
+      return;
+    }
 
     let active = true;
     setLoading(true);
@@ -75,62 +114,113 @@ export const PKModal: React.FC<PKModalProps> = ({
     return () => {
       active = false;
     };
-  }, [isOpen, streamId]);
+  }, [isOpen, streamId, stopMatchmaking]);
 
-  // Countdown timer for pending request
-  useEffect(() => {
-    if (pkBattle) {
-      setPendingOpponent(null);
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      onClose();
-      return;
-    }
+  // Sequential matchmaking: challenge host at queue index
+  const sendMatchRequestAtIndex = useCallback(
+    async (index: number, queue?: LiveOpponentHost[]) => {
+      if (!isMatchmakingRef.current) return;
+      const targetQueue = queue || matchQueueRef.current;
 
-    if (!pendingOpponent) {
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      return;
-    }
-
-    setPendingCountdown(15);
-    countdownTimerRef.current = setInterval(() => {
-      setPendingCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(countdownTimerRef.current);
-          setPendingOpponent(null);
-          showToast('No response from host. You can challenge again.', 'info');
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    };
-  }, [pendingOpponent, showToast]);
-
-  // Handle Search Host
-  const handleSearch = async () => {
-    const q = searchUid.trim();
-    if (!q) return;
-    setSearching(true);
-    setSearchedHost(null);
-    try {
-      const res = await pkApi.searchHostByUid(q);
-      if (res) {
-        setSearchedHost(res);
-      } else {
-        showToast('No live host found with this UID', 'error');
+      if (!targetQueue || index >= targetQueue.length) {
+        stopMatchmaking('No opponents accepted this round. Please try again!');
+        return;
       }
-    } catch {
-      showToast('Search failed. Please check the UID.', 'error');
-    } finally {
-      setSearching(false);
+
+      const opponent = targetQueue[index];
+      const hostId = opponent.userId || opponent.hostId;
+      if (!hostId) {
+        // Skip invalid host and try next
+        sendMatchRequestAtIndex(index + 1, targetQueue);
+        return;
+      }
+
+      matchIndexRef.current = index;
+      setMatchIndex(index);
+      setPendingOpponent(opponent);
+      setPendingCountdown(12);
+      clearCountdown();
+
+      try {
+        setInvitingId(hostId);
+        await pkApi.inviteLivePk({
+          inviterStreamId: streamId,
+          targetHostId: hostId,
+          targetStreamId: opponent.streamId,
+          durationMinutes: Math.round(duration / 60),
+        });
+        showToast(
+          `Challenging ${opponent.nickname || 'Host'} (${index + 1}/${targetQueue.length})...`,
+          'info'
+        );
+        onInviteSent?.(opponent, duration);
+      } catch (err: any) {
+        console.warn('[Matchmaking] Invite failed for host', opponent.nickname, err);
+        // Automatically advance to next host immediately
+        sendMatchRequestAtIndex(index + 1, targetQueue);
+        return;
+      } finally {
+        setInvitingId(null);
+      }
+
+      // Start 12s countdown timer for host response
+      let timeLeft = 12;
+      countdownTimerRef.current = setInterval(() => {
+        timeLeft -= 1;
+        setPendingCountdown(timeLeft);
+        if (timeLeft <= 0) {
+          clearCountdown();
+          if (isMatchmakingRef.current) {
+            showToast(
+              `${opponent.nickname || 'Host'} did not respond. Trying next host...`,
+              'info'
+            );
+            sendMatchRequestAtIndex(index + 1, targetQueue);
+          }
+        }
+      }, 1000);
+    },
+    [streamId, duration, onInviteSent, showToast, clearCountdown, stopMatchmaking]
+  );
+
+  // Start automatic sequential matchmaking queue
+  const handleStartRandomMatchmaking = () => {
+    if (isMatchmaking) {
+      stopMatchmaking('Matchmaking stopped');
+      return;
     }
+
+    if (randomHosts.length === 0) {
+      showToast('No other live hosts available for random match right now', 'info');
+      return;
+    }
+
+    // Shuffle live hosts randomly
+    const shuffled = [...randomHosts].sort(() => Math.random() - 0.5);
+    isMatchmakingRef.current = true;
+    setIsMatchmaking(true);
+    matchQueueRef.current = shuffled;
+    setMatchQueue(shuffled);
+    matchIndexRef.current = 0;
+    setMatchIndex(0);
+
+    sendMatchRequestAtIndex(0, shuffled);
   };
 
-  // Handle Invite 1 Host (Only 1 request at a time!)
-  const handleInvite = async (opponent: LiveOpponentHost) => {
+  // Skip immediately to next host in queue
+  const handleSkipToNextHost = () => {
+    if (!isMatchmakingRef.current) return;
+    clearCountdown();
+    showToast('Skipping to next host...', 'info');
+    sendMatchRequestAtIndex(matchIndexRef.current + 1);
+  };
+
+  // Single host invite (from Friends tab or Custom UID tab)
+  const handleSingleInvite = async (opponent: LiveOpponentHost) => {
+    if (isMatchmaking) {
+      showToast('Random matchmaking is active. Please cancel it first.', 'info');
+      return;
+    }
     if (pendingOpponent) {
       showToast('A challenge is already pending. Please wait or cancel it.', 'info');
       return;
@@ -151,10 +241,22 @@ export const PKModal: React.FC<PKModalProps> = ({
         durationMinutes: Math.round(duration / 60),
       });
 
-      // Set single pending state
       setPendingOpponent(opponent);
+      setPendingCountdown(15);
       showToast(`PK challenge sent to ${opponent.nickname || 'Host'}!`, 'success');
       onInviteSent?.(opponent, duration);
+
+      clearCountdown();
+      let timeLeft = 15;
+      countdownTimerRef.current = setInterval(() => {
+        timeLeft -= 1;
+        setPendingCountdown(timeLeft);
+        if (timeLeft <= 0) {
+          clearCountdown();
+          setPendingOpponent(null);
+          showToast('No response from host. You can challenge again.', 'info');
+        }
+      }, 1000);
     } catch (err: any) {
       showToast(err?.message || 'Failed to send PK invitation', 'error');
       setPendingOpponent(null);
@@ -163,28 +265,66 @@ export const PKModal: React.FC<PKModalProps> = ({
     }
   };
 
-  // Handle Cancel Pending Invite
-  const handleCancelInvite = () => {
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-    setPendingOpponent(null);
-    showToast('Challenge request cancelled', 'info');
-  };
+  // Socket listeners for real-time declined / battle started
+  useEffect(() => {
+    if (!socket) return;
 
-  // Handle Random Quick Match: Picks EXACTLY 1 random host and sends 1 request
-  const handleRandomMatch = () => {
-    if (pendingOpponent) {
-      showToast('A match request is already waiting for response!', 'info');
-      return;
+    const handleDeclined = (data: any) => {
+      console.log('[PKModal] Received pk:live:declined event:', data);
+      if (isMatchmakingRef.current) {
+        showToast(
+          `${pendingOpponent?.nickname || 'Host'} declined. Automatically trying next host...`,
+          'info'
+        );
+        clearCountdown();
+        sendMatchRequestAtIndex(matchIndexRef.current + 1);
+      } else if (pendingOpponent) {
+        clearCountdown();
+        setPendingOpponent(null);
+        showToast(`${pendingOpponent.nickname || 'Host'} declined the PK challenge.`, 'info');
+      }
+    };
+
+    const handleBattleStart = () => {
+      stopMatchmaking();
+      onClose();
+    };
+
+    socket.on('pk:live:declined', handleDeclined);
+    socket.on('pk:live:start', handleBattleStart);
+
+    return () => {
+      socket.off('pk:live:declined', handleDeclined);
+      socket.off('pk:live:start', handleBattleStart);
+    };
+  }, [socket, pendingOpponent, showToast, clearCountdown, sendMatchRequestAtIndex, stopMatchmaking, onClose]);
+
+  // When pkBattle starts, close modal
+  useEffect(() => {
+    if (pkBattle) {
+      stopMatchmaking();
+      onClose();
     }
+  }, [pkBattle, stopMatchmaking, onClose]);
 
-    if (randomHosts.length === 0) {
-      showToast('No other hosts available for random match right now', 'info');
-      return;
+  // Handle Search Host by UID
+  const handleSearch = async () => {
+    const q = searchUid.trim();
+    if (!q) return;
+    setSearching(true);
+    setSearchedHost(null);
+    try {
+      const res = await pkApi.searchHostByUid(q);
+      if (res) {
+        setSearchedHost(res);
+      } else {
+        showToast('No live host found with this UID', 'error');
+      }
+    } catch {
+      showToast('Search failed. Please check the UID.', 'error');
+    } finally {
+      setSearching(false);
     }
-
-    const randomIndex = Math.floor(Math.random() * randomHosts.length);
-    const chosenOne = randomHosts[randomIndex];
-    handleInvite(chosenOne);
   };
 
   if (!isOpen) return null;
@@ -197,7 +337,10 @@ export const PKModal: React.FC<PKModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="absolute inset-0 bg-black/75 backdrop-blur-md"
-        onClick={onClose}
+        onClick={() => {
+          stopMatchmaking();
+          onClose();
+        }}
       />
 
       {/* Sheet Content */}
@@ -225,14 +368,17 @@ export const PKModal: React.FC<PKModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              stopMatchmaking();
+              onClose();
+            }}
             className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-white/70 hover:text-white"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Active 1-on-1 Pending Challenge Status Bar */}
+        {/* Active Pending Challenge or Matchmaking Status Bar */}
         <AnimatePresence>
           {pendingOpponent && (
             <motion.div
@@ -261,22 +407,39 @@ export const PKModal: React.FC<PKModalProps> = ({
 
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-white truncate">
-                    Waiting for {pendingOpponent.nickname || 'Host'} to accept…
+                    {isMatchmaking
+                      ? `Matching: Waiting for ${pendingOpponent.nickname || 'Host'}…`
+                      : `Waiting for ${pendingOpponent.nickname || 'Host'} to accept…`}
                   </p>
                   <p className="text-[10px] text-purple-200/70 flex items-center gap-1">
                     <CountdownIcon className="w-3 h-3 text-amber-300" />
-                    Auto-cancels in {pendingCountdown}s
+                    {isMatchmaking
+                      ? `Auto-advances to next host in ${pendingCountdown}s`
+                      : `Auto-cancels in ${pendingCountdown}s`}
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleCancelInvite}
-                className="px-3 py-1 rounded-xl bg-white/10 hover:bg-red-500/30 text-white hover:text-red-200 border border-white/10 text-xs font-bold transition-all shrink-0"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isMatchmaking && (
+                  <button
+                    type="button"
+                    onClick={handleSkipToNextHost}
+                    className="px-2.5 py-1 rounded-xl bg-purple-600/40 hover:bg-purple-600/70 text-purple-200 text-xs font-bold transition-all flex items-center gap-1"
+                    title="Skip to next host"
+                  >
+                    <SkipForward className="w-3 h-3" />
+                    Skip
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => stopMatchmaking('Challenge request cancelled')}
+                  className="px-3 py-1 rounded-xl bg-white/10 hover:bg-red-500/30 text-white hover:text-red-200 border border-white/10 text-xs font-bold transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -361,10 +524,10 @@ export const PKModal: React.FC<PKModalProps> = ({
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-white/50">
               <Spinner className="w-6 h-6 animate-spin text-purple-400" />
-              <span className="text-xs">Finding available hosts…</span>
+              <span className="text-xs">Finding available live hosts…</span>
             </div>
           ) : tab === 'friends' ? (
-            /* Friends Tab */
+            /* Friends Tab: ONLY followed friends who are currently streaming live! */
             friends.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
                 <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40">
@@ -372,7 +535,9 @@ export const PKModal: React.FC<PKModalProps> = ({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-white/80">No Friends Live Right Now</p>
-                  <p className="text-xs text-white/40 mt-0.5">Try Random Matchmaking or enter a host's User ID</p>
+                  <p className="text-xs text-white/40 mt-0.5 max-w-xs">
+                    Only followed friends who are currently streaming live appear here.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -386,38 +551,51 @@ export const PKModal: React.FC<PKModalProps> = ({
               <div className="space-y-2.5">
                 {friends.map((friend) => {
                   const fId = friend.userId || friend.hostId;
-                  const isThisInviting = invitingId === fId || (pendingOpponent && (pendingOpponent.userId === fId || pendingOpponent.hostId === fId));
+                  const isThisInviting =
+                    invitingId === fId ||
+                    (pendingOpponent &&
+                      (pendingOpponent.userId === fId || pendingOpponent.hostId === fId));
                   return (
                     <OpponentCard
                       key={fId || friend.nickname}
                       opponent={friend}
                       inviting={Boolean(isThisInviting)}
                       disabled={Boolean(pendingOpponent && !isThisInviting)}
-                      onInvite={() => handleInvite(friend)}
+                      onInvite={() => handleSingleInvite(friend)}
                     />
                   );
                 })}
               </div>
             )
           ) : tab === 'random' ? (
-            /* Random Tab - Strict 1-on-1: Single Match button, no multi-request spam! */
+            /* Random Tab - Sequential Matchmaking Queue */
             <div className="flex flex-col items-center text-center py-4">
               <div className="relative mb-4">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center shadow-xl shadow-purple-600/40 animate-pulse">
                   <Shuffle className="w-10 h-10 text-white" />
                 </div>
                 <span className="absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full bg-pink-500 text-[10px] font-black uppercase text-white shadow">
-                  1v1 Single
+                  1v1 Auto
                 </span>
               </div>
 
               <h4 className="text-base font-extrabold text-white">Random 1v1 Battle</h4>
               <p className="text-xs text-white/50 max-w-xs mt-1 mb-5">
-                Matches with 1 live host at a time. The battle begins as soon as they accept!
+                Automatically challenges live hosts one-by-one. If one declines or times out, it moves
+                to the next!
               </p>
 
-              {pendingOpponent ? (
+              {isMatchmaking && pendingOpponent ? (
                 <div className="w-full p-4 rounded-2xl bg-white/5 border border-purple-500/40 flex flex-col items-center gap-3">
+                  <div className="flex items-center justify-between w-full border-b border-white/5 pb-2">
+                    <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">
+                      Auto Queue: {matchIndex + 1} of {matchQueue.length}
+                    </span>
+                    <span className="text-[11px] font-extrabold text-amber-300">
+                      {pendingCountdown}s left
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-3 w-full">
                     <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-400 bg-purple-950 shrink-0">
                       {pendingOpponent.avatar ? (
@@ -437,28 +615,38 @@ export const PKModal: React.FC<PKModalProps> = ({
                         {pendingOpponent.nickname || 'Host'}
                       </h5>
                       <p className="text-[11px] text-purple-300 flex items-center gap-1 mt-0.5">
-                        <Spinner className="w-3 h-3 animate-spin" /> Waiting for response ({pendingCountdown}s)…
+                        <Spinner className="w-3 h-3 animate-spin text-pink-400" />
+                        Waiting for response… ({pendingCountdown}s)
                       </p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleCancelInvite}
-                    className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-200 border border-white/10 font-bold text-xs transition-colors"
-                  >
-                    Cancel Challenge
-                  </button>
+                  <div className="flex items-center gap-2 w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={handleSkipToNextHost}
+                      className="flex-1 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <SkipForward className="w-3.5 h-3.5" /> Skip Host
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stopMatchmaking('Matchmaking stopped')}
+                      className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-200 border border-white/10 font-bold text-xs transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={handleRandomMatch}
+                  onClick={handleStartRandomMatchmaking}
                   disabled={loading || randomHosts.length === 0}
                   className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 active:scale-[0.98] transition-all font-black text-sm text-white shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Swords className="w-5 h-5" />
-                  Find 1v1 Opponent ({randomHosts.length} Online)
+                  Find 1v1 Opponent ({randomHosts.length} Live Hosts)
                 </button>
               )}
             </div>
@@ -480,37 +668,29 @@ export const PKModal: React.FC<PKModalProps> = ({
                   type="button"
                   onClick={handleSearch}
                   disabled={searching || !searchUid.trim()}
-                  className="h-11 px-5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 transition-colors font-bold text-xs text-white flex items-center gap-1.5 shrink-0"
+                  className="px-5 h-11 rounded-xl bg-purple-600 hover:bg-purple-500 font-bold text-xs text-white transition-colors flex items-center gap-1.5 disabled:opacity-40"
                 >
-                  {searching ? (
-                    <Spinner className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4" /> Search
-                    </>
-                  )}
+                  {searching ? <Spinner className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  Search
                 </button>
               </div>
 
-              {searchedHost ? (
-                <div className="pt-2">
-                  <span className="text-[11px] font-bold text-purple-300 tracking-wider uppercase mb-2 block">
-                    Host Found
-                  </span>
-                  <OpponentCard
-                    opponent={searchedHost}
-                    inviting={Boolean(
-                      invitingId === (searchedHost.userId || searchedHost.hostId) ||
-                      (pendingOpponent && (pendingOpponent.userId === searchedHost.userId || pendingOpponent.hostId === searchedHost.hostId))
-                    )}
-                    disabled={Boolean(pendingOpponent)}
-                    onInvite={() => handleInvite(searchedHost)}
-                  />
-                </div>
-              ) : (
-                <div className="py-8 text-center text-white/40 text-xs">
-                  Enter the unique User ID (UID) of any currently streaming host to challenge them.
-                </div>
+              {searchedHost && (
+                <OpponentCard
+                  opponent={searchedHost}
+                  inviting={Boolean(
+                    invitingId === (searchedHost.userId || searchedHost.hostId) ||
+                      (pendingOpponent &&
+                        (pendingOpponent.userId === (searchedHost.userId || searchedHost.hostId) ||
+                          pendingOpponent.hostId === (searchedHost.userId || searchedHost.hostId)))
+                  )}
+                  disabled={Boolean(
+                    pendingOpponent &&
+                      pendingOpponent.userId !== (searchedHost.userId || searchedHost.hostId) &&
+                      pendingOpponent.hostId !== (searchedHost.userId || searchedHost.hostId)
+                  )}
+                  onInvite={() => handleSingleInvite(searchedHost)}
+                />
               )}
             </div>
           )}
@@ -523,30 +703,18 @@ export const PKModal: React.FC<PKModalProps> = ({
 interface OpponentCardProps {
   opponent: LiveOpponentHost;
   inviting: boolean;
-  disabled?: boolean;
+  disabled: boolean;
   onInvite: () => void;
 }
 
-const OpponentCard: React.FC<OpponentCardProps> = ({
-  opponent,
-  inviting,
-  disabled = false,
-  onInvite,
-}) => {
-  const hostId = String(opponent.userId || opponent.hostId || '');
-  const uidText = opponent.uid
-    ? `UID: ${opponent.uid}`
-    : hostId
-    ? `UID: ${hostId.slice(-6)}`
-    : 'Host';
-
-  const subtitle = opponent.streamTitle || opponent.title || uidText;
+const OpponentCard: React.FC<OpponentCardProps> = ({ opponent, inviting, disabled, onInvite }) => {
+  const subtitle = opponent.title || opponent.streamTitle || 'Live Stream';
 
   return (
-    <div className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 transition-all">
+    <div className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] border border-white/5 hover:border-purple-500/30 transition-all">
       <div className="flex items-center gap-3 min-w-0">
         <div className="relative shrink-0">
-          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-500/50 bg-[#252033]">
+          <div className="w-12 h-12 rounded-full overflow-hidden border border-purple-500/40 bg-purple-950">
             {opponent.avatar ? (
               <img
                 src={getMediaUrl(opponent.avatar)}
@@ -576,9 +744,7 @@ const OpponentCard: React.FC<OpponentCardProps> = ({
               </span>
             )}
           </div>
-          <p className="text-[11px] text-white/50 truncate max-w-[150px]">
-            {subtitle}
-          </p>
+          <p className="text-[11px] text-white/50 truncate max-w-[150px]">{subtitle}</p>
         </div>
       </div>
 

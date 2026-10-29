@@ -75,7 +75,7 @@ export const useCall = () => {
   const [error, setError] = useState('');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [remoteFacingMode, setRemoteFacingMode] = useState<'user' | 'environment'>('user');
-  const [connectionState, setConnectionState] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'>('DISCONNECTED');
+  const [connectionState, setConnectionState] = useState<'IDLE' | 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'>('IDLE');
 
   /** Remove every per-UID remote container from the call video area. */
   const clearRemoteContainers = useCallback(() => {
@@ -373,6 +373,7 @@ export const useCall = () => {
       }
       setJoined(true);
       joinedRef.current = true;
+      setConnectionState('CONNECTED');
     },
     [setupWebRTCFallback, applyAudioOutputRoute]
   );
@@ -520,9 +521,11 @@ export const useCall = () => {
 
 
         const client = clientRef.current;
+        setConnectionState('CONNECTING');
         await client.join(AGORA_APP_ID, channel, token, undefined);
         joinedRef.current = true;
         setJoined(true);
+        setConnectionState('CONNECTED');
 
         // Check for any already published remote users on join (important when answering an existing call)
         for (const remoteUser of client.remoteUsers) {
@@ -866,7 +869,7 @@ export const useCall = () => {
       console.warn('call leave error:', e);
     }
     setJoined(false);
-    setConnectionState('DISCONNECTED');
+    setConnectionState('IDLE');
     setRemoteUsers([]);
     setMicOn(true);
     micOnRef.current = true;

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import { User, PurchaseOrder, WithdrawalRequest, Transaction, HostApplication, HostGroup } from '../models';
+import { User, PurchaseOrder, WithdrawalRequest, Transaction, HostApplication, HostGroup, LiveStream } from '../models';
 import { paymentService } from '../services/payment.service';
 import { agencyService } from '../services/agency.service';
 import { auditService } from '../services/audit.service';
@@ -329,11 +329,61 @@ export const agentController = {
       };
       const total = await User.countDocuments(filter);
       const hosts = await User.find(filter)
-        .select('uid nickname avatar level diamonds coins createdAt role')
+        .select('uid nickname avatar level diamonds coins createdAt role liveStreamSeconds liveStreamMinutes lastActiveAt')
         .skip((page - 1) * limit)
         .limit(limit)
         .lean();
-      sendPaginated(res, hosts, total, page, limit);
+
+      const hostIds = hosts.map((h: any) => h._id);
+      let streamStats: any[] = [];
+      if (hostIds.length > 0) {
+        streamStats = await LiveStream.aggregate([
+          { $match: { hostId: { $in: hostIds } } },
+          {
+            $project: {
+              hostId: 1,
+              durationSec: {
+                $cond: [
+                  { $and: ['$startedAt', '$endedAt'] },
+                  { $max: [0, { $divide: [{ $subtract: ['$endedAt', '$startedAt'] }, 1000] }] },
+                  {
+                    $cond: [
+                      { $and: ['$startedAt', { $eq: ['$status', 'live'] }] },
+                      { $max: [0, { $divide: [{ $subtract: [new Date(), '$startedAt'] }, 1000] }] },
+                      0,
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: '$hostId',
+              totalSeconds: { $sum: '$durationSec' },
+              streamCount: { $sum: 1 },
+            },
+          },
+        ]);
+      }
+      const streamMap = new Map(streamStats.map((s) => [s._id.toString(), s]));
+      const enrichedHosts = hosts.map((h: any) => {
+        const idStr = h._id.toString();
+        const s = streamMap.get(idStr);
+        const aggSec = s?.totalSeconds || 0;
+        const userSec = h.liveStreamSeconds || (h.liveStreamMinutes ? h.liveStreamMinutes * 60 : 0);
+        const sec = Math.max(aggSec, userSec);
+        const liveHours = Math.round((sec / 3600) * 10) / 10;
+        const liveStreams = Math.max(s?.streamCount || 0, sec > 60 ? 1 : 0);
+        return {
+          ...h,
+          liveHours,
+          durationHours: liveHours,
+          liveStreams,
+        };
+      });
+
+      sendPaginated(res, enrichedHosts, total, page, limit);
     } catch (error) {
       next(error);
     }

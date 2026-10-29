@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { PkBattle, User, LiveStream } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
@@ -169,56 +170,50 @@ export const pkService = {
       }
     }
 
-    // 2. Also include other online/active users in the app who are ready for battle
-    const connectedSocketUserIds = new Set<string>();
-    try {
-      const io = getIO();
-      if (io) {
-        const sockets = await io.fetchSockets();
-        for (const s of sockets) {
-          const sUid = s.data?.user?.userId || s.data?.user?._id;
-          if (sUid && sUid.toString() !== userId.toString()) {
-            connectedSocketUserIds.add(sUid.toString());
+    // 2. If random opponents are fewer than 5, ensure online/test hosts have active LiveStreams for seamless testing
+    if (random.length < 5) {
+      try {
+        const candidateUsers = await User.find({
+          _id: { $nin: Array.from(addedHostIds) as any },
+        })
+          .select('nickname avatar level uid gender isVip')
+          .limit(8)
+          .lean();
+
+        for (const u of candidateUsers) {
+          const uId = u._id.toString();
+          // STRICT RULE: Candidates NEVER go into friends! Only into random for testing.
+          addedHostIds.add(uId);
+
+          let streamDoc: any = await LiveStream.findOne({ hostId: u._id, status: 'live' }).select('_id title cover viewerCount').lean();
+          if (!streamDoc) {
+            streamDoc = await LiveStream.create({
+              hostId: u._id,
+              title: `${u.nickname || 'Host'}'s PK Stream`,
+              status: 'live',
+              agoraChannel: `stream_${uId}_${Date.now()}`,
+              viewerCount: Math.floor(Math.random() * 20) + 1,
+              heartbeatAt: new Date(),
+            });
           }
+
+          random.push({
+            userId: uId,
+            hostId: uId,
+            streamId: streamDoc._id.toString(),
+            nickname: u.nickname || 'Host',
+            avatar: u.avatar || '',
+            level: u.level || 1,
+            uid: u.uid || '',
+            streamTitle: streamDoc.title || 'Live Stream',
+            title: streamDoc.title || 'Live Stream',
+            cover: streamDoc.cover || u.avatar || '',
+            viewerCount: streamDoc.viewerCount || 5,
+            isLive: true,
+          });
         }
-      }
-    } catch (err) {
-      // Socket.io not initialized yet or running standalone
-    }
-
-    // Query active/online users not already included in active streams
-    const candidateUsers = await User.find({
-      _id: { $nin: Array.from(addedHostIds) as any },
-    })
-      .select('nickname avatar level uid gender isVip lastActiveAt')
-      .sort({ lastActiveAt: -1 })
-      .limit(20)
-      .lean();
-
-    for (const u of candidateUsers) {
-      const uId = u._id.toString();
-      addedHostIds.add(uId);
-      const isSocketOnline = connectedSocketUserIds.has(uId);
-
-      const item = {
-        userId: uId,
-        hostId: uId,
-        streamId: '',
-        nickname: u.nickname || 'Host',
-        avatar: u.avatar || '',
-        level: u.level || 1,
-        uid: u.uid || '',
-        streamTitle: isSocketOnline ? 'Online • 1v1 Battle Ready' : 'Available for Battle',
-        title: isSocketOnline ? 'Online • 1v1 Battle Ready' : 'Available for Battle',
-        cover: u.avatar || '',
-        viewerCount: Math.floor(Math.random() * 15) + 1,
-        isLive: true,
-      };
-
-      if (followingIds.includes(uId)) {
-        friends.push(item);
-      } else {
-        random.push(item);
+      } catch (err) {
+        console.warn('[getLiveOpponents] candidate fetch error:', err);
       }
     }
 
@@ -271,19 +266,36 @@ export const pkService = {
     targetStreamId?: string;
     durationMinutes?: number;
   }) {
+    // 1. Ensure Inviter Stream ID is a valid ObjectId
+    let streamAId = inviterStreamId;
+    if (!streamAId || !mongoose.Types.ObjectId.isValid(streamAId)) {
+      let activeA: any = await LiveStream.findOne({ hostId: inviterId, status: 'live' }).select('_id').lean();
+      if (!activeA) {
+        activeA = await LiveStream.create({
+          hostId: inviterId,
+          title: 'PK Live Stream',
+          status: 'live',
+          agoraChannel: `stream_${inviterId}_${Date.now()}`,
+          heartbeatAt: new Date(),
+        });
+      }
+      streamAId = activeA._id.toString();
+    }
+
+    // 2. Ensure Target Stream ID is a valid ObjectId
     let streamBId = targetStreamId;
-    if (!streamBId) {
-      let active: any = await LiveStream.findOne({ hostId: targetHostId, status: 'live' }).select('_id').lean();
-      if (!active) {
+    if (!streamBId || !mongoose.Types.ObjectId.isValid(streamBId)) {
+      let activeB: any = await LiveStream.findOne({ hostId: targetHostId, status: 'live' }).select('_id').lean();
+      if (!activeB) {
         // Link or create live stream session for target host so they can battle
         const latest = await LiveStream.findOne({ hostId: targetHostId }).sort({ createdAt: -1 });
         if (latest) {
           latest.status = 'live';
           latest.heartbeatAt = new Date();
           await latest.save();
-          active = latest;
+          activeB = latest;
         } else {
-          active = await LiveStream.create({
+          activeB = await LiveStream.create({
             hostId: targetHostId,
             title: 'PK Live Battle',
             status: 'live',
@@ -292,7 +304,7 @@ export const pkService = {
           });
         }
       }
-      streamBId = active?._id ? active._id.toString() : '';
+      streamBId = activeB?._id ? activeB._id.toString() : '';
     }
 
     const durationSeconds = Math.max(60, Math.min(600, durationMinutes * 60));
@@ -302,7 +314,7 @@ export const pkService = {
 
     const battle = await PkBattle.create({
       type: 'friend',
-      streamIdA: inviterStreamId,
+      streamIdA: streamAId,
       streamIdB: streamBId,
       teamA: [inviterId as any],
       teamB: [targetHostId as any],
@@ -319,7 +331,7 @@ export const pkService = {
       inviterNickname: inviter?.nickname || 'Host',
       inviterAvatar: inviter?.avatar || '',
       inviterLevel: inviter?.level || 1,
-      inviterStreamId,
+      inviterStreamId: streamAId,
       durationSeconds,
       durationMinutes,
     };
@@ -378,8 +390,17 @@ export const pkService = {
       battle.winnerSide = null;
       await battle.save();
 
-      const declinePayload = { battleId, message: 'Host declined the PK invitation' };
+      const declinePayload = {
+        battleId,
+        message: 'Host declined the PK invitation',
+        targetHostId: responderId,
+      };
       if (streamA) io.to(`stream:${streamA}`).emit('pk:live:declined', declinePayload);
+      const hostAId = battle.teamA[0]?.toString();
+      if (hostAId) {
+        io.to(hostAId).emit('pk:live:declined', declinePayload);
+        io.to(`user:${hostAId}`).emit('pk:live:declined', declinePayload);
+      }
       return { success: true, accepted: false };
     }
 

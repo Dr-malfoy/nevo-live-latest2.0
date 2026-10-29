@@ -19,6 +19,7 @@ export interface AgencyMemberInfo {
   avatar: string;
   level: number;
   liveHours: number;
+  liveStreams?: number;
   contribution?: number;
   coins?: number;
   diamonds?: number;
@@ -64,6 +65,8 @@ export interface AgencyItem {
   allTiers?: any;
   totalContribution: number;
   totalLiveHours: number;
+  totalLiveStreams?: number;
+  liveStreamCount?: number;
   agent: AgencyAgentInfo;
   members?: AgencyMemberInfo[];
   userRelationship?: AgencyRelationship;

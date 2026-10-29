@@ -330,6 +330,7 @@ export const agencyService = {
         monthlyCommissionCycle: a.monthlyCommissionCycle || getCurrentMonthCycle(),
         totalContribution: a.totalContribution || 0,
         totalLiveHours: Math.round((a.totalLiveHours || 0) * 10) / 10,
+        totalLiveStreams: a.totalLiveStreams || 0,
         agent: {
           _id: agent._id ? agent._id.toString() : '',
           uid: agent.uid || '',
@@ -353,6 +354,114 @@ export const agencyService = {
   // ─────────────────────────────────────────────────────────────────────────────
   // 3. AGENCY DETAILS & PROFILE
   // ─────────────────────────────────────────────────────────────────────────────
+  async calculateAgencyLiveStats(agentId: any, hosts: any[]) {
+    const participantIds: mongoose.Types.ObjectId[] = [];
+    const seenIds = new Set<string>();
+
+    const addId = (id: any) => {
+      if (!id) return;
+      const raw = id._id ? id._id.toString() : id.toString();
+      if (mongoose.isValidObjectId(raw) && !seenIds.has(raw)) {
+        seenIds.add(raw);
+        participantIds.push(new mongoose.Types.ObjectId(raw));
+      }
+    };
+
+    addId(agentId);
+    if (Array.isArray(hosts)) {
+      hosts.forEach((h: any) => addId(h));
+    }
+
+    const memberStreamMap = new Map<string, { seconds: number; streams: number }>();
+
+    if (participantIds.length === 0) {
+      return {
+        totalLiveSeconds: 0,
+        totalLiveHours: 0,
+        totalLiveStreams: 0,
+        memberStreamMap,
+      };
+    }
+
+    // 1. Aggregate from LiveStream collection for all agency hosts + agency agent
+    const streamStats = await LiveStream.aggregate([
+      {
+        $match: {
+          hostId: { $in: participantIds },
+        },
+      },
+      {
+        $project: {
+          hostId: 1,
+          durationSec: {
+            $cond: [
+              { $and: ['$startedAt', '$endedAt'] },
+              { $max: [0, { $divide: [{ $subtract: ['$endedAt', '$startedAt'] }, 1000] }] },
+              {
+                $cond: [
+                  { $and: ['$startedAt', { $eq: ['$status', 'live'] }] },
+                  { $max: [0, { $divide: [{ $subtract: [new Date(), '$startedAt'] }, 1000] }] },
+                  0,
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$hostId',
+          totalSeconds: { $sum: '$durationSec' },
+          streamCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    for (const stat of streamStats) {
+      memberStreamMap.set(stat._id.toString(), {
+        seconds: stat.totalSeconds || 0,
+        streams: stat.streamCount || 0,
+      });
+    }
+
+    // 2. Fetch User documents to check liveStreamSeconds / liveStreamMinutes as fallback/ground truth
+    const userDocs = await User.find({ _id: { $in: participantIds } })
+      .select('_id liveStreamSeconds liveStreamMinutes')
+      .lean();
+
+    let totalLiveSeconds = 0;
+    let totalLiveStreams = 0;
+
+    for (const pId of participantIds) {
+      const idStr = pId.toString();
+      const streamData = memberStreamMap.get(idStr) || { seconds: 0, streams: 0 };
+      const userDoc = userDocs.find((u) => u._id.toString() === idStr);
+      const userSeconds = userDoc
+        ? (userDoc.liveStreamSeconds || (userDoc.liveStreamMinutes ? userDoc.liveStreamMinutes * 60 : 0))
+        : 0;
+
+      const resolvedSeconds = Math.max(streamData.seconds, userSeconds);
+      const resolvedStreams = Math.max(streamData.streams, resolvedSeconds > 60 ? 1 : 0);
+
+      memberStreamMap.set(idStr, {
+        seconds: resolvedSeconds,
+        streams: resolvedStreams,
+      });
+
+      totalLiveSeconds += resolvedSeconds;
+      totalLiveStreams += resolvedStreams;
+    }
+
+    const totalLiveHours = Math.round((totalLiveSeconds / 3600) * 10) / 10;
+
+    return {
+      totalLiveSeconds,
+      totalLiveHours,
+      totalLiveStreams,
+      memberStreamMap,
+    };
+  },
+
   async getAgencyDetails(agencyIdOrCode: string, currentUserId?: string) {
     const clean = (agencyIdOrCode || '').trim();
     let agency: any = null;
@@ -394,24 +503,14 @@ export const agencyService = {
     const hosts = agency.hosts || [];
     const hostIds = hosts.map((h: any) => h._id);
 
+    // Calculate aggregated live hours & stream count for all agency participants (hosts + agent)
+    const liveStats = await this.calculateAgencyLiveStats(agent._id || agency.agentId, hosts);
+
     // Calculate aggregated live hours & earnings from members
     let memberContributions: any[] = [];
-    let calculatedLiveHours = 0;
     let calculatedContribution = 0;
 
     if (hostIds.length > 0) {
-      // Aggregate completed streams duration for members
-      const streamStats = await LiveStream.aggregate([
-        { $match: { hostId: { $in: hostIds }, status: 'ended', endedAt: { $exists: true } } },
-        {
-          $group: {
-            _id: '$hostId',
-            totalSeconds: { $sum: { $divide: [{ $subtract: ['$endedAt', '$startedAt'] }, 1000] } },
-          },
-        },
-      ]);
-      const streamMap = new Map(streamStats.map((s) => [s._id.toString(), s.totalSeconds]));
-
       // Aggregate gift receive transactions for members
       const txStats = await Transaction.aggregate([
         { $match: { userId: { $in: hostIds }, type: 'gift_receive', status: 'completed' } },
@@ -426,11 +525,11 @@ export const agencyService = {
 
       memberContributions = hosts.map((h: any) => {
         const idStr = h._id.toString();
-        const durationSec = streamMap.get(idStr) || 0;
-        const liveHours = Math.round((durationSec / 3600) * 10) / 10;
+        const memberLive = liveStats.memberStreamMap.get(idStr) || { seconds: 0, streams: 0 };
+        const liveHours = Math.round((memberLive.seconds / 3600) * 10) / 10;
+        const liveStreams = memberLive.streams;
         const contribution = txMap.get(idStr) || (h.coins || 0);
 
-        calculatedLiveHours += liveHours;
         calculatedContribution += contribution;
 
         return {
@@ -440,6 +539,8 @@ export const agencyService = {
           avatar: h.avatar,
           level: h.level || 1,
           liveHours,
+          durationHours: liveHours,
+          liveStreams,
           contribution,
           coins: h.coins || 0,
           diamonds: h.diamonds || 0,
@@ -449,9 +550,18 @@ export const agencyService = {
     }
 
     const totalContribution = Math.max(agency.totalContribution || 0, calculatedContribution);
-    const totalLiveHours = Math.max(agency.totalLiveHours || 0, Math.round(calculatedLiveHours * 10) / 10);
+    const totalLiveHours = Math.max(agency.totalLiveHours || 0, liveStats.totalLiveHours);
+    const totalLiveStreams = Math.max(agency.totalLiveStreams || 0, liveStats.totalLiveStreams);
     const levelInfo = calculateAgencyLevel(totalContribution, totalLiveHours);
     const tierConfig = resolveAgencyTier(agency);
+
+    // Keep database in sync
+    if ((agency.totalLiveHours || 0) < totalLiveHours || (agency.totalLiveStreams || 0) < totalLiveStreams) {
+      await Agency.updateOne(
+        { _id: agency._id },
+        { $set: { totalLiveHours, totalLiveStreams } }
+      );
+    }
 
     // Sync monthly commission cycle
     const currentCycle = getCurrentMonthCycle();
@@ -554,6 +664,8 @@ export const agencyService = {
       memberCount: hosts.length,
       totalContribution,
       totalLiveHours,
+      totalLiveStreams,
+      liveStreamCount: totalLiveStreams,
       agent: {
         _id: agent._id ? agent._id.toString() : '',
         uid: agent.uid || '',
@@ -563,6 +675,8 @@ export const agencyService = {
         phone: agent.phone || '',
         country: agent.country || '',
         bio: agent.bio || '',
+        liveHours: Math.round(((liveStats.memberStreamMap.get(agent._id ? agent._id.toString() : '')?.seconds || 0) / 3600) * 10) / 10,
+        liveStreams: liveStats.memberStreamMap.get(agent._id ? agent._id.toString() : '')?.streams || 0,
       },
       members: visibleMembers,
       userRelationship,
@@ -1417,19 +1531,60 @@ export const agencyService = {
     let agency: any = null;
     if (user.agencyId) {
       agency = await Agency.findById(user.agencyId)
-        .populate('agentId', 'uid nickname avatar level phone country')
-        .populate('hosts', 'uid nickname avatar level lastActiveAt coins diamonds')
+        .populate('agentId', 'uid nickname avatar level phone country liveStreamSeconds liveStreamMinutes')
+        .populate('hosts', 'uid nickname avatar level lastActiveAt coins diamonds liveStreamSeconds liveStreamMinutes')
         .lean();
     }
 
     if (!agency && (user.role === 'agent' || user.isAgent)) {
       agency = await Agency.findOne({ agentId: userId })
-        .populate('agentId', 'uid nickname avatar level phone country')
-        .populate('hosts', 'uid nickname avatar level lastActiveAt coins diamonds')
+        .populate('agentId', 'uid nickname avatar level phone country liveStreamSeconds liveStreamMinutes')
+        .populate('hosts', 'uid nickname avatar level lastActiveAt coins diamonds liveStreamSeconds liveStreamMinutes')
         .lean();
     }
 
     if (!agency) return null;
+
+    // Calculate aggregated live hours & stream count for all agency participants (hosts + agent)
+    const liveStats = await this.calculateAgencyLiveStats(agency.agentId, agency.hosts);
+    const totalLiveHours = Math.max(agency.totalLiveHours || 0, liveStats.totalLiveHours);
+    const totalLiveStreams = Math.max(agency.totalLiveStreams || 0, liveStats.totalLiveStreams);
+
+    // Keep database in sync
+    if ((agency.totalLiveHours || 0) < totalLiveHours || (agency.totalLiveStreams || 0) < totalLiveStreams) {
+      await Agency.updateOne(
+        { _id: agency._id },
+        { $set: { totalLiveHours, totalLiveStreams } }
+      );
+    }
+
+    // Attach liveHours & liveStreams to hosts
+    if (Array.isArray(agency.hosts)) {
+      agency.hosts = agency.hosts.map((h: any) => {
+        if (!h || typeof h !== 'object') return h;
+        const idStr = h._id ? h._id.toString() : h.toString();
+        const memberLive = liveStats.memberStreamMap.get(idStr) || { seconds: 0, streams: 0 };
+        const liveHours = Math.round((memberLive.seconds / 3600) * 10) / 10;
+        const liveStreams = memberLive.streams;
+
+        return {
+          ...h,
+          liveHours,
+          durationHours: liveHours,
+          liveStreams,
+        };
+      });
+    }
+
+    // Also attach liveHours & liveStreams to agent
+    if (agency.agentId && typeof agency.agentId === 'object') {
+      const agentIdStr = agency.agentId._id ? agency.agentId._id.toString() : agency.agentId.toString();
+      const agentLive = liveStats.memberStreamMap.get(agentIdStr) || { seconds: 0, streams: 0 };
+      const liveHours = Math.round((agentLive.seconds / 3600) * 10) / 10;
+      agency.agentId.liveHours = liveHours;
+      agency.agentId.durationHours = liveHours;
+      agency.agentId.liveStreams = agentLive.streams;
+    }
 
     // Check if requesting user is agency owner or admin
     const isOwnerOrAdmin =
@@ -1448,7 +1603,7 @@ export const agencyService = {
     }
 
     const memberCount = agency.hosts?.length || 0;
-    const levelInfo = calculateAgencyLevel(agency.totalContribution || 0, agency.totalLiveHours || 0);
+    const levelInfo = calculateAgencyLevel(agency.totalContribution || 0, totalLiveHours);
     const currentLevel = Math.max(agency.level || 1, levelInfo.level);
 
     // Sync monthly commission cycle
@@ -1468,6 +1623,9 @@ export const agencyService = {
     return {
       ...agency,
       memberCount,
+      totalLiveHours,
+      totalLiveStreams,
+      liveStreamCount: totalLiveStreams,
       level: currentLevel,
       levelProgress: levelInfo.progress,
       nextThreshold: levelInfo.nextThreshold,

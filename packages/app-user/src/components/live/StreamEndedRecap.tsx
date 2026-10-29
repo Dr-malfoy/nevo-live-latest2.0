@@ -9,6 +9,7 @@ export interface StreamEndedRecapProps {
   hostName?: string;
   hostAvatar?: string;
   image?: string;
+  streamTitle?: string;
   isHost?: boolean;
   onGoHome: () => void;
 }
@@ -27,17 +28,30 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
   hostName = 'Streamer',
   hostAvatar,
   image,
+  streamTitle,
   isHost = true,
   onGoHome,
 }) => {
   const [imgError, setImgError] = React.useState(false);
-  const targetImage = !imgError && (image || hostAvatar) ? (image || hostAvatar) : null;
+  const [avatarError, setAvatarError] = React.useState(false);
+
+  // If live title picture (cover) is missing or fails to load, use host's default profile picture
+  const targetImage = !imgError && image
+    ? image
+    : (!avatarError && hostAvatar ? hostAvatar : null);
+
   const initial = (hostName.trim()?.[0] || 'R').toUpperCase();
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#0B0914] text-white flex flex-col justify-between overflow-hidden select-none">
       {/* Background ambient glowing orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {targetImage && (
+          <div
+            className="absolute inset-0 bg-cover bg-center filter blur-3xl opacity-20 scale-110 pointer-events-none transition-opacity duration-700"
+            style={{ backgroundImage: `url(${targetImage})` }}
+          />
+        )}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full bg-[#9333EA]/25 blur-[120px]" />
         <div className="absolute top-1/3 -left-28 w-80 h-80 rounded-full bg-[#6366F1]/20 blur-[110px]" />
         <div className="absolute bottom-12 -right-24 w-80 h-80 rounded-full bg-[#A855F7]/20 blur-[120px]" />
@@ -66,8 +80,8 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
           transition={{ type: 'spring', damping: 24, stiffness: 280 }}
           className="w-full flex flex-col items-center"
         >
-          {/* Top Glowing Title Picture / Avatar Badge */}
-          <div className="relative mb-6">
+          {/* Top Glowing Title Picture / Host Default Profile Picture Badge */}
+          <div className="relative mb-4">
             <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-[#9333EA] via-[#8B5CF6] to-[#C084FC] blur-lg opacity-70 animate-pulse" />
             <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-gradient-to-tr from-[#7C3AED] via-[#9333EA] to-[#C084FC] shadow-[0_0_35px_rgba(168,85,247,0.7)] flex items-center justify-center overflow-hidden">
               {targetImage ? (
@@ -75,7 +89,13 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
                   src={targetImage}
                   alt={hostName}
                   className="w-full h-full object-cover rounded-full bg-[#18112C]"
-                  onError={() => setImgError(true)}
+                  onError={() => {
+                    if (!imgError && image) {
+                      setImgError(true);
+                    } else {
+                      setAvatarError(true);
+                    }
+                  }}
                 />
               ) : (
                 <div className="w-full h-full rounded-full bg-[#1D1438] flex items-center justify-center">
@@ -87,6 +107,18 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
             </div>
           </div>
 
+          {/* Host identity card below picture */}
+          <div className="flex flex-col items-center mb-3">
+            <span className="text-base sm:text-lg font-bold text-white tracking-wide drop-shadow">
+              {hostName}
+            </span>
+            {streamTitle && (
+              <span className="text-xs text-purple-300 font-medium mt-0.5 line-clamp-1 max-w-[280px] text-center px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                {streamTitle}
+              </span>
+            )}
+          </div>
+
           {/* Heading */}
           <h1 className="text-2xl sm:text-3xl font-black text-white text-center tracking-wider uppercase leading-tight drop-shadow-md">
             THE STREAM
@@ -96,7 +128,7 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
 
           {/* Subtitle */}
           <p className="text-sm sm:text-base text-white/60 text-center mt-2.5 font-medium">
-            {isHost ? "Thanks for streaming! Here's your recap" : "Thanks for watching! Here's the recap"}
+            {isHost ? "Thanks for streaming! Here's your recap" : `Thanks for watching ${hostName}'s live!`}
           </p>
 
           {/* Glassmorphic Recap Card */}
@@ -154,7 +186,7 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
 
           {/* Footer Subtext */}
           <p className="mt-8 text-xs text-white/40 text-center tracking-wide font-medium">
-            Stream saved to your profile • Tap to view replay
+            {isHost ? 'Stream saved to your profile • Tap to view replay' : `Stream ended • Follow ${hostName} for upcoming lives`}
           </p>
         </motion.div>
       </div>

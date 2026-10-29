@@ -569,6 +569,32 @@ export const streamService = {
           host.liveLevel = Math.max(host.liveLevel || 1, liveInfo.level);
           host.level = Math.max(host.level || 1, host.wealthLevel || 1, host.liveLevel);
           await host.save();
+
+          // Credit live hours and live count to Agency (if host is in an agency or is an agency owner/agent)
+          try {
+            const { Agency } = await import('../models/Agency');
+            let targetAgency: any = null;
+            if (host.agencyId) {
+              targetAgency = await Agency.findById(host.agencyId);
+            }
+            if (!targetAgency) {
+              targetAgency = await Agency.findOne({ agentId: host._id });
+            }
+            if (targetAgency) {
+              const durHours = durationSeconds / 3600;
+              await Agency.updateOne(
+                { _id: targetAgency._id },
+                {
+                  $inc: {
+                    totalLiveHours: Math.round(durHours * 100) / 100,
+                    totalLiveStreams: 1,
+                  },
+                }
+              );
+            }
+          } catch (agencyErr) {
+            console.error('[stream] Error updating agency live stream stats:', agencyErr);
+          }
         }
       } catch (err) {
         console.error('[stream] Error updating host live stream duration:', err);
