@@ -173,7 +173,7 @@ export const otpService = {
       channel,
       cooldownSeconds: otpConfig.resendCooldownSeconds,
       expiresInSeconds: otpConfig.expirySeconds,
-      devOtp: otpConfig.isDevMode ? otp : undefined,
+      devOtp: undefined,
     };
   },
 

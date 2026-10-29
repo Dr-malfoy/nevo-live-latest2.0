@@ -59,7 +59,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       if (navigator.share) {
         await navigator.share({
           title: streamTitle,
-          text: `Watch ${hostName} live on Nevo Live!`,
+          text: `Watch ${hostName} live on Navo Live!`,
           url: streamUrl,
         });
       } else {

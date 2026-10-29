@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.nevolive.app',
-  appName: 'Nevo Live',
+  appName: 'Navo Live',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

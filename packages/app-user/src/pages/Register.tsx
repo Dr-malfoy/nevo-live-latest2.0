@@ -80,7 +80,6 @@ export const Register = () => {
 
   // OTP State
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
@@ -241,19 +240,14 @@ export const Register = () => {
       return;
     }
 
-    // If signing up with Phone: Send OTP (Firebase with automatic fallback to Backend SMS/Dev OTP)
+    // If signing up with Phone: Send OTP (Firebase with automatic fallback to Backend SMS)
     setIsSendingOtp(true);
     const fullPhone = getFullPhone();
 
     try {
-      let devOtpFound: string | null = null;
-
-      // 1. Always pre-check with backend AND trigger system SMS OTP / dev OTP
+      // 1. Always pre-check with backend AND trigger system SMS OTP
       try {
-        const sendRes = await authApi.sendOtp(fullPhone, 'sms', 'signup');
-        if (sendRes.data?.data?.devOtp) {
-          devOtpFound = sendRes.data.data.devOtp;
-        }
+        await authApi.sendOtp(fullPhone, 'sms', 'signup');
       } catch (checkErr: any) {
         if (
           checkErr.response?.status === 409 ||
@@ -280,14 +274,9 @@ export const Register = () => {
 
       setStep('otp');
       setOtpDigits(['', '', '', '', '', '']);
-      setDevOtp(devOtpFound);
       setCooldown(60);
 
-      if (devOtpFound) {
-        showToast(`Verification code sent! (Dev OTP: ${devOtpFound})`, 'info');
-      } else {
-        showToast(`Verification code sent to ${fullPhone}`, 'info');
-      }
+      showToast(`Verification code sent to ${fullPhone}`, 'info');
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -866,29 +855,6 @@ export const Register = () => {
                   <EditIcon className="w-3.5 h-3.5" /> Edit Info
                 </button>
               </div>
-
-              {/* Dev Mode OTP Indicator & Auto-fill */}
-              {devOtp && (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1.5 animate-in fade-in duration-300">
-                  <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-                    <span>⚡ Development OTP Code</span>
-                  </div>
-                  <div className="text-2xl font-black font-mono tracking-widest text-[#4C3BFF]">
-                    {devOtp}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const digits = devOtp.split('').slice(0, 6);
-                      setOtpDigits(digits);
-                      handleVerifyAndCreateAccount(devOtp);
-                    }}
-                    className="text-xs font-bold text-[#4C3BFF] hover:underline"
-                  >
-                    Tap to auto-fill & verify
-                  </button>
-                </div>
-              )}
 
               {/* 6-Digit OTP Inputs */}
               <div className="flex justify-between gap-2 max-w-xs mx-auto">

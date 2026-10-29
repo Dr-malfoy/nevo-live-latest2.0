@@ -184,7 +184,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <VerifiedBadge verification={currentUser?.verification} />
                 <LevelBadge level={currentUser?.level || 1} size="sm" />
               </div>
-              <p className="text-[11px] text-ink-muted">Public to all Nevo Live users</p>
+              <p className="text-[11px] text-ink-muted">Public to all Navo Live users</p>
             </div>
           </div>
 

@@ -142,8 +142,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${authorName} on Nevo Live`,
-          text: caption || `Check out this post by ${authorName} on Nevo Live!`,
+          title: `${authorName} on Navo Live`,
+          text: caption || `Check out this post by ${authorName} on Navo Live!`,
           url: shareUrl,
         });
         momentsApi.share(momentId).catch(() => {});
@@ -157,7 +157,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   const handleSocialShare = (platform: 'whatsapp' | 'telegram' | 'twitter' | 'facebook') => {
-    const text = encodeURIComponent(`Check out ${authorName}'s post on Nevo Live: `);
+    const text = encodeURIComponent(`Check out ${authorName}'s post on Navo Live: `);
     const encodedUrl = encodeURIComponent(shareUrl);
     let url = '';
 

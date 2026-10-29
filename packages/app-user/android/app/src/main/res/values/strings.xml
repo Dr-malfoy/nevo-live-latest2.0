@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Nevo Live</string>
-    <string name="title_activity_main">Nevo Live</string>
+    <string name="app_name">Navo Live</string>
+    <string name="title_activity_main">Navo Live</string>
     <string name="package_name">com.nevolive.app</string>
     <string name="custom_url_scheme">com.nevolive.app</string>
     <string name="server_client_id">240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com</string>

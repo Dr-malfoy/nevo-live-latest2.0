@@ -5,8 +5,6 @@ import {
   PiLockFill as Lock,
   PiEnvelopeSimpleFill as Mail,
   PiCaretLeftBold as ArrowLeft,
-  PiLightningFill as Zap,
-  PiUserFill as User,
   PiCheckCircleFill as CheckCircle,
   PiFacebookLogoFill as Facebook,
   PiGoogleLogoFill as Google,
@@ -30,7 +28,7 @@ import {
 } from '../lib/firebase';
 import { ConfirmationResult } from 'firebase/auth';
 
-type LoginMode = 'social' | 'phone' | 'password' | 'dev';
+type LoginMode = 'social' | 'phone' | 'password';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -334,28 +332,6 @@ export const Login = () => {
     }
   };
 
-  // ── Dev Login Handler ───────────────────────────────────────────────
-  const handleDevLogin = async () => {
-    if (!phone.trim()) {
-      setLocalError('Please enter a phone number for dev login');
-      return;
-    }
-    setIsActionLoading(true);
-    try {
-      const fullPhone = getFullPhone();
-      const { data } = await authApi.devLogin(fullPhone, 'DevUser');
-      if (data.success && data.data) {
-        useAuthStore.setState({ user: data.data.user, token: data.data.token, isAuthenticated: true });
-        showToast('Logged in as Dev User', 'success');
-        navigate('/', { replace: true });
-      }
-    } catch (err: any) {
-      setLocalError(err?.response?.data?.error || 'Dev login failed');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
   const displayError = localError || storeError;
   const isLoading = storeLoading || isActionLoading;
 
@@ -435,19 +411,6 @@ export const Login = () => {
               className="w-13 h-13 sm:w-14 sm:h-14 rounded-full border border-white/40 text-white flex flex-col items-center justify-center bg-black/30 backdrop-blur-md active:scale-95 transition-all hover:bg-black/40"
             >
               <Mail className="w-6 h-6" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMode('dev');
-                clearError();
-                setLocalError(null);
-              }}
-              title="Dev Quick Login"
-              className="w-13 h-13 sm:w-14 sm:h-14 rounded-full border border-white/40 text-white flex flex-col items-center justify-center bg-black/30 backdrop-blur-md active:scale-95 transition-all hover:bg-black/40"
-            >
-              <User className="w-6 h-6" />
             </button>
           </div>
 
@@ -575,19 +538,6 @@ export const Login = () => {
                     }`}
                   >
                     Password
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('dev');
-                      clearError();
-                      setLocalError(null);
-                    }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                      mode === 'dev' ? 'bg-black text-white shadow-sm' : 'text-ink-muted hover:text-ink'
-                    }`}
-                  >
-                    Dev Mode
                   </button>
                 </div>
 
@@ -724,33 +674,6 @@ export const Login = () => {
                       Sign In
                     </Button>
                   </form>
-                )}
-
-                {/* Mode: Dev Login */}
-                {mode === 'dev' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
-                        Mobile Phone Number
-                      </label>
-                      <PhoneInputWithCountry
-                        countryCode={countryCode}
-                        onCountryCodeChange={setCountryCode}
-                        phone={phone}
-                        onPhoneChange={(val) => {
-                          setPhone(val);
-                          if (localError) setLocalError(null);
-                        }}
-                        placeholder="e.g. 1712345678"
-                      />
-                    </div>
-                    <Button fullWidth onClick={handleDevLogin} loading={isLoading}>
-                      <Zap className="w-4 h-4" /> Quick Dev Sign In
-                    </Button>
-                    <p className="text-[11px] text-ink-muted text-center leading-relaxed">
-                      Instant bypass login for development & testing. Creates the user account if not existing.
-                    </p>
-                  </div>
                 )}
               </>
             )}

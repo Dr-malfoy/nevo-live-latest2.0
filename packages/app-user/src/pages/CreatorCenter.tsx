@@ -1358,7 +1358,7 @@ export const CreatorCenter = () => {
                 <Lightbulb className="w-4 h-4" /> Creator Pro Tip
               </p>
               <p>
-                To maximize your reach on Nevo Live, focus on creating 15-30 second reels with a high-energy hook in the first 3 seconds. Engaging reels get recommended on the popular feed and bring constant stream of viewers directly to your live broadcasts.
+                To maximize your reach on Navo Live, focus on creating 15-30 second reels with a high-energy hook in the first 3 seconds. Engaging reels get recommended on the popular feed and bring constant stream of viewers directly to your live broadcasts.
               </p>
               <ul className="list-disc list-inside space-y-1 text-xs text-ink-muted bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <li>Use good front-facing lighting with bright colors</li>

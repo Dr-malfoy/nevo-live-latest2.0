@@ -43,7 +43,6 @@ export const ForgotPassword = () => {
 
   // OTP state
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
@@ -115,14 +114,9 @@ export const ForgotPassword = () => {
     const targetPhone = foundAccount.rawPhone;
 
     try {
-      let devOtpFound: string | null = null;
-
-      // 1. Dispatch backend SMS / dev OTP
+      // 1. Dispatch backend SMS
       try {
-        const sendRes = await authApi.sendOtp(targetPhone, 'sms', 'reset_password');
-        if (sendRes.data?.data?.devOtp) {
-          devOtpFound = sendRes.data.data.devOtp;
-        }
+        await authApi.sendOtp(targetPhone, 'sms', 'reset_password');
       } catch (backendErr) {
         console.warn('Backend sendOtp notice:', backendErr);
       }
@@ -141,14 +135,9 @@ export const ForgotPassword = () => {
 
       setStep('otp');
       setOtpDigits(['', '', '', '', '', '']);
-      setDevOtp(devOtpFound);
       setCooldown(60);
 
-      if (devOtpFound) {
-        showToast(`Verification code sent! (Dev OTP: ${devOtpFound})`, 'info');
-      } else {
-        showToast(`Verification code sent to ${foundAccount.phone}`, 'info');
-      }
+      showToast(`Verification code sent to ${foundAccount.phone}`, 'info');
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -441,29 +430,6 @@ export const ForgotPassword = () => {
                 We sent a 6-digit verification code to
               </p>
               <div className="text-center font-bold text-ink text-sm mb-4">{foundAccount.phone}</div>
-
-              {/* Dev Mode OTP Indicator & Auto-fill */}
-              {devOtp && (
-                <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1.5 animate-in fade-in duration-300">
-                  <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-                    <span>⚡ Development OTP Code</span>
-                  </div>
-                  <div className="text-2xl font-black font-mono tracking-widest text-[#4C3BFF]">
-                    {devOtp}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const digits = devOtp.split('').slice(0, 6);
-                      setOtpDigits(digits);
-                      handleVerifyOtp(devOtp);
-                    }}
-                    className="text-xs font-bold text-[#4C3BFF] hover:underline"
-                  >
-                    Tap to auto-fill & verify
-                  </button>
-                </div>
-              )}
 
               {/* 6 Digit Input Boxes */}
               <div className="flex justify-between gap-2 mb-6">

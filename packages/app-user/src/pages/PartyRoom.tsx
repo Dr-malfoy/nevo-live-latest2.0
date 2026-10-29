@@ -350,7 +350,7 @@ export const PartyRoom = () => {
   const handleShare = async () => {
     const url = window.location.href;
     const title = room?.name || 'Party Room';
-    const text = `Join my Voice Party Room "${title}" on Nevo Live!`;
+    const text = `Join my Voice Party Room "${title}" on Navo Live!`;
     if (navigator.share) {
       try {
         await navigator.share({ title, text, url });

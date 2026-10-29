@@ -74,7 +74,7 @@ const DEFAULT_OFFICIALS: OfficialChatRow[] = [
     key: 'system',
     title: 'System Notice',
     icon: '',
-    subtitle: 'Welcome to Nevo Live! Enjoy live streaming and chatting.',
+    subtitle: 'Welcome to Navo Live! Enjoy live streaming and chatting.',
     unread: 0,
     time: new Date().toISOString(),
   },

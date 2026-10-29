@@ -273,7 +273,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
         );
 
         Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        String finalTitle = (title != null && !title.isEmpty()) ? title : "Nevo Live";
+        String finalTitle = (title != null && !title.isEmpty()) ? title : "Navo Live";
         String finalBody = (body != null && !body.isEmpty()) ? body : "";
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
