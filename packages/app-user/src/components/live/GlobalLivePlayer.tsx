@@ -34,19 +34,21 @@ export const GlobalLivePlayer = () => {
     }
   }, [activeStreamId, closeStream, location.pathname, navigate]);
 
-  // Listen for stream ending events from socket so player automatically vanishes
+  // Listen for stream ending events from socket so minimized floating player automatically vanishes
   useEffect(() => {
     if (!socket || !activeStreamId) return;
 
     const onLiveStatus = (data: { userId?: string; isLive?: boolean; streamId?: string }) => {
-      if (data?.streamId === activeStreamId && data.isLive === false) {
+      const state = useLivePlayerStore.getState();
+      if (data?.streamId === state.activeStreamId && data.isLive === false && state.isMinimized) {
         handleCloseStream(data.streamId);
       }
     };
 
     const onStreamEnded = (data: { streamId?: string }) => {
-      if (!data?.streamId || data.streamId === activeStreamId) {
-        handleCloseStream(data?.streamId || activeStreamId);
+      const state = useLivePlayerStore.getState();
+      if ((!data?.streamId || data.streamId === state.activeStreamId) && state.isMinimized) {
+        handleCloseStream(data?.streamId || state.activeStreamId);
       }
     };
 

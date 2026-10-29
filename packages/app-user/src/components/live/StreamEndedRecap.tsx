@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Eye, Heart } from 'lucide-react';
+import { Clock, Eye, Heart, ArrowLeft } from 'lucide-react';
 
 export interface StreamEndedRecapProps {
   duration: string;
@@ -46,8 +46,20 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
         <div className="absolute bottom-1/3 left-6 w-36 h-36 rounded-full bg-violet-600/10 blur-3xl" />
       </div>
 
+      {/* Top Bar with Back Button */}
+      <div className="relative z-20 flex items-center justify-between p-4 pt-10 pointer-events-auto">
+        <button
+          type="button"
+          onClick={onGoHome}
+          aria-label="Back"
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white backdrop-blur-md transition-all shadow-md"
+        >
+          <ArrowLeft className="w-5 h-5 text-white" />
+        </button>
+      </div>
+
       {/* Main Content Area */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 max-w-sm sm:max-w-md mx-auto w-full py-10">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 max-w-sm sm:max-w-md mx-auto w-full pb-8">
         <motion.div
           initial={{ opacity: 0, scale: 0.85, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
