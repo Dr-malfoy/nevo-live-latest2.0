@@ -152,12 +152,14 @@ export const pkService = {
       const host: any = stream.hostId;
       const hId = host._id.toString();
       const item = {
-        streamId: stream._id,
+        userId: hId,
         hostId: hId,
+        streamId: stream._id ? stream._id.toString() : '',
         nickname: host.nickname || 'Host',
         avatar: host.avatar || '',
         level: host.level || 1,
         uid: host.uid || '',
+        streamTitle: stream.title || '',
         title: stream.title || '',
         cover: stream.cover || host.avatar || '',
         viewerCount: stream.viewerCount || 0,
@@ -189,10 +191,19 @@ export const pkService = {
     }).select('_id title cover viewerCount').lean();
 
     return {
+      userId: user._id.toString(),
+      hostId: user._id.toString(),
       host: user,
+      nickname: user.nickname || 'Host',
+      avatar: user.avatar || '',
+      level: user.level || 1,
+      uid: user.uid || cleanUid,
       isLive: Boolean(activeStream),
-      streamId: activeStream?._id || null,
+      streamId: activeStream?._id ? activeStream._id.toString() : null,
       streamTitle: activeStream?.title || null,
+      title: activeStream?.title || null,
+      cover: activeStream?.cover || user.avatar || '',
+      viewerCount: activeStream?.viewerCount || 0,
     };
   },
 

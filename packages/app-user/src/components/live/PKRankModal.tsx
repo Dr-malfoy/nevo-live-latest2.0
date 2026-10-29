@@ -9,7 +9,7 @@ import {
   PiSwordBold as Swords,
   PiMedalFill as Medal,
 } from 'react-icons/pi';
-import { pkApi, type DailyPkLeaderboardItem } from '../../api/pk.api';
+import { pkApi, type DailyPkHost } from '../../api/pk.api';
 import { getMediaUrl } from '../../lib/media';
 
 interface PKRankModalProps {
@@ -24,7 +24,7 @@ export const PKRankModal: React.FC<PKRankModalProps> = ({
   currentUserId,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [leaderboard, setLeaderboard] = useState<DailyPkLeaderboardItem[]>([]);
+  const [leaderboard, setLeaderboard] = useState<DailyPkHost[]>([]);
   const [myRank, setMyRank] = useState<{
     rank: number;
     score: number;
@@ -42,9 +42,14 @@ export const PKRankModal: React.FC<PKRankModalProps> = ({
       .getDailyPkRank()
       .then((res) => {
         if (!active) return;
-        setLeaderboard(res.leaderboard || []);
-        if (res.myRank) {
-          setMyRank(res.myRank);
+        setLeaderboard(res?.leaderboard || []);
+        if (res?.myRankInfo) {
+          setMyRank({
+            rank: res.myRankInfo.rank,
+            score: res.myRankInfo.totalScore,
+            battlesCount: res.myRankInfo.battlesCount,
+            wins: res.myRankInfo.wins,
+          });
         }
       })
       .catch((err) => {
@@ -268,7 +273,7 @@ export const PKRankModal: React.FC<PKRankModalProps> = ({
 };
 
 interface PodiumUserProps {
-  item: DailyPkLeaderboardItem;
+  item: DailyPkHost;
   rank: 1 | 2 | 3;
   crownColor: string;
   ringColor: string;

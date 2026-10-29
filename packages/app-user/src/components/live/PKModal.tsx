@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiXBold as X,
@@ -8,11 +8,9 @@ import {
   PiMagnifyingGlassBold as Search,
   PiTimerBold as Timer,
   PiCircleNotchBold as Spinner,
-  PiCrownFill as Crown,
-  PiBroadcastFill as Broadcast,
-  PiCheckBold as Check,
+  PiClockCountdownBold as CountdownIcon,
 } from 'react-icons/pi';
-import { pkApi, type LiveOpponent } from '../../api/pk.api';
+import { pkApi, type LiveOpponentHost } from '../../api/pk.api';
 import { useUIStore } from '../../stores';
 import { getMediaUrl } from '../../lib/media';
 
@@ -20,7 +18,7 @@ interface PKModalProps {
   isOpen: boolean;
   onClose: () => void;
   streamId: string;
-  onInviteSent?: (opponent: LiveOpponent, duration: number) => void;
+  onInviteSent?: (opponent: LiveOpponentHost, duration: number) => void;
 }
 
 type TabType = 'friends' | 'random' | 'custom';
@@ -38,12 +36,17 @@ export const PKModal: React.FC<PKModalProps> = ({
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
   // Lists
-  const [friends, setFriends] = useState<LiveOpponent[]>([]);
-  const [randomHosts, setRandomHosts] = useState<LiveOpponent[]>([]);
+  const [friends, setFriends] = useState<LiveOpponentHost[]>([]);
+  const [randomHosts, setRandomHosts] = useState<LiveOpponentHost[]>([]);
+
+  // Single pending match-request (only 1 host can be challenged at a time!)
+  const [pendingOpponent, setPendingOpponent] = useState<LiveOpponentHost | null>(null);
+  const [pendingCountdown, setPendingCountdown] = useState<number>(15);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval>>();
 
   // Custom search
   const [searchUid, setSearchUid] = useState('');
-  const [searchedHost, setSearchedHost] = useState<LiveOpponent | null>(null);
+  const [searchedHost, setSearchedHost] = useState<LiveOpponentHost | null>(null);
   const [searching, setSearching] = useState(false);
 
   // Fetch opponents when modal opens
@@ -57,8 +60,8 @@ export const PKModal: React.FC<PKModalProps> = ({
       .getLiveOpponents(streamId)
       .then((res) => {
         if (!active) return;
-        setFriends(res.friends || []);
-        setRandomHosts(res.random || []);
+        setFriends(res?.friends || []);
+        setRandomHosts(res?.random || []);
       })
       .catch((err) => {
         console.error('Failed to load PK opponents:', err);
@@ -72,59 +75,107 @@ export const PKModal: React.FC<PKModalProps> = ({
     };
   }, [isOpen, streamId]);
 
+  // Countdown timer for pending request
+  useEffect(() => {
+    if (!pendingOpponent) {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      return;
+    }
+
+    setPendingCountdown(15);
+    countdownTimerRef.current = setInterval(() => {
+      setPendingCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(countdownTimerRef.current);
+          setPendingOpponent(null);
+          showToast('No response from host. You can challenge again.', 'info');
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, [pendingOpponent, showToast]);
+
   // Handle Search Host
   const handleSearch = async () => {
-    if (!searchUid.trim()) return;
+    const q = searchUid.trim();
+    if (!q) return;
     setSearching(true);
     setSearchedHost(null);
     try {
-      const res = await pkApi.searchHostByUid(searchUid.trim());
+      const res = await pkApi.searchHostByUid(q);
       if (res) {
         setSearchedHost(res);
       } else {
         showToast('No live host found with this UID', 'error');
       }
     } catch {
-      showToast('Search failed. Please try again', 'error');
+      showToast('Search failed. Please check the UID.', 'error');
     } finally {
       setSearching(false);
     }
   };
 
-  // Handle Invite Host
-  const handleInvite = async (opponent: LiveOpponent) => {
-    if (!opponent.streamId) {
-      showToast('This host is not currently live', 'error');
+  // Handle Invite 1 Host (Only 1 request at a time!)
+  const handleInvite = async (opponent: LiveOpponentHost) => {
+    if (pendingOpponent) {
+      showToast('A challenge is already pending. Please wait or cancel it.', 'info');
+      return;
+    }
+
+    const hostId = opponent.userId || opponent.hostId;
+    if (!hostId) {
+      showToast('Invalid host ID', 'error');
       return;
     }
 
     try {
-      setInvitingId(opponent.userId);
+      setInvitingId(hostId);
       await pkApi.inviteLivePk({
-        fromStreamId: streamId,
-        toHostId: opponent.userId,
-        toStreamId: opponent.streamId,
-        durationSeconds: duration,
+        inviterStreamId: streamId,
+        targetHostId: hostId,
+        targetStreamId: opponent.streamId,
+        durationMinutes: Math.round(duration / 60),
       });
 
-      showToast(`PK Battle invitation sent to ${opponent.nickname}!`, 'success');
+      // Set single pending state
+      setPendingOpponent(opponent);
+      showToast(`PK challenge sent to ${opponent.nickname || 'Host'}!`, 'success');
       onInviteSent?.(opponent, duration);
-      onClose();
     } catch (err: any) {
       showToast(err?.message || 'Failed to send PK invitation', 'error');
+      setPendingOpponent(null);
     } finally {
       setInvitingId(null);
     }
   };
 
-  // Handle Random Quick Match
+  // Handle Cancel Pending Invite
+  const handleCancelInvite = () => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setPendingOpponent(null);
+    showToast('Challenge request cancelled', 'info');
+  };
+
+  // Handle Random Quick Match: Picks EXACTLY 1 random host and sends 1 request
   const handleRandomMatch = () => {
+    if (pendingOpponent) {
+      showToast('A match request is already waiting for response!', 'info');
+      return;
+    }
+
     if (randomHosts.length === 0) {
       showToast('No other hosts available for random match right now', 'info');
       return;
     }
+
     const randomIndex = Math.floor(Math.random() * randomHosts.length);
-    handleInvite(randomHosts[randomIndex]);
+    const chosenOne = randomHosts[randomIndex];
+    handleInvite(chosenOne);
   };
 
   if (!isOpen) return null;
@@ -171,6 +222,55 @@ export const PKModal: React.FC<PKModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Active 1-on-1 Pending Challenge Status Bar */}
+        <AnimatePresence>
+          {pendingOpponent && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-purple-900/60 border-b border-purple-400/40 px-5 py-3 flex items-center justify-between gap-3 text-white overflow-hidden"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 rounded-full overflow-hidden border border-purple-400 bg-purple-950">
+                    {pendingOpponent.avatar ? (
+                      <img
+                        src={getMediaUrl(pendingOpponent.avatar)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-bold text-xs text-purple-300">
+                        {pendingOpponent.nickname?.charAt(0) || 'H'}
+                      </div>
+                    )}
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 border border-black animate-ping" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate">
+                    Waiting for {pendingOpponent.nickname || 'Host'} to accept…
+                  </p>
+                  <p className="text-[10px] text-purple-200/70 flex items-center gap-1">
+                    <CountdownIcon className="w-3 h-3 text-amber-300" />
+                    Auto-cancels in {pendingCountdown}s
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCancelInvite}
+                className="px-3 py-1 rounded-xl bg-white/10 hover:bg-red-500/30 text-white hover:text-red-200 border border-white/10 text-xs font-bold transition-all shrink-0"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Duration Selector */}
         <div className="px-5 pt-3 pb-2 border-b border-white/5 shrink-0 bg-white/[0.02]">
@@ -275,59 +375,82 @@ export const PKModal: React.FC<PKModalProps> = ({
               </div>
             ) : (
               <div className="space-y-2.5">
-                {friends.map((friend) => (
-                  <OpponentCard
-                    key={friend.userId}
-                    opponent={friend}
-                    inviting={invitingId === friend.userId}
-                    onInvite={() => handleInvite(friend)}
-                  />
-                ))}
+                {friends.map((friend) => {
+                  const fId = friend.userId || friend.hostId;
+                  const isThisInviting = invitingId === fId || (pendingOpponent && (pendingOpponent.userId === fId || pendingOpponent.hostId === fId));
+                  return (
+                    <OpponentCard
+                      key={fId || friend.nickname}
+                      opponent={friend}
+                      inviting={Boolean(isThisInviting)}
+                      disabled={Boolean(pendingOpponent && !isThisInviting)}
+                      onInvite={() => handleInvite(friend)}
+                    />
+                  );
+                })}
               </div>
             )
           ) : tab === 'random' ? (
-            /* Random Tab */
+            /* Random Tab - Strict 1-on-1: Single Match button, no multi-request spam! */
             <div className="flex flex-col items-center text-center py-4">
               <div className="relative mb-4">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center shadow-xl shadow-purple-600/40 animate-pulse">
                   <Shuffle className="w-10 h-10 text-white" />
                 </div>
                 <span className="absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full bg-pink-500 text-[10px] font-black uppercase text-white shadow">
-                  Instant
+                  1v1 Single
                 </span>
               </div>
 
               <h4 className="text-base font-extrabold text-white">Random 1v1 Battle</h4>
               <p className="text-xs text-white/50 max-w-xs mt-1 mb-5">
-                Match with any currently live host across the platform. Both of your audiences will be linked!
+                Matches with 1 live host at a time. The battle begins as soon as they accept!
               </p>
 
-              <button
-                type="button"
-                onClick={handleRandomMatch}
-                disabled={loading || randomHosts.length === 0}
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 active:scale-[0.98] transition-all font-black text-sm text-white shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <Swords className="w-5 h-5" />
-                Start Random Match ({randomHosts.length} Online)
-              </button>
-
-              {randomHosts.length > 0 && (
-                <div className="w-full mt-6 text-left">
-                  <span className="text-[11px] font-bold text-white/50 tracking-wider uppercase mb-2 block">
-                    Online Live Hosts
-                  </span>
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {randomHosts.slice(0, 5).map((host) => (
-                      <OpponentCard
-                        key={host.userId}
-                        opponent={host}
-                        inviting={invitingId === host.userId}
-                        onInvite={() => handleInvite(host)}
-                      />
-                    ))}
+              {pendingOpponent ? (
+                <div className="w-full p-4 rounded-2xl bg-white/5 border border-purple-500/40 flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-400 bg-purple-950 shrink-0">
+                      {pendingOpponent.avatar ? (
+                        <img
+                          src={getMediaUrl(pendingOpponent.avatar)}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center font-bold text-purple-300">
+                          {pendingOpponent.nickname?.charAt(0) || 'H'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 text-left flex-1">
+                      <h5 className="text-sm font-bold text-white truncate">
+                        {pendingOpponent.nickname || 'Host'}
+                      </h5>
+                      <p className="text-[11px] text-purple-300 flex items-center gap-1 mt-0.5">
+                        <Spinner className="w-3 h-3 animate-spin" /> Waiting for response ({pendingCountdown}s)…
+                      </p>
+                    </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelInvite}
+                    className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-200 border border-white/10 font-bold text-xs transition-colors"
+                  >
+                    Cancel Challenge
+                  </button>
                 </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleRandomMatch}
+                  disabled={loading || randomHosts.length === 0}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 active:scale-[0.98] transition-all font-black text-sm text-white shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Swords className="w-5 h-5" />
+                  Find 1v1 Opponent ({randomHosts.length} Online)
+                </button>
               )}
             </div>
           ) : (
@@ -367,7 +490,11 @@ export const PKModal: React.FC<PKModalProps> = ({
                   </span>
                   <OpponentCard
                     opponent={searchedHost}
-                    inviting={invitingId === searchedHost.userId}
+                    inviting={Boolean(
+                      invitingId === (searchedHost.userId || searchedHost.hostId) ||
+                      (pendingOpponent && (pendingOpponent.userId === searchedHost.userId || pendingOpponent.hostId === searchedHost.hostId))
+                    )}
+                    disabled={Boolean(pendingOpponent)}
                     onInvite={() => handleInvite(searchedHost)}
                   />
                 </div>
@@ -385,16 +512,27 @@ export const PKModal: React.FC<PKModalProps> = ({
 };
 
 interface OpponentCardProps {
-  opponent: LiveOpponent;
+  opponent: LiveOpponentHost;
   inviting: boolean;
+  disabled?: boolean;
   onInvite: () => void;
 }
 
 const OpponentCard: React.FC<OpponentCardProps> = ({
   opponent,
   inviting,
+  disabled = false,
   onInvite,
 }) => {
+  const hostId = String(opponent.userId || opponent.hostId || '');
+  const uidText = opponent.uid
+    ? `UID: ${opponent.uid}`
+    : hostId
+    ? `UID: ${hostId.slice(-6)}`
+    : 'Host';
+
+  const subtitle = opponent.streamTitle || opponent.title || uidText;
+
   return (
     <div className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 transition-all">
       <div className="flex items-center gap-3 min-w-0">
@@ -403,7 +541,7 @@ const OpponentCard: React.FC<OpponentCardProps> = ({
             {opponent.avatar ? (
               <img
                 src={getMediaUrl(opponent.avatar)}
-                alt={opponent.nickname}
+                alt={opponent.nickname || 'Host'}
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -421,16 +559,16 @@ const OpponentCard: React.FC<OpponentCardProps> = ({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <h5 className="text-sm font-bold text-white truncate max-w-[130px]">
-              {opponent.nickname}
+              {opponent.nickname || 'Host'}
             </h5>
-            {opponent.level && (
+            {typeof opponent.level === 'number' && opponent.level > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-[9px] font-black text-white shrink-0">
                 Lv.{opponent.level}
               </span>
             )}
           </div>
           <p className="text-[11px] text-white/50 truncate max-w-[150px]">
-            {opponent.streamTitle || `UID: ${opponent.userId.slice(-6)}`}
+            {subtitle}
           </p>
         </div>
       </div>
@@ -438,8 +576,8 @@ const OpponentCard: React.FC<OpponentCardProps> = ({
       <button
         type="button"
         onClick={onInvite}
-        disabled={inviting}
-        className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 active:scale-95 transition-all text-xs font-black text-white shadow-md shadow-purple-600/30 shrink-0 flex items-center gap-1 disabled:opacity-50"
+        disabled={inviting || disabled}
+        className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 active:scale-95 transition-all text-xs font-black text-white shadow-md shadow-purple-600/30 shrink-0 flex items-center gap-1 disabled:opacity-40"
       >
         {inviting ? (
           <Spinner className="w-3.5 h-3.5 animate-spin" />
