@@ -139,6 +139,7 @@ export const BottomToolbar = ({
   onEnd,
   onChatSend,
   onOpenMenu,
+  onOpenPK,
   elapsed,
 }: BottomToolbarProps) => (
   <motion.div
