@@ -111,6 +111,7 @@ export const LiveStreamPage = ({
     toggleMic,
     switchCamera,
     leaveChannel,
+    getLocalStream,
   } = useAgora();
 
   const micOnRef = useRef(micOn);
@@ -1177,6 +1178,9 @@ export const LiveStreamPage = ({
         onQuitPkBattle={handleQuitPkBattle}
         onSendPkGift={handleSendPkGift}
         onRewardAudienceUser={handleRewardAudienceUser}
+        socket={socket}
+        currentStreamId={id}
+        localMediaStream={getLocalStream?.()}
       />
 
       {/* In-Room User Profile Modal (Keeps live stream running) */}

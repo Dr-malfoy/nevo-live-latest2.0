@@ -60,7 +60,14 @@ export interface PKRecentGift {
 
 export interface PKBattleViewProps {
   battleId: string;
+  streamIdA?: string;
+  streamIdB?: string;
+  currentStreamId?: string;
+  socket?: any;
+  localMediaStream?: MediaStream | null;
   initialDurationSeconds?: number;
+  endsAt?: string | Date;
+  isBattleFinished?: boolean;
   leftHost: PKHostData;
   rightHost: PKHostData;
   isHost: boolean;
@@ -93,7 +100,14 @@ export interface PKBattleViewProps {
 
 export const PKBattleView: React.FC<PKBattleViewProps> = ({
   battleId,
+  streamIdA,
+  streamIdB,
+  currentStreamId,
+  socket,
+  localMediaStream,
   initialDurationSeconds = 180,
+  endsAt,
+  isBattleFinished = false,
   leftHost,
   rightHost,
   isHost,
@@ -122,50 +136,109 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   onOpenGift,
   onShare,
 }) => {
-  // Timer state
-  const [timeLeft, setTimeLeft] = useState<number>(initialDurationSeconds);
-  const [isFinished, setIsFinished] = useState(false);
+  // Resilient target end time calculated from endsAt timestamp or initial duration
+  const targetEndTimeRef = useRef<number>(
+    endsAt ? new Date(endsAt).getTime() : Date.now() + (initialDurationSeconds || 180) * 1000
+  );
+
+  const [timeLeft, setTimeLeft] = useState<number>(() => {
+    return Math.max(0, Math.ceil((targetEndTimeRef.current - Date.now()) / 1000));
+  });
+  const [isFinished, setIsFinished] = useState(Boolean(isBattleFinished));
+  const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(null);
+
   const [textInput, setTextInput] = useState('');
   const [selectedSide, setSelectedSide] = useState<'left' | 'right'>(
     currentUserId === rightHost.userId ? 'right' : 'left'
   );
 
+  // Keep callback refs stable across frequent re-renders
+  const onEndPKRef = useRef(onEndPK);
+  const onQuitPKRef = useRef(onQuitPK);
+  useEffect(() => {
+    onEndPKRef.current = onEndPK;
+    onQuitPKRef.current = onQuitPK;
+  });
+
   // Score computation
-  const leftScore = Number(leftHost.score) || 0;
-  const rightScore = Number(rightHost.score) || 0;
+  const leftScore = Math.max(0, Number(leftHost.score) || 0);
+  const rightScore = Math.max(0, Number(rightHost.score) || 0);
   const totalScore = leftScore + rightScore;
-  const leftPct = totalScore > 0 ? Math.min(Math.max((leftScore / totalScore) * 100, 10), 90) : 50;
   const leadDiff = Math.abs(leftScore - rightScore);
   const leadSide = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
   const winner = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
 
-  // Merged Viewer Count calculation (combines both hosts' audiences)
-  const leftViewers = Number(leftHost.viewerCount) || 1;
-  const rightViewers = Number(rightHost.viewerCount) || 1;
+  // Gap-based PK Score Gauge:
+  // Both sides start at 0% when score is 0, creating a wide empty track / gap between them.
+  // Each fills toward the center divider based on its score relative to the leader.
+  const maxScore = Math.max(leftScore, rightScore, 100);
+  const leftFillPct = leftScore > 0 ? Math.min(46, Math.max(4, (leftScore / maxScore) * 46)) : 0;
+  const rightFillPct = rightScore > 0 ? Math.min(46, Math.max(4, (rightScore / maxScore) * 46)) : 0;
+
+  // Real Dynamic Viewer Count calculation (per host & merged)
+  const leftViewers = Math.max(0, Number(leftHost.viewerCount) || 0);
+  const rightViewers = Math.max(0, Number(rightHost.viewerCount) || 0);
   const mergedViewerCount = leftViewers + rightViewers;
 
-  // Countdown timer effect
+  const formatViewerNumber = (count: number) => {
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+    return count.toString();
+  };
+
+  // Sync isBattleFinished if server ends battle
   useEffect(() => {
-    if (timeLeft <= 0) {
+    if (isBattleFinished) {
       setIsFinished(true);
-      onEndPK?.();
-      return;
+    }
+  }, [isBattleFinished]);
+
+  // Main countdown timer: computes exact wall-clock remaining time
+  useEffect(() => {
+    if (endsAt) {
+      const parsed = new Date(endsAt).getTime();
+      if (!isNaN(parsed) && parsed > Date.now()) {
+        targetEndTimeRef.current = parsed;
+      }
     }
 
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setIsFinished(true);
-          onEndPK?.();
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((targetEndTimeRef.current - Date.now()) / 1000));
+      setTimeLeft(remaining);
+
+      if (remaining <= 0) {
+        setIsFinished(true);
+        if (onEndPKRef.current) {
+          onEndPKRef.current();
+        }
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [battleId, endsAt]);
+
+  // Auto-close countdown when finished (closes back to normal live after 5s)
+  useEffect(() => {
+    if (!isFinished) return;
+    setAutoCloseCountdown(5);
+
+    const closeInterval = setInterval(() => {
+      setAutoCloseCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(closeInterval);
+          if (onQuitPKRef.current) {
+            onQuitPKRef.current();
+          }
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [timeLeft, onEndPK]);
+    return () => clearInterval(closeInterval);
+  }, [isFinished]);
 
   // Format MM:SS
   const formatTime = (secs: number) => {
@@ -174,51 +247,224 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Video track auto-migration from #agora-video-area into PK split feeds
+  // PK Dual-Video Streaming & WebRTC Connection Effect
   useEffect(() => {
-    const agoraArea = document.getElementById('agora-video-area');
+    let opponentPc: RTCPeerConnection | null = null;
+    let sendPc: RTCPeerConnection | null = null;
+
     const leftContainer = document.getElementById('pk-video-left');
     const rightContainer = document.getElementById('pk-video-right');
-    if (!agoraArea || !leftContainer) return;
+    const agoraArea = document.getElementById('agora-video-area');
 
-    const movedElements: { node: Node; parent: Node }[] = [];
+    if (!leftContainer || !rightContainer) return;
 
-    const migrateNodes = () => {
-      const children = Array.from(agoraArea.childNodes);
-      children.forEach((child) => {
-        const el = child as HTMLElement;
-        const isRemote = el.id && el.id.startsWith('remote-container-');
-        // If current user is host B, local video belongs to right, remote to left
-        const isLocalRight = currentUserId && currentUserId === rightHost.userId;
-        const target = isRemote
-          ? (isLocalRight ? leftContainer : rightContainer)
-          : (isLocalRight ? rightContainer : leftContainer);
-
-        if (target && !target.contains(child)) {
-          movedElements.push({ node: child, parent: agoraArea });
-          target.appendChild(child);
+    // Helper to safely play a MediaStream inside a container without moving existing nodes
+    const renderStreamInContainer = (container: HTMLElement, stream: MediaStream, isMuted: boolean) => {
+      let videoEl = container.querySelector('video') as HTMLVideoElement;
+      if (!videoEl) {
+        videoEl = document.createElement('video');
+        videoEl.autoplay = true;
+        videoEl.playsInline = true;
+        videoEl.style.width = '100%';
+        videoEl.style.height = '100%';
+        videoEl.style.objectFit = 'cover';
+        videoEl.className = 'w-full h-full object-cover';
+        container.appendChild(videoEl);
+      }
+      videoEl.muted = isMuted;
+      if (videoEl.srcObject !== stream) {
+        videoEl.srcObject = stream;
+      }
+      videoEl.play().catch(() => {
+        if (!isMuted) {
+          videoEl.muted = true;
+          videoEl.play().catch(() => {});
         }
       });
     };
 
-    migrateNodes();
+    // Determine Host IDs
+    const hostAId = leftHost.userId || (leftHost as any)._id;
+    const hostBId = rightHost.userId || (rightHost as any)._id;
 
-    const observer = new MutationObserver(() => {
-      migrateNodes();
-    });
-    observer.observe(agoraArea, { childList: true, subtree: false });
+    const isCurrentHostA = Boolean(currentUserId && hostAId && currentUserId === hostAId);
+    const isCurrentHostB = Boolean(currentUserId && hostBId && currentUserId === hostBId);
+    const isCurrentHost = isHost || isCurrentHostA || isCurrentHostB;
+
+    // Which side is this client's primary stream?
+    // Left = Host A, Right = Host B
+    const isSideA = isCurrentHostA || (!isCurrentHostB && (currentStreamId ? currentStreamId === streamIdA : true));
+    const mySide = isSideA ? 'left' : 'right';
+    const opponentSide = isSideA ? 'right' : 'left';
+    const opponentStreamId = isSideA ? streamIdB : streamIdA;
+
+    // 1. Render Current Stream (the one this client already has)
+    const renderMyStream = () => {
+      const myContainer = mySide === 'left' ? leftContainer : rightContainer;
+      if (isCurrentHost && localMediaStream) {
+        // Local host camera stream
+        renderStreamInContainer(myContainer, localMediaStream, true);
+      } else if (agoraArea) {
+        // Viewer or remote stream from main room
+        const existingVideo = agoraArea.querySelector('video') as HTMLVideoElement;
+        if (existingVideo && existingVideo.srcObject) {
+          renderStreamInContainer(myContainer, existingVideo.srcObject as MediaStream, false);
+        } else if (localMediaStream) {
+          renderStreamInContainer(myContainer, localMediaStream, true);
+        }
+      }
+    };
+
+    renderMyStream();
+    const intervalCheck = setInterval(renderMyStream, 1000);
+
+    // 2. Connect to the OPPONENT stream via WebRTC P2P
+    const RTC_CONFIG: RTCConfiguration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ],
+    };
+
+    if (socket && opponentStreamId) {
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      opponentPc = pc;
+
+      // Handle receiving opponent stream tracks
+      pc.ontrack = (event) => {
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        const targetContainer = opponentSide === 'left' ? leftContainer : rightContainer;
+        renderStreamInContainer(targetContainer, stream, false);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('stream:signal:candidate', {
+            toSocketId: (opponentPc as any)?._remoteSocketId,
+            candidate: event.candidate,
+            streamId: opponentStreamId,
+          });
+        }
+      };
+
+      // Handler when opponent host sends an offer
+      const onOpponentOffer = async ({ fromSocketId, offer }: any) => {
+        if (!offer) return;
+        try {
+          (pc as any)._remoteSocketId = fromSocketId;
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('stream:signal:answer', {
+            toSocketId: fromSocketId,
+            answer,
+            streamId: opponentStreamId,
+          });
+        } catch (err) {
+          console.warn('[PKBattleView] WebRTC answer error for opponent:', err);
+        }
+      };
+
+      // Handler for ICE candidate from opponent
+      const onOpponentCandidate = async ({ candidate }: any) => {
+        if (candidate && pc.remoteDescription) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.warn('[PKBattleView] WebRTC ICE candidate error:', err);
+          }
+        }
+      };
+
+      socket.on('stream:signal:offer', onOpponentOffer);
+      socket.on('stream:signal:candidate', onOpponentCandidate);
+
+      // If we are a host, also listen for incoming stream requests to BROADCAST our camera
+      const onPeerJoinedForMe = async ({ peerSocketId }: any) => {
+        if (!isCurrentHost || !localMediaStream || !peerSocketId) return;
+        try {
+          if (sendPc) {
+            sendPc.close();
+            sendPc = null;
+          }
+          const sPc = new RTCPeerConnection(RTC_CONFIG);
+          sendPc = sPc;
+
+          localMediaStream.getTracks().forEach((track) => sPc.addTrack(track, localMediaStream));
+
+          sPc.onicecandidate = (event) => {
+            if (event.candidate) {
+              socket.emit('stream:signal:candidate', {
+                toSocketId: peerSocketId,
+                candidate: event.candidate,
+                streamId: currentStreamId,
+              });
+            }
+          };
+
+          const offer = await sPc.createOffer();
+          await sPc.setLocalDescription(offer);
+          socket.emit('stream:signal:offer', {
+            toSocketId: peerSocketId,
+            offer,
+            streamId: currentStreamId,
+          });
+
+          const onAnswer = async ({ fromSocketId, answer }: any) => {
+            if (fromSocketId === peerSocketId && answer) {
+              try {
+                await sPc.setRemoteDescription(new RTCSessionDescription(answer));
+              } catch {}
+              socket.off('stream:signal:answer', onAnswer);
+            }
+          };
+          socket.on('stream:signal:answer', onAnswer);
+        } catch (err) {
+          console.warn('[PKBattleView] Failed to broadcast stream to peer:', err);
+        }
+      };
+      socket.on('stream:signal:peer-joined', onPeerJoinedForMe);
+
+      // Now request the opponent stream from their room!
+      socket.emit('stream:signal:request-stream', { streamId: opponentStreamId });
+
+      const retryTimer = setTimeout(() => {
+        if (pc.connectionState !== 'connected') {
+          socket.emit('stream:signal:request-stream', { streamId: opponentStreamId });
+        }
+      }, 2000);
+
+      return () => {
+        clearInterval(intervalCheck);
+        clearTimeout(retryTimer);
+        socket.off('stream:signal:offer', onOpponentOffer);
+        socket.off('stream:signal:candidate', onOpponentCandidate);
+        socket.off('stream:signal:peer-joined', onPeerJoinedForMe);
+        if (opponentPc) opponentPc.close();
+        if (sendPc) sendPc.close();
+        leftContainer.querySelectorAll('video').forEach((v) => v.remove());
+        rightContainer.querySelectorAll('video').forEach((v) => v.remove());
+      };
+    }
 
     return () => {
-      observer.disconnect();
-      movedElements.forEach(({ node, parent }) => {
-        try {
-          if (!parent.contains(node)) {
-            parent.appendChild(node);
-          }
-        } catch {}
-      });
+      clearInterval(intervalCheck);
+      leftContainer.querySelectorAll('video').forEach((v) => v.remove());
+      rightContainer.querySelectorAll('video').forEach((v) => v.remove());
     };
-  }, [currentUserId, rightHost.userId]);
+  }, [
+    socket,
+    battleId,
+    streamIdA,
+    streamIdB,
+    currentStreamId,
+    currentUserId,
+    isHost,
+    leftHost.userId,
+    rightHost.userId,
+    localMediaStream,
+  ]);
 
   // Process and separate received gifts for Host A (Left) and Host B (Right)
   const { leftGifts, rightGifts, leftGiftTotal, rightGiftTotal } = useMemo(() => {
@@ -324,7 +570,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
             <UsersIcon className="w-3.5 h-3.5 text-purple-300" />
             <span className="text-xs font-black tracking-wide text-white tabular-nums">
-              {mergedViewerCount >= 1000 ? `${(mergedViewerCount / 1000).toFixed(1)}K` : mergedViewerCount}
+              {formatViewerNumber(mergedViewerCount)}
             </span>
             <span className="text-[9px] font-bold uppercase tracking-wider text-purple-200/70 hidden sm:inline">
               Viewers
@@ -442,7 +688,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
 
               {/* Host A Individual Viewer Count */}
               <span className="px-2 py-0.5 rounded-full bg-black/60 border border-white/10 backdrop-blur-md text-[10px] font-bold text-white/90">
-                👁 {leftHost.viewerCount ? `${(leftHost.viewerCount / 1000).toFixed(1)}K` : '1'}
+                👁 {formatViewerNumber(leftViewers)}
               </span>
             </div>
 
@@ -535,7 +781,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             {/* Top Badges: LIVE + Individual Viewers + Voice / Audio Speaking Waves */}
             <div className="absolute top-2 inset-x-2 flex items-center justify-between z-10 pointer-events-none">
               <span className="px-2 py-0.5 rounded-full bg-black/60 border border-white/10 backdrop-blur-md text-[10px] font-bold text-white/90">
-                👁 {rightHost.viewerCount ? `${(rightHost.viewerCount / 1000).toFixed(1)}K` : '1'}
+                👁 {formatViewerNumber(rightViewers)}
               </span>
 
               <div className="flex items-center gap-1.5">
@@ -596,29 +842,56 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         </div>
       </div>
 
-      {/* 3. PK SCORE LEVEL BAR (Gaming / Level Gauge Style) */}
-      <div className="relative z-10 px-3 py-1.5 shrink-0 bg-black/50 backdrop-blur-md border-y border-white/10 shadow-lg">
-        {/* Tug-of-War Level Gauge Progress Bar */}
-        <div className="relative h-4 rounded-full overflow-hidden bg-white/10 p-0.5 shadow-inner">
-          {/* Animated Left Side Bar (Purple/Indigo) */}
-          <motion.div
-            animate={{ width: `${leftPct}%` }}
-            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-            className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-l-full shadow-[0_0_15px_rgba(168,85,247,0.9)]"
-          />
-          {/* Animated Right Side Bar (Pink/Rose) */}
-          <motion.div
-            animate={{ width: `${100 - leftPct}%` }}
-            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-            className="absolute right-0 top-0 bottom-0 bg-gradient-to-l from-rose-500 via-pink-500 to-fuchsia-400 rounded-r-full shadow-[0_0_15px_rgba(244,63,94,0.9)]"
-          />
+      {/* 3. PK SCORE LEVEL BAR (Dynamic Fill with Central Gap) */}
+      <div className="relative z-10 px-3 py-1.5 shrink-0 bg-black/60 backdrop-blur-md border-y border-white/10 shadow-lg">
+        {/* Dynamic Tug-of-War Level Gauge Progress Bar with Middle Gap */}
+        <div className="relative h-4 rounded-full overflow-hidden bg-white/10 border border-white/15 p-0.5 shadow-inner">
+          {/* Center Divider / Gap Marker */}
+          <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-1 bg-white/20 z-10 rounded-full" />
+
+          {/* Animated Left Side Bar (Purple/Indigo) - Fills from Left edge */}
+          {leftScore > 0 && (
+            <motion.div
+              initial={false}
+              animate={{ width: `${leftFillPct}%` }}
+              transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+              className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 rounded-full shadow-[0_0_15px_rgba(168,85,247,0.9)]"
+            />
+          )}
+
+          {/* Animated Right Side Bar (Pink/Rose) - Fills from Right edge */}
+          {rightScore > 0 && (
+            <motion.div
+              initial={false}
+              animate={{ width: `${rightFillPct}%` }}
+              transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+              className="absolute right-0 top-0 bottom-0 bg-gradient-to-l from-rose-500 via-pink-500 to-fuchsia-400 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.9)]"
+            />
+          )}
+
+          {/* Center Status / Score Indicators */}
+          {leftScore === 0 && rightScore === 0 ? (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+              <span className="text-[9px] font-black text-white/40 uppercase tracking-widest px-2 py-0.2 rounded bg-black/40">
+                0 : 0
+              </span>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+              <span className="text-[9px] font-black text-amber-300 uppercase tracking-wider px-2 py-0.2 rounded-full bg-black/60 border border-white/10 backdrop-blur-sm">
+                {leadSide === 'tie'
+                  ? 'TIED'
+                  : `+${leadDiff.toLocaleString()}`}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Center Lead Pill & Rules / Win Streak */}
+        {/* Bottom Rules / Status */}
         <div className="flex items-center justify-between mt-1 px-1 text-[11px] font-bold">
           <span className="flex items-center gap-1 text-purple-300">
             <Swords className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline text-white/70">PK Rules:</span> Highest score wins
+            <span className="text-white/70">Score:</span> {leftScore.toLocaleString()}
           </span>
 
           {/* Central Lead Status Pill */}
@@ -628,15 +901,19 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
                 ? 'bg-purple-600 text-white border-purple-400 shadow-purple-500/40'
                 : leadSide === 'right'
                 ? 'bg-pink-600 text-white border-pink-400 shadow-pink-500/40'
-                : 'bg-white/20 text-white/80 border-white/20'
+                : 'bg-white/10 text-white/70 border-white/20'
             }`}
           >
-            {leadSide === 'tie' ? 'TIED' : `LEAD ▲ +${leadDiff.toLocaleString()}`}
+            {leadSide === 'left'
+              ? `${leftHost.nickname} LEADS`
+              : leadSide === 'right'
+              ? `${rightHost.nickname} LEADS`
+              : 'TIED'}
           </span>
 
-          <span className="flex items-center gap-1 text-orange-400">
-            <Flame className="w-3.5 h-3.5" />
-            <span>Streak: {leftHost.winStreak || 4}</span>
+          <span className="flex items-center gap-1 text-pink-300">
+            <span className="text-white/70">Score:</span> {rightScore.toLocaleString()}
+            <Flame className="w-3.5 h-3.5 text-amber-400" />
           </span>
         </div>
       </div>
@@ -942,7 +1219,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
                   onClick={onQuitPK}
                   className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-black text-sm text-white shadow-xl shadow-purple-600/40 active:scale-95 transition-all"
                 >
-                  Back to Normal Live
+                  Back to Normal Live {autoCloseCountdown !== null ? `(${autoCloseCountdown}s)` : ''}
                 </button>
               </div>
             </motion.div>

@@ -177,15 +177,28 @@ export const GoLive: React.FC = () => {
         }
 
         const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode,
-            width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
-            height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-          audio: false, // local preview only, prevent feedback loop
-        });
+        let stream: MediaStream | null = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode,
+              width: isPortrait ? { ideal: 1080, min: 720 } : { ideal: 1920, min: 1080 },
+              height: isPortrait ? { ideal: 1920, min: 1080 } : { ideal: 1080, min: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false, // local preview only, prevent feedback loop
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode,
+              width: isPortrait ? { ideal: 720, min: 480 } : { ideal: 1280, min: 640 },
+              height: isPortrait ? { ideal: 1280, min: 640 } : { ideal: 720, min: 480 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false,
+          });
+        }
 
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());

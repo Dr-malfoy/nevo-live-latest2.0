@@ -100,4 +100,7 @@ export interface LiveRoomProps {
   onQuitPkBattle?: (battleId: string) => void;
   onSendPkGift?: (targetHostId: string, side: 'left' | 'right') => void;
   onRewardAudienceUser?: (userId: string, amount: number, note?: string) => Promise<void>;
+  socket?: any;
+  currentStreamId?: string;
+  localMediaStream?: MediaStream | null;
 }

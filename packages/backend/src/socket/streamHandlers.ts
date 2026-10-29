@@ -146,37 +146,41 @@ export const registerStreamHandlers = (socket: Socket): void => {
     });
   });
 
-  // WebRTC P2P fallback signaling relays (when Agora is offline / dev mode)
+  // WebRTC P2P fallback signaling relays (when Agora is offline / dev mode & PK battle)
   socket.on('stream:signal:request-stream', ({ streamId }) => {
-    socket.to(`stream:${streamId}`).emit('stream:signal:peer-joined', {
+    getIO().to(`stream:${streamId}`).emit('stream:signal:peer-joined', {
       peerSocketId: socket.id,
       peerUserId: socket.data.user?.userId,
+      streamId,
     });
   });
 
-  socket.on('stream:signal:offer', ({ toSocketId, offer }) => {
+  socket.on('stream:signal:offer', ({ toSocketId, offer, streamId }) => {
     if (toSocketId) {
       getIO().to(toSocketId).emit('stream:signal:offer', {
         fromSocketId: socket.id,
         offer,
+        streamId,
       });
     }
   });
 
-  socket.on('stream:signal:answer', ({ toSocketId, answer }) => {
+  socket.on('stream:signal:answer', ({ toSocketId, answer, streamId }) => {
     if (toSocketId) {
       getIO().to(toSocketId).emit('stream:signal:answer', {
         fromSocketId: socket.id,
         answer,
+        streamId,
       });
     }
   });
 
-  socket.on('stream:signal:candidate', ({ toSocketId, candidate }) => {
+  socket.on('stream:signal:candidate', ({ toSocketId, candidate, streamId }) => {
     if (toSocketId) {
       getIO().to(toSocketId).emit('stream:signal:candidate', {
         fromSocketId: socket.id,
         candidate,
+        streamId,
       });
     }
   });

@@ -42,6 +42,65 @@ interface UseAgoraOptions {
   streamId?: string;
 }
 
+/**
+ * Creates high-definition camera video track optimized for vertical mobile live-streaming.
+ * Prioritizes 1080p Full HD -> 720p HD -> Agora standard presets with 'detail' optimization
+ * to ensure crisp, crystal-clear video clarity without compression artifacts or blurriness.
+ */
+async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
+  const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+
+  // 1. Try 1080p FHD (1080x1920 portrait or 1920x1080 landscape, 30fps, 2200-4500 kbps, detail optimization)
+  try {
+    return await AgoraRTC.createCameraVideoTrack({
+      facingMode,
+      encoderConfig: {
+        width: isPortrait ? 1080 : 1920,
+        height: isPortrait ? 1920 : 1080,
+        frameRate: 30,
+        bitrateMin: 2200,
+        bitrateMax: 4500,
+        optimizationMode: 'detail',
+      },
+    });
+  } catch (err1080) {
+    console.warn('[useAgora] 1080p HD track creation failed, trying 720p HD:', err1080);
+  }
+
+  // 2. Try 720p HD (720x1280 portrait or 1280x720 landscape, 30fps, 1600-3000 kbps, detail optimization)
+  try {
+    return await AgoraRTC.createCameraVideoTrack({
+      facingMode,
+      encoderConfig: {
+        width: isPortrait ? 720 : 1280,
+        height: isPortrait ? 1280 : 720,
+        frameRate: 30,
+        bitrateMin: 1600,
+        bitrateMax: 3000,
+        optimizationMode: 'detail',
+      },
+    });
+  } catch (err720) {
+    console.warn('[useAgora] 720p HD track creation failed, trying Agora 720p_2 preset:', err720);
+  }
+
+  // 3. Fallback to Agora 720p_2 preset
+  try {
+    return await AgoraRTC.createCameraVideoTrack({
+      facingMode,
+      encoderConfig: '720p_2',
+    });
+  } catch (err720p2) {
+    console.warn('[useAgora] 720p_2 preset failed, fallback to 720p_1:', err720p2);
+  }
+
+  // 4. Final fallback to 720p_1
+  return await AgoraRTC.createCameraVideoTrack({
+    facingMode,
+    encoderConfig: '720p_1',
+  });
+}
+
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localVideoRef = useRef<ICameraVideoTrack | null>(null);
@@ -252,19 +311,36 @@ export const useAgora = () => {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: (role === 'host' && videoEnabled) ? {
-              width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
-              height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
-              frameRate: { ideal: 30, max: 30 },
-              facingMode: 'user',
-            } : false,
-            audio: shouldMicOn ? {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            } : false,
-          });
+          let stream: MediaStream | null = null;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: (role === 'host' && videoEnabled) ? {
+                width: isPortrait ? { ideal: 1080, min: 720 } : { ideal: 1920, min: 1080 },
+                height: isPortrait ? { ideal: 1920, min: 1080 } : { ideal: 1080, min: 720 },
+                frameRate: { ideal: 30, max: 30 },
+                facingMode: 'user',
+              } : false,
+              audio: shouldMicOn ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              } : false,
+            });
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: (role === 'host' && videoEnabled) ? {
+                width: isPortrait ? { ideal: 720, min: 480 } : { ideal: 1280, min: 640 },
+                height: isPortrait ? { ideal: 1280, min: 640 } : { ideal: 720, min: 480 },
+                frameRate: { ideal: 30, max: 30 },
+                facingMode: 'user',
+              } : false,
+              audio: shouldMicOn ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              } : false,
+            });
+          }
           fallbackStreamRef.current = stream;
           cameraOnRef.current = (role === 'host' && videoEnabled);
           micOnRef.current = shouldMicOn;
@@ -329,6 +405,11 @@ export const useAgora = () => {
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
 
+      try {
+        // Guarantee default subscription is high-definition stream
+        (client as any).setRemoteDefaultVideoStreamType?.(0);
+      } catch {}
+
       // Set initial Agora client role: host or audience
       if (role === 'host' || shouldMicOn) {
         await client.setClientRole('host');
@@ -374,6 +455,14 @@ export const useAgora = () => {
         try {
           await client.subscribe(user, mediaType);
           if (mediaType === 'video') {
+            try {
+              // Guarantee high-definition (HD) video stream is requested without low-stream downgrade
+              client.setRemoteVideoStreamType(user.uid, 0);
+              client.setStreamFallbackOption(user.uid, 0);
+            } catch (hdErr) {
+              console.warn('[useAgora] setRemoteVideoStreamType error:', hdErr);
+            }
+
             let container = document.getElementById(`remote-container-${user.uid}`);
             if (!container) {
               container = document.createElement('div');
@@ -419,29 +508,13 @@ export const useAgora = () => {
         if (role === 'host' && videoEnabled) {
           let videoTrack: ICameraVideoTrack | null = null;
           try {
-            // High-Definition 720p HD (30fps, 2000 kbps) standard Agora preset
-            videoTrack = await AgoraRTC.createCameraVideoTrack({
-              encoderConfig: '720p_2',
-              facingMode: facingModeRef.current,
-            });
-          } catch (p2Err) {
-            console.warn('[useAgora] 720p_2 failed, falling back to 720p_1:', p2Err);
-            try {
-              videoTrack = await AgoraRTC.createCameraVideoTrack({
-                encoderConfig: '720p_1',
-                facingMode: facingModeRef.current,
-              });
-            } catch (p1Err) {
-              console.warn('[useAgora] 720p_1 failed, fallback to standard HD config:', p1Err);
-              videoTrack = await AgoraRTC.createCameraVideoTrack({
-                encoderConfig: { width: 1280, height: 720, frameRate: 30 },
-                facingMode: facingModeRef.current,
-              });
-            }
+            videoTrack = await createHdCameraVideoTrack(facingModeRef.current);
+          } catch (createErr) {
+            console.warn('[useAgora] createHdCameraVideoTrack error:', createErr);
           }
           localVideoRef.current = videoTrack;
-          cameraOnRef.current = true;
-          setCameraOn(true);
+          cameraOnRef.current = Boolean(videoTrack);
+          setCameraOn(Boolean(videoTrack));
 
           // Immediately render host local video in agora-video-area (mirror: false for real position)
           const videoArea = document.getElementById('agora-video-area');
@@ -610,18 +683,7 @@ export const useAgora = () => {
       }
     } else if (next && clientRef.current) {
       try {
-        let videoTrack: ICameraVideoTrack | null = null;
-        try {
-          videoTrack = await AgoraRTC.createCameraVideoTrack({
-            encoderConfig: '720p_2',
-            facingMode: facingModeRef.current,
-          });
-        } catch {
-          videoTrack = await AgoraRTC.createCameraVideoTrack({
-            encoderConfig: '720p_1',
-            facingMode: facingModeRef.current,
-          });
-        }
+        const videoTrack = await createHdCameraVideoTrack(facingModeRef.current);
         localVideoRef.current = videoTrack;
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
@@ -795,6 +857,17 @@ export const useAgora = () => {
 
         if (targetDevice) {
           await localVideoRef.current.setDevice(targetDevice.deviceId);
+          try {
+            const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+            await localVideoRef.current.setEncoderConfiguration({
+              width: isPortrait ? 1080 : 1920,
+              height: isPortrait ? 1920 : 1080,
+              frameRate: 30,
+              bitrateMin: 2200,
+              bitrateMax: 4500,
+              optimizationMode: 'detail',
+            });
+          } catch {}
           facingModeRef.current = targetFacing;
           setFacingMode(targetFacing);
           const videoArea = document.getElementById('agora-video-area');
@@ -807,15 +880,9 @@ export const useAgora = () => {
         // Fallback: If device couldn't be determined from list, recreate track with facingMode constraint
         let newTrack: ICameraVideoTrack | null = null;
         try {
-          newTrack = await AgoraRTC.createCameraVideoTrack({
-            facingMode: targetFacing,
-            encoderConfig: '720p_2',
-          });
-        } catch {
-          newTrack = await AgoraRTC.createCameraVideoTrack({
-            facingMode: targetFacing,
-            encoderConfig: '720p_1',
-          });
+          newTrack = await createHdCameraVideoTrack(targetFacing);
+        } catch (switchErr) {
+          console.warn('[useAgora] switch createHdCameraVideoTrack error:', switchErr);
         }
 
         if (newTrack) {
@@ -854,15 +921,28 @@ export const useAgora = () => {
         const oldTrack = fallbackStreamRef.current.getVideoTracks()[0];
         oldTrack?.stop();
 
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: targetFacing },
-            width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
-            height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-          audio: false,
-        });
+        let newStream: MediaStream | null = null;
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: targetFacing },
+              width: isPortrait ? { ideal: 1080, min: 720 } : { ideal: 1920, min: 1080 },
+              height: isPortrait ? { ideal: 1920, min: 1080 } : { ideal: 1080, min: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false,
+          });
+        } catch {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: targetFacing },
+              width: isPortrait ? { ideal: 720, min: 480 } : { ideal: 1280, min: 640 },
+              height: isPortrait ? { ideal: 1280, min: 640 } : { ideal: 720, min: 480 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false,
+          });
+        }
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
           fallbackStreamRef.current.removeTrack(oldTrack);
@@ -988,5 +1068,6 @@ export const useAgora = () => {
     toggleMic,
     switchCamera,
     leaveChannel,
+    getLocalStream: () => fallbackStreamRef.current,
   };
 };

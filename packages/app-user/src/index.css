@@ -479,9 +479,14 @@
 
   #agora-video-area video,
   #agora-video-area .agora_video_player,
-  [id^="remote-container-"] video {
+  [id^="remote-container-"] video,
+  #pk-video-left video,
+  #pk-video-right video {
     width: 100% !important;
     height: 100% !important;
     object-fit: cover !important;
+    image-rendering: -webkit-optimize-contrast;
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 }

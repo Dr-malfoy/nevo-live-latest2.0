@@ -86,6 +86,9 @@ export const LiveRoom = ({
   onQuitPkBattle,
   onSendPkGift,
   onRewardAudienceUser,
+  socket,
+  currentStreamId,
+  localMediaStream,
 }: LiveRoomProps) => {
   const [showAudience, setShowAudience] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -724,22 +727,29 @@ export const LiveRoom = ({
       {pkBattle && (
         <PKBattleView
           battleId={pkBattle.battleId}
+          streamIdA={pkBattle.streamIdA}
+          streamIdB={pkBattle.streamIdB}
+          currentStreamId={currentStreamId || stream?._id}
+          socket={socket}
+          localMediaStream={localMediaStream}
           initialDurationSeconds={pkBattle.durationSeconds || (pkBattle.durationMinutes ? pkBattle.durationMinutes * 60 : 180)}
+          endsAt={pkBattle.endsAt}
+          isBattleFinished={pkBattle.isFinished}
           leftHost={{
-            userId: pkBattle.hostA?.userId || host?._id || '',
+            userId: pkBattle.hostA?.userId || pkBattle.hostA?._id || host?._id || '',
             nickname: pkBattle.hostA?.nickname || host?.nickname || 'Host A',
             avatar: pkBattle.hostA?.avatar || host?.avatar,
             level: pkBattle.hostA?.level || host?.level || 1,
             score: pkBattle.hostA?.score ?? pkBattle.scoreA ?? 0,
-            viewerCount: stream?.viewerCount,
+            viewerCount: typeof stream?.viewerCount === 'number' ? stream.viewerCount : (viewers?.length || 0),
           }}
           rightHost={{
-            userId: pkBattle.hostB?.userId || '',
+            userId: pkBattle.hostB?.userId || pkBattle.hostB?._id || '',
             nickname: pkBattle.hostB?.nickname || 'Opponent',
             avatar: pkBattle.hostB?.avatar,
             level: pkBattle.hostB?.level || 1,
             score: pkBattle.hostB?.score ?? pkBattle.scoreB ?? 0,
-            viewerCount: pkBattle.hostB?.viewerCount || 50,
+            viewerCount: typeof pkBattle.hostB?.viewerCount === 'number' ? pkBattle.hostB.viewerCount : 0,
           }}
           isHost={isHost}
           currentUserId={user?._id}
