@@ -32,6 +32,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   connect: (token) => {
     const existing = get().socket;
     if (existing?.connected) return;
+    if (existing) {
+      try {
+        existing.disconnect();
+      } catch {}
+    }
 
     const socket = io(SOCKET_URL, {
       auth: { token },
