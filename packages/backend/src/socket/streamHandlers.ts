@@ -57,6 +57,7 @@ export interface StreamSpeaker {
 // In-memory stream tracking for live sessions
 const streamGiftersMap = new Map<string, Map<string, StreamGifter>>();
 const streamSpeakersMap = new Map<string, Map<string, StreamSpeaker>>();
+const streamLikesMap = new Map<string, Set<string>>();
 
 const getTopGifters = (streamId: string): StreamGifter[] => {
   const gifters = streamGiftersMap.get(streamId);
@@ -117,6 +118,13 @@ export const registerStreamHandlers = (socket: Socket): void => {
       streamId,
       speakers: getSpeakers(streamId),
     });
+    const currentLikes = streamLikesMap.get(streamId);
+    if (currentLikes) {
+      socket.emit('stream:like-count', {
+        streamId,
+        count: currentLikes.size,
+      });
+    }
   });
 
   socket.on('stream:leave', async ({ streamId }) => {
@@ -181,6 +189,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
       await streamService.endStream(streamId, userId);
       streamSpeakersMap.delete(streamId);
       streamGiftersMap.delete(streamId);
+      streamLikesMap.delete(streamId);
       if (typeof ack === 'function') ack?.({ success: true });
     } catch {
       if (typeof ack === 'function') ack?.({ success: false });
@@ -491,13 +500,29 @@ export const registerStreamHandlers = (socket: Socket): void => {
   });
 
   socket.on('stream:like', async ({ streamId, nickname: clientNickname, avatar: clientAvatar }: any) => {
+    if (!streamId) return;
+
+    if (!streamLikesMap.has(streamId)) {
+      streamLikesMap.set(streamId, new Set<string>());
+    }
+    const likesSet = streamLikesMap.get(streamId)!;
+
+    const rawUserId = socket.data.user?.userId;
+    const userKey = rawUserId ? String(rawUserId) : (socket.id || clientNickname || 'anonymous');
+
+    // "ekjon user bar bar love delew 1 bar e count hbe"
+    // Only counted once per user in this stream
+    const isFirstLike = !likesSet.has(userKey);
+    if (isFirstLike) {
+      likesSet.add(userKey);
+    }
+
     let nickname = clientNickname || 'Someone';
     let avatar = clientAvatar || '';
-    const userId = socket.data.user?.userId;
 
-    if (userId) {
+    if (rawUserId) {
       try {
-        const u = await getUserProfile(userId);
+        const u = await getUserProfile(rawUserId);
         if (u.nickname && u.nickname !== 'Guest') nickname = u.nickname;
         if (u.avatar) avatar = u.avatar;
       } catch {}
@@ -506,9 +531,11 @@ export const registerStreamHandlers = (socket: Socket): void => {
     // Real-time reaction count — broadcast to the whole room so the host sees
     // every viewer's like (and the sender sees their own).
     getIO().to(`stream:${streamId}`).emit('stream:like-received', {
-      userId,
+      userId: rawUserId,
       nickname,
       avatar,
+      isCounted: isFirstLike,
+      totalLikes: likesSet.size,
     });
   });
 };

@@ -73,6 +73,7 @@ export const LiveStreamPage = () => {
   const isHostRef = useRef(false);
   const endedRef = useRef(false);
   const tokenRef = useRef('');
+  const hasLikedRef = useRef(false);
   // Set when the user navigates to a profile (host card / viewer) — the unmount
   // cleanup must still tear down the session, but must NOT navigate again (that
   // would override the profile route the user just opened).
@@ -435,33 +436,47 @@ export const LiveStreamPage = () => {
       setStreamEndedRecap(recap);
     };
     const onLike = (data?: any) => {
-      setLikeCount((c) => c + 1);
+      // 1 user gives love repeatedly -> counted only 1 time per user
+      if (typeof data?.totalLikes === 'number') {
+        setLikeCount(data.totalLikes);
+      } else if (data?.isCounted !== false) {
+        setLikeCount((c) => c + 1);
+      }
 
-      const currentUser = userRef.current;
-      const isSelf = Boolean(
-        currentUser && (
-          (data?.userId && (currentUser._id === data.userId || (currentUser as any).id === data.userId)) ||
-          (data?.nickname && currentUser.nickname === data.nickname)
-        )
-      );
+      // Only show top popup notification on the first counted like
+      if (data?.isCounted !== false) {
+        const currentUser = userRef.current;
+        const isSelf = Boolean(
+          currentUser && (
+            (data?.userId && (currentUser._id === data.userId || (currentUser as any).id === data.userId)) ||
+            (data?.nickname && currentUser.nickname === data.nickname)
+          )
+        );
 
-      const senderName = isSelf ? 'You' : (data?.nickname || 'Someone');
-      const avatar = data?.avatar || (isSelf ? currentUser?.avatar : undefined);
+        const senderName = isSelf ? 'You' : (data?.nickname || 'Someone');
+        const avatar = data?.avatar || (isSelf ? currentUser?.avatar : undefined);
 
-      const notifId = `like-${Date.now()}-${Math.random()}`;
-      setNotifications((prev) => [
-        ...prev.slice(-3),
-        {
-          id: notifId,
-          kind: 'like',
-          text: `${senderName} sent love ❤️`,
-          avatar,
-          durationMs: 3500,
-        },
-      ]);
-      setTimeout(() => {
-        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-      }, 3500);
+        const notifId = `like-${Date.now()}-${Math.random()}`;
+        setNotifications((prev) => [
+          ...prev.slice(-3),
+          {
+            id: notifId,
+            kind: 'like',
+            text: `${senderName} sent love ❤️`,
+            avatar,
+            durationMs: 3500,
+          },
+        ]);
+        setTimeout(() => {
+          setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+        }, 3500);
+      }
+    };
+
+    const onLikeCount = (data?: any) => {
+      if (typeof data?.count === 'number') {
+        setLikeCount(data.count);
+      }
     };
     const onGiftNotif = (notif: any) => {
       // In-room toast when direct personal notification arrives
@@ -590,6 +605,7 @@ export const LiveStreamPage = () => {
     socket.on('stream:gift-received', onGift);
     socket.on('stream:ended', onEnded);
     socket.on('stream:like-received', onLike);
+    socket.on('stream:like-count', onLikeCount);
     socket.on('notification:new', onGiftNotif);
     socket.on('stream:viewer-joined', onViewerJoined);
     socket.on('stream:viewer-left', onViewerLeft);
@@ -619,6 +635,7 @@ export const LiveStreamPage = () => {
       socket.off('stream:gift-received', onGift);
       socket.off('stream:ended', onEnded);
       socket.off('stream:like-received', onLike);
+      socket.off('stream:like-count', onLikeCount);
       socket.off('notification:new', onGiftNotif);
       socket.off('stream:viewer-joined', onViewerJoined);
       socket.off('stream:viewer-left', onViewerLeft);
@@ -641,7 +658,10 @@ export const LiveStreamPage = () => {
         avatar: currentUser?.avatar,
       });
     }
-    gamesApi.recordProgress('likes', 1).catch(() => {});
+    if (!hasLikedRef.current) {
+      hasLikedRef.current = true;
+      gamesApi.recordProgress('likes', 1).catch(() => {});
+    }
   }, [socket, id]);
 
   const handleChat = useCallback((message: string) => {
