@@ -77,6 +77,7 @@ export const LiveStreamPage = ({
     likes: number;
     hostName: string;
     hostAvatar?: string;
+    image?: string;
     isHost: boolean;
   } | null>(null);
   const totalViewersRef = useRef(1);
@@ -468,12 +469,17 @@ export const LiveStreamPage = ({
 
       setMinimized(false);
 
+      const titlePicture = stream?.cover || stream?.thumbnail || (stream as any)?.coverImage;
+      const profilePicture = host?.avatar || user?.avatar;
+      const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+
       const recap = {
         duration: formatRecapDuration(elapsedRef.current),
         viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
         likes: likeCount,
         hostName: host?.nickname || 'Streamer',
-        hostAvatar: getMediaUrl(host?.avatar),
+        hostAvatar: resolvedImage,
+        image: resolvedImage,
         isHost: false,
       };
 
@@ -885,12 +891,17 @@ export const LiveStreamPage = ({
       setMinimized(false);
     }
 
+    const titlePicture = stream?.cover || stream?.thumbnail || (stream as any)?.coverImage;
+    const profilePicture = host?.avatar || user?.avatar;
+    const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+
     const recap = {
       duration: formatRecapDuration(elapsedRef.current),
       viewers: Math.max(totalViewersRef.current, peakViewersRef.current, stream?.viewerCount || 0, 1),
       likes: likeCount,
       hostName: host?.nickname || user?.nickname || 'Streamer',
-      hostAvatar: getMediaUrl(host?.avatar || user?.avatar),
+      hostAvatar: resolvedImage,
+      image: resolvedImage,
       isHost: true,
     };
 
@@ -989,6 +1000,7 @@ export const LiveStreamPage = ({
         likes={streamEndedRecap.likes}
         hostName={streamEndedRecap.hostName}
         hostAvatar={streamEndedRecap.hostAvatar}
+        image={streamEndedRecap.image}
         isHost={streamEndedRecap.isHost}
         onGoHome={() => {
           closeStream();

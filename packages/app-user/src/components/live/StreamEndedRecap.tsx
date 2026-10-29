@@ -8,6 +8,7 @@ export interface StreamEndedRecapProps {
   likes: number | string;
   hostName?: string;
   hostAvatar?: string;
+  image?: string;
   isHost?: boolean;
   onGoHome: () => void;
 }
@@ -25,9 +26,12 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
   likes,
   hostName = 'Streamer',
   hostAvatar,
+  image,
   isHost = true,
   onGoHome,
 }) => {
+  const [imgError, setImgError] = React.useState(false);
+  const targetImage = !imgError && (image || hostAvatar) ? (image || hostAvatar) : null;
   const initial = (hostName.trim()?.[0] || 'R').toUpperCase();
 
   return (
@@ -50,23 +54,18 @@ export const StreamEndedRecap: React.FC<StreamEndedRecapProps> = ({
           transition={{ type: 'spring', damping: 24, stiffness: 280 }}
           className="w-full flex flex-col items-center"
         >
-          {/* Top Glowing Avatar / Initial Badge */}
+          {/* Top Glowing Title Picture / Avatar Badge */}
           <div className="relative mb-6">
             <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-[#9333EA] via-[#8B5CF6] to-[#C084FC] blur-lg opacity-70 animate-pulse" />
-            <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full p-1 bg-gradient-to-tr from-[#7C3AED] via-[#9333EA] to-[#C084FC] shadow-[0_0_35px_rgba(168,85,247,0.7)] flex items-center justify-center">
-              {hostAvatar ? (
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-gradient-to-tr from-[#7C3AED] via-[#9333EA] to-[#C084FC] shadow-[0_0_35px_rgba(168,85,247,0.7)] flex items-center justify-center overflow-hidden">
+              {targetImage ? (
                 <img
-                  src={hostAvatar}
+                  src={targetImage}
                   alt={hostName}
                   className="w-full h-full object-cover rounded-full bg-[#18112C]"
-                  crossOrigin="anonymous"
-                  onError={(e) => {
-                    // Fallback to letter initial if image fails
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
+                  onError={() => setImgError(true)}
                 />
-              ) : null}
-              {(!hostAvatar) && (
+              ) : (
                 <div className="w-full h-full rounded-full bg-[#1D1438] flex items-center justify-center">
                   <span className="text-3xl sm:text-4xl font-extrabold text-white tracking-wider">
                     {initial}
