@@ -144,45 +144,56 @@ export const LiveRoom = ({
     }
   };
 
-  if (isMinimized) {
-    return (
-      <motion.div
-        drag
-        dragMomentum={false}
-        dragConstraints={{
-          left: 10,
-          right: typeof window !== 'undefined' ? window.innerWidth - 150 : 250,
-          top: 60,
-          bottom: typeof window !== 'undefined' ? window.innerHeight - 240 : 500,
-        }}
-        onClick={onMaximize}
-        className="fixed bottom-20 right-3.5 w-36 h-52 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none flex items-center justify-center touch-none transition-shadow"
-        role="region"
-        aria-label="Minimized live stream"
-      >
-        {/* Background ambient cover/avatar poster behind video */}
-        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-          {stream?.cover || host?.avatar ? (
-            <img
-              src={stream?.cover || host?.avatar}
-              alt=""
-              className="w-full h-full object-cover blur-sm opacity-50"
-            />
-          ) : (
-            <div className="w-full h-full bg-[#181824]" />
-          )}
-        </div>
+  return (
+    <motion.div
+      drag={isMinimized}
+      dragMomentum={false}
+      dragConstraints={{
+        left: 10,
+        right: typeof window !== 'undefined' ? window.innerWidth - 150 : 250,
+        top: 60,
+        bottom: typeof window !== 'undefined' ? window.innerHeight - 240 : 500,
+      }}
+      onClick={isMinimized ? onMaximize : undefined}
+      className={
+        isMinimized
+          ? "fixed bottom-20 right-3.5 w-36 h-56 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none touch-none"
+          : "relative h-[100dvh] overflow-hidden bg-brand-bg"
+      }
+      role="region"
+      aria-label="Live stream"
+    >
+      {/* Background ambient cover/avatar poster behind video */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        {stream?.cover || host?.avatar ? (
+          <img
+            src={stream?.cover || host?.avatar}
+            alt=""
+            className={`w-full h-full object-cover ${
+              isMinimized ? 'blur-sm opacity-50' : 'scale-110 blur-2xl opacity-40'
+            }`}
+          />
+        ) : (
+          <div className="w-full h-full bg-[#181824]" />
+        )}
+      </div>
 
-        {/* Agora / WebRTC video renders here — id contract kept identical */}
-        <div
-          id="agora-video-area"
-          className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover"
-          style={{ filter: filterCss || undefined }}
-        />
+      {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
+      <div
+        id="agora-video-area"
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
+        style={{ filter: filterCss || undefined }}
+      />
 
-        {/* Voice room placeholder */}
-        {joined && !videoEnabled && (
-          <div className="absolute inset-0 z-[1] flex items-center justify-center pointer-events-none">
+      {/* Ambient gradient wash over the video (full screen only) */}
+      {!isMinimized && (
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/50 pointer-events-none z-[1]" />
+      )}
+
+      {/* Voice room placeholder — audio-only rooms */}
+      {joined && !videoEnabled && (
+        <div className="absolute inset-0 z-[1] flex items-center justify-center pointer-events-none">
+          {isMinimized ? (
             <div className="flex flex-col items-center gap-1.5">
               <div className="w-12 h-12 rounded-full border-2 border-white/30 overflow-hidden shadow-lg">
                 <img src={host?.avatar} alt="" className="w-full h-full object-cover" />
@@ -197,10 +208,26 @@ export const LiveRoom = ({
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative flex items-end gap-1 h-12">
+                {[0, 1, 2, 3].map((i) => (
+                  <motion.span
+                    key={i}
+                    animate={{ height: ['40%', '100%', '40%'] }}
+                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }}
+                    className="w-1.5 rounded-full bg-gradient-to-t from-brand-primary to-brand-secondary"
+                  />
+                ))}
+              </div>
+              <p className="text-white/70 text-sm font-medium">Voice room — mic is live</p>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Mini Player Controls Overlay */}
+      {/* Floating Mini Window Controls Overlay (shown ONLY when minimized) */}
+      {isMinimized && (
         <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/65 via-transparent to-black/85 flex flex-col justify-between p-2 pointer-events-none">
           {/* Top row */}
           <div className="flex items-center justify-between pointer-events-auto">
@@ -242,76 +269,33 @@ export const LiveRoom = ({
             </p>
           </div>
         </div>
-      </motion.div>
-    );
-  }
-
-  return (
-    <div className="relative h-[100dvh] overflow-hidden bg-brand-bg" role="region" aria-label="Live stream">
-      {/* Background ambient cover/avatar poster behind video */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        {stream?.cover || host?.avatar ? (
-          <img
-            src={stream?.cover || host?.avatar}
-            alt=""
-            className="w-full h-full object-cover scale-110 blur-2xl opacity-40"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-b from-[#181824] via-[#121218] to-[#0B0B0F]" />
-        )}
-      </div>
-
-      {/* Agora / WebRTC video renders here — id contract kept identical */}
-      <div
-        id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent"
-        style={{ filter: filterCss || undefined }}
-      />
-
-      {/* Ambient gradient wash over the video */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/50 pointer-events-none z-[1]" />
-
-      {/* Voice room placeholder — audio-only rooms show a pulsing mic visual */}
-      {joined && !videoEnabled && (
-        <div className="absolute inset-0 z-[1] flex items-center justify-center pointer-events-none">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative flex items-end gap-1 h-12">
-              {[0, 1, 2, 3].map((i) => (
-                <motion.span
-                  key={i}
-                  animate={{ height: ['40%', '100%', '40%'] }}
-                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }}
-                  className="w-1.5 rounded-full bg-gradient-to-t from-brand-primary to-brand-secondary"
-                />
-              ))}
-            </div>
-            <p className="text-white/70 text-sm font-medium">Voice room — mic is live</p>
-          </div>
-        </div>
       )}
 
-      {/* Camera-off placeholder for host (video rooms only) */}
-      <AnimatePresence>
-        {joined && isHost && videoEnabled && !cameraOn && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B0B0F]/95"
-          >
-            <div className="flex flex-col items-center gap-3">
+      {/* Full-screen UI elements (shown ONLY when NOT minimized) */}
+      {!isMinimized && (
+        <>
+          {/* Camera-off placeholder for host (video rooms only) */}
+          <AnimatePresence>
+            {joined && isHost && videoEnabled && !cameraOn && (
               <motion.div
-                initial={{ scale: 0.7 }}
-                animate={{ scale: 1 }}
-                className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B0B0F]/95"
               >
-                <CameraOff className="w-10 h-10 text-white/40" />
+                <div className="flex flex-col items-center gap-3">
+                  <motion.div
+                    initial={{ scale: 0.7 }}
+                    animate={{ scale: 1 }}
+                    className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center"
+                  >
+                    <CameraOff className="w-10 h-10 text-white/40" />
+                  </motion.div>
+                  <p className="text-white/50 text-sm font-medium">Camera is off</p>
+                </div>
               </motion.div>
-              <p className="text-white/50 text-sm font-medium">Camera is off</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            )}
+          </AnimatePresence>
 
       {/* Connecting state */}
       {!joined && <LiveSkeleton />}
@@ -495,6 +479,8 @@ export const LiveRoom = ({
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+        </>
+      )}
+    </motion.div>
   );
 };

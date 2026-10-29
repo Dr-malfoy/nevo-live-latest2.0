@@ -551,6 +551,51 @@ export const useAgora = () => {
     tryPlay(0);
   }, []);
 
+  // Re-verify and ensure video tracks are actively playing into the container
+  const refreshVideoTracks = useCallback((containerId: string = 'agora-video-area') => {
+    const videoArea = document.getElementById(containerId);
+    if (!videoArea) return;
+
+    // 1. If host local camera track
+    if (localVideoRef.current && cameraOnRef.current) {
+      try {
+        localVideoRef.current.play(videoArea, { fit: 'cover', mirror: false });
+      } catch (e) {
+        console.warn('[useAgora] refresh local video error:', e);
+      }
+    }
+
+    // 2. If fallback host stream
+    if (fallbackStreamRef.current && fallbackVideoElRef.current) {
+      if (!videoArea.contains(fallbackVideoElRef.current)) {
+        videoArea.appendChild(fallbackVideoElRef.current);
+      }
+      try {
+        fallbackVideoElRef.current.play().catch(() => {});
+      } catch {}
+    }
+
+    // 3. If remote users exist
+    if (clientRef.current) {
+      clientRef.current.remoteUsers.forEach((user) => {
+        if (user.videoTrack) {
+          let container = document.getElementById(`remote-container-${user.uid}`);
+          if (!container) {
+            container = document.createElement('div');
+            container.id = `remote-container-${user.uid}`;
+            container.className = 'absolute inset-0 w-full h-full';
+            videoArea.appendChild(container);
+          }
+          try {
+            user.videoTrack.play(container, { fit: 'cover', mirror: false });
+          } catch (e) {
+            console.warn('[useAgora] refresh remote video error:', e);
+          }
+        }
+      });
+    }
+  }, []);
+
   const toggleCamera = useCallback(async () => {
     const next = !cameraOnRef.current;
     cameraOnRef.current = next;
@@ -938,6 +983,7 @@ export const useAgora = () => {
     error,
     joinChannel,
     playLocalVideo,
+    refreshVideoTracks,
     toggleCamera,
     toggleMic,
     switchCamera,

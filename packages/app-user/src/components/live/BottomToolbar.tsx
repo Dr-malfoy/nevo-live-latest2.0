@@ -56,8 +56,8 @@ const RoundBtn = ({ label, onClick, active, activeClass, children }: RoundBtnPro
 );
 
 /**
- * Love button — fires once per 3-second cooldown.
- * After tap: button glows pink, can't be tapped again for 3s.
+ * Love button — fires on tap with heart burst.
+ * Placed beside the Gift button.
  */
 const LoveBtn = ({ onTap }: { onTap: () => void }) => {
   const [sent, setSent] = useState(false);
@@ -72,28 +72,27 @@ const LoveBtn = ({ onTap }: { onTap: () => void }) => {
     onTap();
     setTimeout(() => setPop(false), 420);
     setTimeout(() => {
-      setSent(false);
       cooldown.current = false;
-    }, 3000);
+    }, 1200);
   };
 
   return (
-    <div className="relative flex items-center justify-center">
+    <div className="relative flex items-center justify-center shrink-0">
       <motion.button
         aria-label="Send Love"
         onClick={handlePress}
-        whileTap={sent ? {} : { scale: 0.78 }}
-        animate={pop ? { scale: [1, 1.4, 0.9, 1] } : { scale: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className={`w-12 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ${
+        whileTap={{ scale: 0.82 }}
+        animate={pop ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
+        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
           sent
-            ? 'bg-pink-500/70 shadow-[0_0_14px_rgba(236,72,153,0.45)]'
+            ? 'bg-gradient-to-tr from-pink-500 to-rose-500 shadow-[0_0_14px_rgba(244,63,94,0.55)] border border-pink-300/40'
             : 'bg-white/15 hover:bg-white/25 border border-white/20'
         }`}
       >
         <Heart
-          className={`w-6 h-6 transition-colors duration-300 ${
-            sent ? 'text-white' : 'text-white/90'
+          className={`w-5 h-5 transition-colors duration-300 ${
+            sent ? 'text-white' : 'text-pink-300'
           }`}
         />
       </motion.button>
@@ -198,7 +197,7 @@ export const BottomToolbar = ({
           </RoundBtn>
         )}
 
-        {/* ❤️ Love button (one tap per 3s) */}
+        {/* ❤️ Love button (placed beside gift) */}
         <LoveBtn onTap={onLike} />
 
         {/* 🎁 Gift button */}
@@ -206,9 +205,9 @@ export const BottomToolbar = ({
           whileTap={{ scale: 0.9 }}
           onClick={onOpenGift}
           aria-label="Gift"
-          className="w-12 h-10 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 shadow-[0_0_15px_rgba(236,72,153,0.4)] flex items-center justify-center shrink-0"
+          className="w-10 h-10 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#FF5E62] shadow-[0_0_15px_rgba(255,46,147,0.45)] flex items-center justify-center shrink-0"
         >
-          <GiftIcon className="w-6 h-6 text-white" />
+          <GiftIcon className="w-5 h-5 text-white" />
         </motion.button>
       </div>
     </div>

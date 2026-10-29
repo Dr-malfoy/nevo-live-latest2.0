@@ -103,6 +103,7 @@ export const LiveStreamPage = ({
     error,
     joinChannel,
     playLocalVideo,
+    refreshVideoTracks,
     toggleCamera,
     toggleMic,
     switchCamera,
@@ -349,6 +350,18 @@ export const LiveStreamPage = ({
       return () => clearTimeout(t);
     }
   }, [joined, isHost, stream?.type]);
+
+  // When window is minimized or maximized, refresh video tracks so playback never drops
+  useEffect(() => {
+    if (joined) {
+      const t1 = setTimeout(() => refreshVideoTracks('agora-video-area'), 50);
+      const t2 = setTimeout(() => refreshVideoTracks('agora-video-area'), 300);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [joined, isMinimized, refreshVideoTracks]);
 
   // Socket setup
   useEffect(() => {
