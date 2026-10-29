@@ -187,6 +187,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
       const userId = socket.data.user?.userId;
       if (!userId || !streamId) return;
       await streamService.endStream(streamId, userId);
+      getIO().to(`stream:${streamId}`).emit('stream:ended', { streamId });
       streamSpeakersMap.delete(streamId);
       streamGiftersMap.delete(streamId);
       streamLikesMap.delete(streamId);

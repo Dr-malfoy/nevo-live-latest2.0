@@ -449,11 +449,24 @@ export const LiveStreamPage = ({
     };
     const onEnded = () => {
       endedRef.current = true;
-      setMinimized(false);
       try {
         if (timerRef.current) clearInterval(timerRef.current);
         leaveChannel();
       } catch {}
+
+      // If user is currently in minimized window (or browsing other pages):
+      // Immediately close and remove the floating mini player without taking over the screen!
+      const currentPath = window.location.pathname;
+      const isViewingFullScreen = currentPath.startsWith('/live/') || currentPath.startsWith('/stream/');
+
+      if (isMinimized || !isViewingFullScreen) {
+        closeStream();
+        onCloseProp?.();
+        showToast('Live stream has ended', 'info');
+        return;
+      }
+
+      setMinimized(false);
 
       const recap = {
         duration: formatRecapDuration(elapsedRef.current),
@@ -849,36 +862,28 @@ export const LiveStreamPage = ({
       ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
       : null;
 
-  const requestEndStream = useCallback(() => {
-    setShowEndConfirm(true);
-  }, []);
-
-  const requestLeaveStream = useCallback(() => {
-    setShowLeaveConfirm(true);
-  }, []);
-
-  const handleMinimize = useCallback(() => {
-    if (onMinimizeProp) {
-      onMinimizeProp();
-    } else {
-      setMinimized(true);
+  const confirmLeaveStream = useCallback(() => {
+    setShowLeaveConfirm(false);
+    navigatingAwayRef.current = true;
+    closeStream();
+    onCloseProp?.();
+    if (!isMinimized) {
       navigate(-1);
     }
-  }, [onMinimizeProp, setMinimized, navigate]);
-
-  const handleMaximize = useCallback(() => {
-    if (onMaximizeProp) {
-      onMaximizeProp();
-    } else {
-      setMinimized(false);
-      if (id) navigate(`/live/${id}`);
-    }
-  }, [onMaximizeProp, setMinimized, id, navigate]);
+    if (id) fireEnd();
+  }, [id, fireEnd, navigate, closeStream, onCloseProp, isMinimized]);
 
   const confirmEndStream = useCallback(async () => {
     setShowEndConfirm(false);
     endedRef.current = true;
-    setMinimized(false);
+
+    // If host was minimized, close player immediately
+    if (isMinimized) {
+      closeStream();
+      onCloseProp?.();
+    } else {
+      setMinimized(false);
+    }
 
     const recap = {
       duration: formatRecapDuration(elapsedRef.current),
@@ -915,17 +920,44 @@ export const LiveStreamPage = ({
       console.warn('[LiveStream] socket end error:', e);
     }
 
-    setStreamEndedRecap(recap);
-  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user, setMinimized]);
+    if (!isMinimized) {
+      setStreamEndedRecap(recap);
+    }
+  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user, isMinimized, setMinimized, closeStream, onCloseProp]);
 
-  const confirmLeaveStream = useCallback(() => {
-    setShowLeaveConfirm(false);
-    navigatingAwayRef.current = true;
-    closeStream();
-    onCloseProp?.();
-    navigate(-1);
-    if (id) fireEnd();
-  }, [id, fireEnd, navigate, closeStream, onCloseProp]);
+  const requestEndStream = useCallback(() => {
+    if (isMinimized) {
+      confirmEndStream();
+      return;
+    }
+    setShowEndConfirm(true);
+  }, [isMinimized, confirmEndStream]);
+
+  const requestLeaveStream = useCallback(() => {
+    if (isMinimized) {
+      confirmLeaveStream();
+      return;
+    }
+    setShowLeaveConfirm(true);
+  }, [isMinimized, confirmLeaveStream]);
+
+  const handleMinimize = useCallback(() => {
+    if (onMinimizeProp) {
+      onMinimizeProp();
+    } else {
+      setMinimized(true);
+      navigate(-1);
+    }
+  }, [onMinimizeProp, setMinimized, navigate]);
+
+  const handleMaximize = useCallback(() => {
+    if (onMaximizeProp) {
+      onMaximizeProp();
+    } else {
+      setMinimized(false);
+      if (id) navigate(`/live/${id}`);
+    }
+  }, [onMaximizeProp, setMinimized, id, navigate]);
 
   // Robust receiver id for gifts: populated hostId → raw string hostId → host fallback.
   const giftReceiverId =

@@ -43,7 +43,7 @@ const staleBeforeDate = () => new Date(Date.now() - HEARTBEAT_STALE_MS);
 
 /** Host fields every stream card needs, incl. country flag + presence dot + premium badges. */
 const HOST_FIELDS =
-  'uid nickname avatar level isAgent role sellerType coins diamonds wealthExp liveStreamSeconds liveStreamMinutes equippedBadge verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
+  'uid nickname avatar level isAgent isDiamondSeller diamondSellerBadge role sellerType coins diamonds wealthExp liveStreamSeconds liveStreamMinutes equippedBadge verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
 
 /**
  * Requirement #1 — country filter.
@@ -142,7 +142,7 @@ export const streamService = {
     const idSet = new Set(dedupedIds.map((d) => d.latest.toString()));
 
     let sort: any = { startedAt: -1 };
-    if (tab === 'popular') sort = { viewerCount: -1, startedAt: -1 };
+    if (tab === 'popular' || tab === 'explore' || tab === 'foryou') sort = { viewerCount: -1, startedAt: -1 };
 
     // Fetch all active live streams to allow badge filtering & priority sorting
     const all = await LiveStream.find({ _id: { $in: [...idSet] }, ...filter })
@@ -167,7 +167,12 @@ export const streamService = {
     const sorted = filtered.sort((a: any, b: any) => {
       const pDiff = getPriorityScore(b) - getPriorityScore(a);
       if (pDiff !== 0 && !hostBadge) return pDiff; // Boost premium hosts to the top
-      if (tab === 'popular') {
+      if (tab === 'foryou') {
+        const scoreA = Math.max(0, a.viewerCount) * 2 + Math.max(0, (a as any).likes || 0);
+        const scoreB = Math.max(0, b.viewerCount) * 2 + Math.max(0, (b as any).likes || 0);
+        return (scoreB - scoreA) || (b.startedAt.getTime() - a.startedAt.getTime());
+      }
+      if (tab === 'popular' || tab === 'explore') {
         return (Math.max(0, b.viewerCount) - Math.max(0, a.viewerCount)) || (b.startedAt.getTime() - a.startedAt.getTime());
       }
       return b.startedAt.getTime() - a.startedAt.getTime();
@@ -554,6 +559,11 @@ export const streamService = {
 
     try {
       const { getIO } = await import('../socket');
+      // Broadcast stream:ended directly to all viewers in the room so minimized & full players close immediately
+      getIO().to(`stream:${streamId}`).emit('stream:ended', {
+        streamId,
+        endedAt,
+      });
       getIO().emit('user:live-status', {
         userId: hostId,
         isLive: false,

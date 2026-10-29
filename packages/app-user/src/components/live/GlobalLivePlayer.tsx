@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useLivePlayerStore } from '../../stores';
+import { useLivePlayerStore, useSocketStore } from '../../stores';
 import { LiveStreamPage } from '../../pages/LiveStream';
 
 /**
@@ -20,6 +20,32 @@ export const GlobalLivePlayer = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { activeStreamId, isMinimized, setActiveStreamId, setMinimized, closeStream } = useLivePlayerStore();
+  const socket = useSocketStore((s) => s.socket);
+
+  // Listen for stream ending events from socket so minimized window automatically vanishes
+  useEffect(() => {
+    if (!socket || !activeStreamId) return;
+
+    const onLiveStatus = (data: { userId?: string; isLive?: boolean; streamId?: string }) => {
+      if (data?.streamId === activeStreamId && data.isLive === false) {
+        closeStream();
+      }
+    };
+
+    const onStreamEnded = (data: { streamId?: string }) => {
+      if (!data?.streamId || data.streamId === activeStreamId) {
+        closeStream();
+      }
+    };
+
+    socket.on('user:live-status', onLiveStatus);
+    socket.on('stream:ended', onStreamEnded);
+
+    return () => {
+      socket.off('user:live-status', onLiveStatus);
+      socket.off('stream:ended', onStreamEnded);
+    };
+  }, [socket, activeStreamId, closeStream]);
 
   useEffect(() => {
     const match = location.pathname.match(/^\/(?:live|stream)\/([^/]+)/);

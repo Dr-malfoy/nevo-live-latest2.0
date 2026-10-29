@@ -92,7 +92,13 @@ export const endLiveSession = async (): Promise<void> => {
     // 4. Navigate away
     ctx.navigate?.();
 
-    // 5. Clear context so future calls are no-ops
+    // 5. Reset global live player store so minimized floating player cleanly closes
+    try {
+      const { useLivePlayerStore } = await import('../stores/liveStore');
+      useLivePlayerStore.getState().closeStream();
+    } catch {}
+
+    // 6. Clear context so future calls are no-ops
     activeContext = null;
     cleaningUp = false;
     cleanupPromise = null;
