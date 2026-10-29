@@ -522,10 +522,10 @@ export const AgencyDetails = () => {
               </div>
               <div>
                 <p className="text-xl font-black text-purple-700 tracking-tight leading-none">
-                  {agency.commission ?? getAgencyCommissionByLevel(agency.level || 1)}%
+                  {agency.commission ?? 4}%
                 </p>
                 <p className="text-[11px] text-slate-400 font-medium mt-1">
-                  Host benefit share
+                  Monthly Live Gift Commission
                 </p>
               </div>
             </div>

@@ -453,6 +453,20 @@ export const agencyService = {
     const levelInfo = calculateAgencyLevel(totalContribution, totalLiveHours);
     const tierConfig = resolveAgencyTier(agency);
 
+    // Sync monthly commission cycle
+    const currentCycle = getCurrentMonthCycle();
+    if (agency.monthlyCommissionCycle !== currentCycle) {
+      agency.monthlyCommissionCycle = currentCycle;
+      agency.monthlyLiveGiftCoins = 0;
+      agency.commission = 4;
+      await Agency.updateOne(
+        { _id: agency._id },
+        { $set: { monthlyCommissionCycle: currentCycle, monthlyLiveGiftCoins: 0, commission: 4 } }
+      );
+    }
+    const monthlyCoins = agency.monthlyLiveGiftCoins || 0;
+    const commissionInfo = getMonthlyCommissionInfo(monthlyCoins);
+
     // Check relationship and admin role for the requesting user
     let userRelationship = {
       isOwner: false,
@@ -529,8 +543,14 @@ export const agencyService = {
       tierInfo: tierConfig,
       allTiers: AGENCY_TIERS,
       commission: (userRelationship.isAdmin || userRelationship.isOwner)
-        ? getAgencyCommissionByLevel(Math.max(agency.level || 1, levelInfo.level))
+        ? commissionInfo.currentCommission
         : undefined,
+      monthlyLiveGiftCoins: monthlyCoins,
+      monthlyCommissionCycle: agency.monthlyCommissionCycle || currentCycle,
+      commissionInfo: (userRelationship.isAdmin || userRelationship.isOwner)
+        ? commissionInfo
+        : undefined,
+      commissionTiers: AGENCY_MONTHLY_COMMISSION_TIERS,
       memberCount: hosts.length,
       totalContribution,
       totalLiveHours,
@@ -1431,13 +1451,31 @@ export const agencyService = {
     const levelInfo = calculateAgencyLevel(agency.totalContribution || 0, agency.totalLiveHours || 0);
     const currentLevel = Math.max(agency.level || 1, levelInfo.level);
 
+    // Sync monthly commission cycle
+    const currentCycle = getCurrentMonthCycle();
+    if (agency.monthlyCommissionCycle !== currentCycle) {
+      agency.monthlyCommissionCycle = currentCycle;
+      agency.monthlyLiveGiftCoins = 0;
+      agency.commission = 4;
+      await Agency.updateOne(
+        { _id: agency._id },
+        { $set: { monthlyCommissionCycle: currentCycle, monthlyLiveGiftCoins: 0, commission: 4 } }
+      );
+    }
+    const monthlyCoins = agency.monthlyLiveGiftCoins || 0;
+    const commissionInfo = getMonthlyCommissionInfo(monthlyCoins);
+
     return {
       ...agency,
       memberCount,
       level: currentLevel,
       levelProgress: levelInfo.progress,
       nextThreshold: levelInfo.nextThreshold,
-      commission: getAgencyCommissionByLevel(currentLevel),
+      commission: commissionInfo.currentCommission,
+      monthlyLiveGiftCoins: monthlyCoins,
+      monthlyCommissionCycle: agency.monthlyCommissionCycle || currentCycle,
+      commissionInfo,
+      commissionTiers: AGENCY_MONTHLY_COMMISSION_TIERS,
       welcomeBanner: {
         enabled: agency.welcomeBanner?.enabled !== false,
         title: agency.welcomeBanner?.title || `Welcome to ${agency.name}! 🎉`,
@@ -1526,7 +1564,7 @@ export const agencyService = {
         description: populated.description,
         type: populated.type || 'public',
         level: Math.max(populated.level || 1, levelInfo.level),
-        commission: getAgencyCommissionByLevel(Math.max(populated.level || 1, levelInfo.level)),
+        commission: populated.commission ?? getAgencyCommissionByMonthlyCoins(populated.monthlyLiveGiftCoins || 0),
         memberCount: populated.hosts?.length || 0,
         totalContribution: populated.totalContribution || 0,
         agent: agent

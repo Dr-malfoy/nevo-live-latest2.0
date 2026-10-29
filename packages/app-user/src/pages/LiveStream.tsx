@@ -655,17 +655,20 @@ export const LiveStreamPage = ({
     const onSpeakersUpdate = (data: any) => {
       if (data?.speakers) {
         setSpeakers(data.speakers);
-        const myId = userRef.current?._id;
-        const meAsSpeaker = data.speakers.find((s: any) => s.userId === myId);
+        const myId = String(userRef.current?._id || (userRef.current as any)?.id || '');
+        const meAsSpeaker = data.speakers.find((s: any) => String(s.userId) === myId);
         if (meAsSpeaker) {
           setIsSpeaker(true);
           setMicRequestPending(false);
-          // If approved as speaker and mic is not unmuted yet, turn it on
-          if (!micOnRef.current && !isHostRef.current) {
-            toggleMic(true).catch(() => {});
+          // Only mute if the host explicitly muted this speaker in room controls
+          if (meAsSpeaker.isMuted && micOnRef.current) {
+            toggleMic(false).catch(() => {});
           }
         } else if (!isHostRef.current) {
           setIsSpeaker(false);
+          if (micOnRef.current) {
+            toggleMic(false).catch(() => {});
+          }
         }
       }
     };
@@ -675,8 +678,9 @@ export const LiveStreamPage = ({
       }
     };
     const onMicResponse = (data: any) => {
+      const myId = String(userRef.current?._id || (userRef.current as any)?.id || '');
       // If scoped to a specific user, ensure it is meant for this user
-      if (data?.requesterUserId && userRef.current && data.requesterUserId !== userRef.current._id) {
+      if (data?.requesterUserId && myId && String(data.requesterUserId) !== myId) {
         return;
       }
       setMicRequestPending(false);
@@ -697,7 +701,8 @@ export const LiveStreamPage = ({
       showToast(data.message || 'You left the microphone.', 'info');
     };
     const onForceMute = (data: any) => {
-      if (data?.targetUserId && userRef.current && data.targetUserId !== userRef.current._id) {
+      const myId = String(userRef.current?._id || (userRef.current as any)?.id || '');
+      if (data?.targetUserId && myId && String(data.targetUserId) !== myId) {
         return;
       }
       if (data?.isMuted) {
@@ -942,11 +947,12 @@ export const LiveStreamPage = ({
 
   const handleToggleMic = useCallback(async () => {
     const nextState = !micOn;
-    await toggleMic(nextState);
+    const ok = await toggleMic(nextState);
     if (socket && id && (isSpeaker || isHost)) {
       socket.emit('stream:mic:toggle', { streamId: id, isMuted: !nextState });
     }
-  }, [micOn, toggleMic, socket, id, isSpeaker, isHost]);
+    showToast(nextState ? 'Microphone unmuted' : 'Microphone muted', 'info');
+  }, [micOn, toggleMic, socket, id, isSpeaker, isHost, showToast]);
 
   const handleOpenGiftToUser = useCallback((targetUserId: string) => {
     setCustomGiftReceiverId(targetUserId);

@@ -87,37 +87,46 @@ export const AGENCY_TIER_LIST = [
   { tier: 'diamond', label: 'Diamond', percent: 20, adminPercent: 10, badge: '💎 Diamond (20%)', desc: '100+ active hosts + top leaderboard + elite rank' },
 ];
 
-const LEVEL_COMMISSIONS: Record<number, number> = {
-  1: 4,
-  2: 6,
-  3: 8,
-  4: 10,
-  5: 12,
-  6: 14,
-  7: 16,
-  8: 18,
-  9: 19,
-  10: 20,
-};
-
-export function getAgencyCommissionByLevel(level: number = 1): number {
-  const lvl = Math.max(1, Math.floor(level || 1));
-  if (lvl >= 10) return 20;
-  return LEVEL_COMMISSIONS[lvl] ?? 4;
+export interface AgencyCommissionMilestone {
+  minCoins: number;
+  percent: number;
+  label: string;
+  desc: string;
+  coinsFormatted: string;
 }
 
-export const AGENCY_LEVEL_COMMISSION_LIST = [
-  { level: 1, percent: 4, label: 'Level 1', desc: '0 - 10K score' },
-  { level: 2, percent: 6, label: 'Level 2', desc: '10K - 50K score' },
-  { level: 3, percent: 8, label: 'Level 3', desc: '50K - 150K score' },
-  { level: 4, percent: 10, label: 'Level 4', desc: '150K - 500K score' },
-  { level: 5, percent: 12, label: 'Level 5', desc: '500K - 1.5M score' },
-  { level: 6, percent: 14, label: 'Level 6', desc: '1.5M - 5M score' },
-  { level: 7, percent: 16, label: 'Level 7', desc: '5M - 15M score' },
-  { level: 8, percent: 18, label: 'Level 8', desc: '15M - 50M score' },
-  { level: 9, percent: 19, label: 'Level 9', desc: '50M - 150M score' },
-  { level: 10, percent: 20, label: 'Level 10+', desc: '150M+ score (Max Elite)' },
+/**
+ * Monthly Live Gift Target-based Agency Commission Ladder:
+ * - Starting Base: 4%
+ * - 20 Lakh (2,000,000) Coins: 8%
+ * - 1 Crore (10,000,000) Coins: 12%
+ * - 4 Crore (40,000,000) Coins: 16%
+ * - 10 Crore (100,000,000) Coins: 20% (Max Elite)
+ *
+ * Refreshes on 1st of every month back to base 4%.
+ */
+export const AGENCY_MONTHLY_COMMISSION_TIERS: AgencyCommissionMilestone[] = [
+  { minCoins: 0,           percent: 4,  label: 'Starting (Base)', coinsFormatted: '0 Coins', desc: 'Starting base commission for all agencies' },
+  { minCoins: 2_000_000,   percent: 8,  label: '20 Lakh Coins', coinsFormatted: '2,000,000 Coins', desc: 'Agency hosts reach 20 Lakh (2M) live gift coins' },
+  { minCoins: 10_000_000,  percent: 12, label: '1 Crore (10M) Coins', coinsFormatted: '10,000,000 Coins', desc: 'Agency hosts reach 1 Crore (10M) live gift coins' },
+  { minCoins: 40_000_000,  percent: 16, label: '4 Crore (40M) Coins', coinsFormatted: '40,000,000 Coins', desc: 'Agency hosts reach 4 Crore (40M) live gift coins' },
+  { minCoins: 100_000_000, percent: 20, label: '10 Crore (100M) Coins', coinsFormatted: '100,000,000 Coins', desc: 'Agency hosts reach 10 Crore (100M) live gift coins (Max Elite)' },
 ];
+
+export function getAgencyCommissionByMonthlyCoins(monthlyCoins: number = 0): number {
+  const coins = Math.max(0, Math.floor(monthlyCoins || 0));
+  if (coins >= 100_000_000) return 20;
+  if (coins >= 40_000_000) return 16;
+  if (coins >= 10_000_000) return 12;
+  if (coins >= 2_000_000) return 8;
+  return 4;
+}
+
+export function getAgencyCommissionByLevel(_level: number = 1): number {
+  return 4;
+}
+
+export const AGENCY_LEVEL_COMMISSION_LIST = AGENCY_MONTHLY_COMMISSION_TIERS;
 
 export const AgentDashboard = () => {
   const navigate = useNavigate();
@@ -224,7 +233,7 @@ export const AgentDashboard = () => {
         setAgencyCover(ag.cover || '');
         setAgencyType(ag.type || 'public');
         setAgencyTier(ag.tier || 'starter');
-        setAgencyCommission(ag.commission ?? getAgencyCommissionByLevel(ag.level || 1));
+        setAgencyCommission(ag.commission ?? getAgencyCommissionByMonthlyCoins(ag.monthlyLiveGiftCoins || 0));
 
         // Initialize welcome banner customizer
         const wb = ag.welcomeBanner || {};
@@ -861,7 +870,7 @@ export const AgentDashboard = () => {
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Commission</p>
-                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">{getAgencyCommissionByLevel(myAgency.level || 1)}%</p>
+                  <p className="text-sm font-extrabold text-emerald-600 mt-0.5">{myAgency.commission ?? 4}%</p>
                 </div>
               </div>
 
@@ -1240,9 +1249,9 @@ export const AgentDashboard = () => {
                         </div>
                       </div>
                       <p className="text-lg font-black text-purple-700 tracking-tight leading-none uppercase">
-                        Lv.{myAgency?.level || 1} ({getAgencyCommissionByLevel(myAgency?.level || 1)}%)
+                        Lv.{myAgency?.level || 1}
                       </p>
-                      <p className="text-[10px] text-emerald-600 font-semibold mt-1">Dynamic Level Commission</p>
+                      <p className="text-[10px] text-slate-500 font-semibold mt-1">Agency Level Rank</p>
                     </div>
 
                     {/* Members Total Coins Circulation */}
@@ -1330,54 +1339,89 @@ export const AgentDashboard = () => {
                   </div>
                 </div>
 
-                {/* Agency Level & Coin Flow Ladder */}
+                {/* Monthly Live Gift Commission Targets */}
                 <SectionCard
-                  title="Agency Levels & Dynamic Commission"
-                  subtitle="Dynamic Level-based Agency Commissions (4% - 20%)"
+                  title="Monthly Commission Targets (Host Live Gifts)"
+                  subtitle="Reach monthly host live gift coin targets to unlock up to 20% commission (Refreshes monthly)"
                 >
                   <div className="space-y-3">
-                    <div className="bg-gradient-to-r from-purple-900/10 via-indigo-900/10 to-pink-900/10 p-3 rounded-2xl border border-purple-200/80">
+                    <div className="bg-gradient-to-r from-purple-900/10 via-indigo-900/10 to-pink-900/10 p-3.5 rounded-2xl border border-purple-200/80">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Crown className="w-5 h-5 text-purple-600" />
+                        <div className="flex items-center gap-2.5">
+                          <Crown className="w-6 h-6 text-purple-600 shrink-0" />
                           <div>
-                            <p className="text-xs font-black text-slate-900">
-                              Current Agency Level: <span className="text-purple-700 font-extrabold">Lv.{myAgency?.level || 1}</span>
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              Your agency receives <strong className="text-emerald-600">{getAgencyCommissionByLevel(myAgency?.level || 1)}%</strong> coins directly into your wallet from every host gift.
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-black text-slate-900">
+                                Current Commission: <span className="text-purple-700 font-extrabold text-sm">{myAgency?.commission ?? 4}%</span>
+                              </p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-purple-100 text-purple-700">
+                                Monthly Goal
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-600 font-medium mt-0.5">
+                              This Month's Host Live Gifts: <strong className="text-slate-900 font-black">{((myAgency as any)?.monthlyLiveGiftCoins || 0).toLocaleString()} Coins</strong>
                             </p>
                           </div>
                         </div>
-                        <span className="px-2.5 py-1 rounded-xl bg-purple-600 text-white font-black text-xs shadow-2xs">
-                          {getAgencyCommissionByLevel(myAgency?.level || 1)}%
+                        <span className="px-3 py-1.5 rounded-xl bg-purple-600 text-white font-black text-xs shadow-2xs shrink-0">
+                          {myAgency?.commission ?? 4}%
                         </span>
+                      </div>
+
+                      <div className="mt-2.5 pt-2 border-t border-purple-200/60 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                        <span>🗓️ Refreshes every month (starts at 4% on the 1st)</span>
+                        <span className="font-extrabold text-purple-700">Max Elite: 20%</span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {AGENCY_LEVEL_COMMISSION_LIST.map((lvl) => {
-                        const currentLvl = myAgency?.level || 1;
-                        const isCurrent = currentLvl === lvl.level;
+                      {AGENCY_MONTHLY_COMMISSION_TIERS.map((tier) => {
+                        const monthlyCoins = (myAgency as any)?.monthlyLiveGiftCoins || 0;
+                        const currentComm = myAgency?.commission ?? getAgencyCommissionByMonthlyCoins(monthlyCoins);
+                        const isUnlocked = monthlyCoins >= tier.minCoins;
+                        const isCurrent = currentComm === tier.percent;
+
                         return (
                           <div
-                            key={lvl.level}
-                            className={`p-2.5 rounded-xl border transition-all ${
+                            key={tier.percent}
+                            className={`p-3 rounded-xl border transition-all ${
                               isCurrent
-                                ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-500/20'
-                                : 'bg-white border-slate-200/80'
+                                ? 'bg-purple-50/90 border-purple-400 ring-2 ring-purple-500/20 shadow-xs'
+                                : isUnlocked
+                                ? 'bg-emerald-50/40 border-emerald-200/80'
+                                : 'bg-white border-slate-200/80 opacity-90'
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-extrabold text-slate-900">
-                                {lvl.label} {isCurrent && <span className="text-purple-600 text-[10px] font-bold">(Current)</span>}
-                              </span>
-                              <span className="text-[10px] font-extrabold text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md">
-                                {lvl.percent}% Commission
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-extrabold text-slate-900">
+                                  {tier.label}
+                                </span>
+                                {isCurrent && (
+                                  <span className="text-purple-600 bg-purple-100 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                                    Active
+                                  </span>
+                                )}
+                                {!isCurrent && isUnlocked && (
+                                  <span className="text-emerald-700 bg-emerald-100 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
+                                    Reached
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className={`text-[11px] font-black px-2 py-0.5 rounded-md ${
+                                  isCurrent
+                                    ? 'text-purple-700 bg-purple-100'
+                                    : isUnlocked
+                                    ? 'text-emerald-700 bg-emerald-100'
+                                    : 'text-slate-600 bg-slate-100'
+                                }`}
+                              >
+                                {tier.percent}% Commission
                               </span>
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">
-                              {lvl.desc}
+                              {tier.desc}
                             </p>
                           </div>
                         );

@@ -72,6 +72,11 @@ const NotificationBannerItem = ({
 
   const textToShow = item.text || (item as any).content || '';
 
+  // Do not render empty/blank banners
+  if (!textToShow.trim()) {
+    return null;
+  }
+
   return (
     <motion.div
       layout
@@ -128,7 +133,7 @@ export const NotificationOverlay = ({
   const visible = notifications.filter((n) => !dismissedIds.has(n.id)).slice(-3);
 
   return (
-    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col gap-2 w-[min(380px,94vw)] pointer-events-none">
+    <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 flex flex-col gap-2 w-[min(380px,94vw)] pointer-events-none">
       <AnimatePresence>
         {visible.map((n) => (
           <NotificationBannerItem

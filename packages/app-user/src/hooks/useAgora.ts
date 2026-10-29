@@ -816,24 +816,36 @@ export const useAgora = () => {
             console.warn('[useAgora] setClientRole error:', roleErr);
           }
 
-          if (!localAudioRef.current) {
+          const isTrackEnded =
+            !localAudioRef.current ||
+            localAudioRef.current.getMediaStreamTrack()?.readyState === 'ended';
+
+          if (isTrackEnded) {
+            if (localAudioRef.current) {
+              try {
+                localAudioRef.current.close();
+              } catch {}
+              localAudioRef.current = null;
+            }
             const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
               AEC: true,
               ANS: true,
               AGC: true,
+              encoderConfig: 'high_quality_stereo',
             });
             localAudioRef.current = audioTrack;
-            await clientRef.current.publish([audioTrack]);
-            await audioTrack.setEnabled(true);
+            const isPublished = clientRef.current.localTracks.includes(audioTrack);
+            if (!isPublished) {
+              await clientRef.current.publish([audioTrack]);
+            }
             if (typeof (audioTrack as any).setMuted === 'function') {
               await (audioTrack as any).setMuted(false);
             }
-          } else {
+          } else if (localAudioRef.current) {
             const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
             if (!isPublished) {
               await clientRef.current.publish([localAudioRef.current]);
             }
-            await localAudioRef.current.setEnabled(true);
             if (typeof (localAudioRef.current as any).setMuted === 'function') {
               await (localAudioRef.current as any).setMuted(false);
             }
@@ -869,15 +881,14 @@ export const useAgora = () => {
         setError('');
         return true;
       } else {
-        // Turning mic OFF
+        // Turning mic OFF - mute non-destructively without shutting down device
         if (localAudioRef.current) {
           try {
-            await localAudioRef.current.setEnabled(false);
             if (typeof (localAudioRef.current as any).setMuted === 'function') {
               await (localAudioRef.current as any).setMuted(true);
             }
           } catch (e) {
-            console.warn('live mic disable error:', e);
+            console.warn('[useAgora] live mic mute error:', e);
           }
         }
 
@@ -895,10 +906,13 @@ export const useAgora = () => {
       console.error('[useAgora] Mic toggle failed:', err);
       micOnRef.current = false;
       setMicOn(false);
-      const isPermErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || err?.code === 'PERMISSION_DENIED';
+      const isPermErr =
+        err?.name === 'NotAllowedError' ||
+        err?.name === 'PermissionDeniedError' ||
+        err?.code === 'PERMISSION_DENIED';
       const errMsg = isPermErr
         ? 'Microphone permission denied. Please allow microphone access in your browser settings.'
-        : 'Failed to access microphone. Please check your audio device.';
+        : `Microphone error: ${err?.message || 'unknown error'}`;
       setError(errMsg);
       return false;
     } finally {
