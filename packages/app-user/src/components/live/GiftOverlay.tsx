@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PiSparkleFill as Sparkles, PiFireFill as Fire } from 'react-icons/pi';
-import { CoinIcon } from '../ui/CurrencyIcon';
+import { CoinIcon, DiamondIcon } from '../ui/CurrencyIcon';
 import { getMediaUrl } from '../../lib/media';
 import type { Gift } from '../../types';
 
@@ -10,6 +10,8 @@ export interface GiftBurst {
   nickname: string;
   gift: Gift;
   count: number;
+  receiverName?: string;
+  currency?: 'diamond' | 'coin';
 }
 
 interface GiftOverlayProps {
@@ -162,20 +164,39 @@ export const GiftOverlay = ({ burst }: GiftOverlayProps) => {
           transition={{ delay: 0.18, duration: 0.4, ease: 'easeOut' }}
           className="mt-6 text-center px-4"
         >
-          <div className="inline-block px-5 py-2.5 rounded-2xl bg-black/70 border border-white/20 shadow-2xl backdrop-blur-md">
-            <p className="text-base sm:text-lg font-bold text-white">
-              <span className="bg-gradient-to-r from-[#F5C518] via-[#FF8A2A] to-[#EC4899] bg-clip-text text-transparent">
-                {burst.nickname || 'Someone'}
-              </span>{' '}
-              sent a gift!
+          <div className="inline-block px-6 py-3 rounded-2xl bg-gradient-to-b from-purple-950/95 via-black/90 to-[#0e071e]/95 border-2 border-yellow-400/60 shadow-[0_0_50px_rgba(236,72,153,0.5)] backdrop-blur-xl">
+            <p className="text-base sm:text-lg font-black text-white tracking-wide">
+              {burst.receiverName ? (
+                <>
+                  <span className="text-pink-400 font-black">{burst.nickname || 'Host'}</span>
+                  {' '}gifted to{' '}
+                  <span className="text-cyan-300 font-black">{burst.receiverName}</span>!
+                </>
+              ) : (
+                <>
+                  <span className="bg-gradient-to-r from-[#F5C518] via-[#FF8A2A] to-[#EC4899] bg-clip-text text-transparent font-black">
+                    {burst.nickname || 'Someone'}
+                  </span>{' '}
+                  sent a gift!
+                </>
+              )}
             </p>
             <p className="text-sm sm:text-base text-pink-300 font-extrabold mt-0.5">
-              {giftName} <span className="text-yellow-400">×{count}</span>
+              {giftName} <span className="text-yellow-400 font-black">×{count}</span>
             </p>
             <div className="mt-2 flex items-center justify-center">
-              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border border-yellow-400/50 text-xs font-black text-yellow-300 shadow-sm">
-                <CoinIcon className="w-4 h-4 text-yellow-400" />
-                <span>{totalCoins.toLocaleString()} Coins</span>
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500/25 via-pink-500/25 to-cyan-500/25 border border-yellow-400/60 text-xs font-black text-white shadow-md">
+                {burst.currency === 'diamond' ? (
+                  <>
+                    <DiamondIcon className="w-4 h-4 text-cyan-300" />
+                    <span className="text-cyan-200 font-black">{totalCoins.toLocaleString()} Diamonds</span>
+                  </>
+                ) : (
+                  <>
+                    <CoinIcon className="w-4 h-4 text-yellow-400" />
+                    <span>{totalCoins.toLocaleString()} Coins</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

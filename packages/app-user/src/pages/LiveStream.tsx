@@ -9,7 +9,7 @@ import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
 import { ReportModal } from '../components/report/ReportModal';
 import { LiveRoom, UserProfileModal, StreamEndedRecap } from '../components/live';
-import type { RoomMessage, RoomNotification, TopGifterItem, LiveSpeakerItem, MicRequester } from '../components/live';
+import type { RoomMessage, RoomNotification, TopGifterItem, LiveSpeakerItem, MicRequester, GiftBurst } from '../components/live';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
 import { useAgora } from '../hooks/useAgora';
 import { useFollow } from '../hooks/useFollow';
@@ -62,7 +62,7 @@ export const LiveStreamPage = ({
   const [serverIsHost, setServerIsHost] = useState(false);
   const [notifications, setNotifications] = useState<RoomNotification[]>([]);
   const [likeCount, setLikeCount] = useState(0);
-  const [giftBurst, setGiftBurst] = useState<{ id: string; gift: GiftType; count: number; nickname: string } | null>(null);
+  const [giftBurst, setGiftBurst] = useState<GiftBurst | null>(null);
   const [topGifters, setTopGifters] = useState<TopGifterItem[]>([]);
   const [speakers, setSpeakers] = useState<LiveSpeakerItem[]>([]);
   const [isSpeaker, setIsSpeaker] = useState(false);
@@ -667,14 +667,60 @@ export const LiveStreamPage = ({
     socket.on('stream:viewer-count', onViewerCount);
 
     const onReward = (payload: any) => {
+      const senderName = payload.senderName || 'Host';
+      const receiverName = payload.receiverName || 'Audience';
+      const amount = Number(payload.amount) || 0;
+
+      // 1. Top banner notification: Gifted from host to [UserName]
+      const notifId = `reward-${Date.now()}-${Math.random()}`;
       setNotifications((prev) => [
+        ...prev.slice(-3),
+        {
+          id: notifId,
+          kind: 'reward',
+          text: `Gifted from host to ${receiverName}`,
+          avatar: payload.senderAvatar,
+          durationMs: 6000,
+        },
+      ]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      }, 6000);
+
+      // 2. Center floating window: Host gift to [UserName]
+      triggerGifts('💎', `Host gift to ${receiverName}`, 6);
+
+      // 3. Animated 3D colorful pop-up modal with glowing diamond & sound chime
+      setGiftBurst({
+        id: `burst-reward-${Date.now()}-${Math.random()}`,
+        nickname: senderName,
+        receiverName: receiverName,
+        count: amount,
+        currency: 'diamond',
+        gift: {
+          _id: 'diamond-reward',
+          name: `${amount.toLocaleString()} Diamonds Reward`,
+          icon: '💎',
+          priceDiamonds: amount,
+        } as any,
+      });
+
+      if (burstTimer.current) clearTimeout(burstTimer.current);
+      burstTimer.current = setTimeout(() => setGiftBurst(null), 5500);
+
+      // Append celebratory message to chat
+      setChatMessages((prev) => [
         ...prev,
         {
-          id: `reward-${Date.now()}-${Math.random()}`,
-          content: `🎁 ${payload.senderName || 'Host'} rewarded ${Number(payload.amount).toLocaleString()} diamonds to ${payload.receiverName || 'Audience'}!`,
-          type: 'gift',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
+          userId: payload.senderId || '',
+          nickname: senderName,
+          avatar: payload.senderAvatar || '',
+          level: 1,
+          wealthLevel: 1,
+          liveLevel: 1,
+          message: `🎁 Gifted ${amount.toLocaleString()} diamonds to ${receiverName}!`,
+          isGift: true,
+        } as RoomMessage,
       ]);
     };
     socket.on('stream:reward-received', onReward);
@@ -1109,7 +1155,7 @@ export const LiveStreamPage = ({
     setShowGift(true);
   };
 
-  const handleRewardAudienceUser = async (targetUserId: string, amount: number, note?: string) => {
+  const handleRewardAudienceUser = async (targetUserId: string, amount: number, note?: string, targetUserName?: string) => {
     try {
       const points = Math.floor(Number(amount));
       if (!points || points <= 0) {
@@ -1150,10 +1196,39 @@ export const LiveStreamPage = ({
         if (res.data?.success) {
           success = true;
           newBalance = res.data.data.balance;
+          const recName = targetUserName || 'Audience';
+          const notifId = `reward-${Date.now()}-${Math.random()}`;
+          setNotifications((prev) => [
+            ...prev.slice(-3),
+            {
+              id: notifId,
+              kind: 'reward',
+              text: `Gifted from host to ${recName}`,
+              avatar: userRef.current?.avatar,
+              durationMs: 6000,
+            },
+          ]);
+          triggerGifts('💎', `Host gift to ${recName}`, 6);
+          setGiftBurst({
+            id: `burst-reward-${Date.now()}-${Math.random()}`,
+            nickname: userRef.current?.nickname || 'Host',
+            receiverName: recName,
+            count: points,
+            currency: 'diamond',
+            gift: {
+              _id: 'diamond-reward',
+              name: `${points.toLocaleString()} Diamonds Reward`,
+              icon: '💎',
+              priceDiamonds: points,
+            } as any,
+          });
+          if (burstTimer.current) clearTimeout(burstTimer.current);
+          burstTimer.current = setTimeout(() => setGiftBurst(null), 5500);
+
           if (socket && socket.connected && id) {
             socket.emit('stream:chat', {
               streamId: id,
-              message: `🎁 Host rewarded ${points.toLocaleString()} diamonds!`,
+              message: `🎁 Host rewarded ${points.toLocaleString()} diamonds to ${recName}!`,
             });
           }
         } else {

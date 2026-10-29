@@ -550,28 +550,13 @@ export const registerStreamHandlers = (socket: Socket): void => {
         streamId,
         senderId,
         senderName: sender?.nickname || 'Host',
+        senderAvatar: sender?.avatar,
         receiverId,
         receiverName: receiver?.nickname || 'Audience',
+        receiverAvatar: receiver?.avatar,
         amount: points,
         note: note || '',
         createdAt: new Date().toISOString(),
-      });
-
-      // Also trigger celebratory gift burst/animation in room
-      getIO().to(`stream:${streamId}`).emit('stream:gift-received', {
-        streamId,
-        user: {
-          id: senderId,
-          nickname: sender?.nickname || 'Host',
-          avatar: sender?.avatar,
-        },
-        gift: {
-          name: `${points} Diamonds Reward`,
-          icon: '💎',
-          priceDiamonds: points,
-        },
-        count: 1,
-        receiverName: receiver?.nickname || 'Audience',
       });
 
       ack?.({ success: true, balance: result.balance, finalAmount: result.finalAmount });

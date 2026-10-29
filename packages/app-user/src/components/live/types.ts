@@ -17,7 +17,7 @@ export interface RoomMessage {
 
 export interface RoomNotification {
   id: string;
-  kind: 'join' | 'follow' | 'gift' | 'like';
+  kind: 'join' | 'follow' | 'gift' | 'like' | 'reward';
   text: string;
   avatar?: string;
   durationMs?: number;
@@ -100,7 +100,7 @@ export interface LiveRoomProps {
   onEndPkBattle?: (battleId: string) => void;
   onQuitPkBattle?: (battleId: string) => void;
   onSendPkGift?: (targetHostId: string, side: 'left' | 'right') => void;
-  onRewardAudienceUser?: (userId: string, amount: number, note?: string) => Promise<void>;
+  onRewardAudienceUser?: (userId: string, amount: number, note?: string, targetUserName?: string) => Promise<void>;
   socket?: any;
   currentStreamId?: string;
   localMediaStream?: MediaStream | null;

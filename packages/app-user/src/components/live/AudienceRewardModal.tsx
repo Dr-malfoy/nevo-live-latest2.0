@@ -16,7 +16,7 @@ interface AudienceRewardModalProps {
   isOpen: boolean;
   onClose: () => void;
   viewers: Viewer[];
-  onRewardUser: (targetUserId: string, diamondAmount: number, message?: string) => Promise<void>;
+  onRewardUser: (targetUserId: string, diamondAmount: number, message?: string, targetUserName?: string) => Promise<void>;
   balance?: number;
 }
 
@@ -47,7 +47,7 @@ export const AudienceRewardModal: React.FC<AudienceRewardModalProps> = ({
 
     try {
       setSending(true);
-      await onRewardUser(selectedUser.userId, rewardAmount, customMsg);
+      await onRewardUser(selectedUser.userId, rewardAmount, customMsg, selectedUser.nickname);
       onClose();
     } catch (err: any) {
       showToast(err?.message || 'Failed to send reward', 'error');

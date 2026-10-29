@@ -674,9 +674,9 @@ export const LiveRoom = ({
         onClose={() => setShowRewards(false)}
         viewers={viewers.filter((v) => v.userId !== user?._id)}
         balance={balance?.diamonds || 0}
-        onRewardUser={async (targetId, amount, note) => {
+        onRewardUser={async (targetId, amount, note, targetName) => {
           if (onRewardAudienceUser) {
-            await onRewardAudienceUser(targetId, amount, note);
+            await onRewardAudienceUser(targetId, amount, note, targetName);
           }
         }}
       />

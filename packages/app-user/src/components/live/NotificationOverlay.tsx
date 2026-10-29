@@ -12,6 +12,13 @@ export interface NotificationOverlayProps {
 
 const getBannerTheme = (kind: RoomNotification['kind']) => {
   switch (kind) {
+    case 'reward':
+      return {
+        bg: 'bg-gradient-to-r from-[#240A34]/95 via-[#4E0E57]/95 to-[#7A154A]/95 border-amber-400/60 shadow-[0_8px_32px_rgba(245,158,11,0.45)] ring-1 ring-amber-400/30',
+        iconBg: 'bg-gradient-to-tr from-amber-400 via-rose-500 to-pink-500 text-white border border-amber-300/60 shadow-[0_0_15px_rgba(245,158,11,0.7)]',
+        icon: <Sparkle className="w-3.5 h-3.5 text-yellow-200 animate-spin-slow" />,
+        highlightText: 'text-amber-300',
+      };
     case 'gift':
       return {
         bg: 'bg-gradient-to-r from-[#220738]/95 via-[#3D0A56]/95 to-[#5E1244]/95 border-pink-400/40 shadow-[0_8px_30px_rgba(236,72,153,0.35)]',
@@ -63,6 +70,8 @@ const NotificationBannerItem = ({
 
   const theme = getBannerTheme(item.kind);
 
+  const textToShow = item.text || (item as any).content || '';
+
   return (
     <motion.div
       layout
@@ -76,7 +85,7 @@ const NotificationBannerItem = ({
       {item.avatar ? (
         <Avatar
           src={item.avatar}
-          nickname={item.text}
+          nickname={textToShow}
           size="sm"
           className="!w-7 !h-7 ring-2 ring-white/30 text-[10px] shrink-0"
         />
@@ -87,10 +96,10 @@ const NotificationBannerItem = ({
       )}
 
       <div className="flex-1 min-w-0 pr-1 flex items-center gap-1.5">
-        <p className="text-[12px] sm:text-[13px] text-white/95 font-semibold leading-snug truncate">
-          {item.text}
+        <p className="text-[12px] sm:text-[13px] text-white/95 font-bold leading-snug truncate">
+          {textToShow}
         </p>
-        {item.kind === 'gift' && <Sparkle className="w-3.5 h-3.5 text-yellow-300 shrink-0 animate-pulse" />}
+        {(item.kind === 'gift' || item.kind === 'reward') && <Sparkle className="w-3.5 h-3.5 text-yellow-300 shrink-0 animate-pulse" />}
         {item.kind === 'like' && <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />}
       </div>
     </motion.div>

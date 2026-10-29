@@ -6,6 +6,7 @@ export { MoreMenu } from './MoreMenu';
 export { CommentOverlay } from './CommentOverlay';
 export { MessageInput } from './MessageInput';
 export { GiftOverlay } from './GiftOverlay';
+export type { GiftBurst } from './GiftOverlay';
 export { HighlightOverlay } from './HighlightOverlay';
 export type { HighlightEntry } from './HighlightOverlay';
 export { ReactionOverlay, useReactions } from './ReactionOverlay';
