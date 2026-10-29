@@ -261,6 +261,56 @@ export const CallScreen = ({
     }
   }, [session?.callId, joinCallRoom]);
 
+  const handleAccept = useCallback(async () => {
+    if (!incoming) return;
+    ringtone.stop();
+    try {
+      setAnswering(true);
+      setRinging(false);
+      setCallConnected(true);
+      const { data } = await callApi.accept(incoming.callId);
+      if (data.success && data.data) {
+        startCall({
+          channel: data.data.channel,
+          token: data.data.token,
+          type: data.data.type,
+          socket,
+          callId: incoming.callId,
+          currentUserId: currentUser?._id,
+        }).catch(() => {});
+      }
+    } catch {
+      setAnswering(true);
+      setRinging(false);
+      setCallConnected(true);
+    }
+  }, [incoming, socket, currentUser?._id, startCall]);
+
+  const handleReject = useCallback(async () => {
+    ringtone.stop();
+    reconnectSound.stop();
+    if (endedRef.current) return;
+    endedRef.current = true;
+    if (incoming) await callApi.end(incoming.callId, 'rejected').catch(() => {});
+    await endCall();
+    onClose('rejected');
+  }, [incoming, endCall, onClose]);
+
+  const handleHangup = useCallback(async () => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    ringtone.stop();
+    reconnectSound.stop();
+    if (session) {
+      await callApi.end(session.callId, 'ended').catch(() => {});
+      if (isAudience && coinsPerMinute > 0) {
+        callApi.finalize(session.callId).catch(() => {});
+      }
+    }
+    await endCall();
+    onClose('ended');
+  }, [session, isAudience, coinsPerMinute, endCall, onClose]);
+
   const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && !(freeMinuteActive && elapsed < 60) && (
     isLowBalance ||
     (currentUser?.diamonds != null && currentUser.diamonds < coinsPerMinute * 2)
@@ -612,61 +662,11 @@ export const CallScreen = ({
     };
   }, [incoming, outgoing, ringing, callConnected, isTargetOnline, handleReject]);
 
-  const handleAccept = useCallback(async () => {
-    if (!incoming) return;
-    ringtone.stop();
-    try {
-      setAnswering(true);
-      setRinging(false);
-      setCallConnected(true);
-      const { data } = await callApi.accept(incoming.callId);
-      if (data.success && data.data) {
-        startCall({
-          channel: data.data.channel,
-          token: data.data.token,
-          type: data.data.type,
-          socket,
-          callId: incoming.callId,
-          currentUserId: currentUser?._id,
-        }).catch(() => {});
-      }
-    } catch {
-      setAnswering(true);
-      setRinging(false);
-      setCallConnected(true);
-    }
-  }, [incoming, socket, currentUser?._id, startCall]);
-
   useEffect(() => {
     if (incoming && accepted && !answering && !callConnected) {
       handleAccept();
     }
   }, [incoming, accepted, answering, callConnected, handleAccept]);
-
-  const handleReject = async () => {
-    ringtone.stop();
-    reconnectSound.stop();
-    if (endedRef.current) return;
-    endedRef.current = true;
-    if (incoming) await callApi.end(incoming.callId, 'rejected').catch(() => {});
-    await endCall();
-    onClose('rejected');
-  };
-
-  const handleHangup = useCallback(async () => {
-    if (endedRef.current) return;
-    endedRef.current = true;
-    ringtone.stop();
-    reconnectSound.stop();
-    if (session) {
-      await callApi.end(session.callId, 'ended').catch(() => {});
-      if (isAudience && coinsPerMinute > 0) {
-        callApi.finalize(session.callId).catch(() => {});
-      }
-    }
-    await endCall();
-    onClose('ended');
-  }, [session?.callId, isAudience, coinsPerMinute, endCall, onClose]);
 
   const sendTextMessage = (textToSend: string) => {
     if (!textToSend.trim() || !session?.callId || !socket) return;
