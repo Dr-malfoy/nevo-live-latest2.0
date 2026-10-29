@@ -572,15 +572,23 @@ export const LiveRoom = ({
       {/* Live Data Analytics Modal */}
       <LiveDataModal
         isOpen={showLiveData}
+        open={showLiveData}
         onClose={() => setShowLiveData(false)}
         stats={{
           totalJoined: liveStats.totalJoined,
+          usersJoined: liveStats.totalJoined,
           totalLeft: liveStats.totalLeft,
+          usersLeft: liveStats.totalLeft,
           totalGifts: liveStats.totalGifts,
+          giftsCount: liveStats.totalGifts,
           valuation: liveStats.valuation,
+          valuationDiamonds: liveStats.valuation,
           liveTime: elapsed,
+          likeCount: likeCount,
+          totalLikes: likeCount,
           peakViewers: liveStats.peakViewers,
         }}
+        streamTitle={streamTitle || stream?.title}
       />
 
       {/* Live Room Audience Messenger Modal */}
@@ -749,6 +757,20 @@ export const LiveRoom = ({
           onLike={onLike}
           likeCount={likeCount}
           recentGifts={pkBattle.recentGifts || []}
+          cameraOn={cameraOn}
+          micOn={micOn}
+          videoEnabled={videoEnabled}
+          onToggleCamera={onToggleCamera}
+          onToggleMic={onToggleMic}
+          onSwitchCamera={onSwitchCamera}
+          onOpenTools={() => setToolsOpen(true)}
+          onOpenBeauty={() => setShowBeauty(true)}
+          onOpenFilters={onToggleFilters}
+          onOpenLiveData={() => setShowLiveData(true)}
+          onOpenMessenger={() => setShowMessenger(true)}
+          onOpenPKRank={() => setShowPKRank(true)}
+          onOpenGift={onOpenGift}
+          onShare={() => setShowShareModal(true)}
         />
       )}
 

@@ -1,28 +1,45 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PiXBold as X, PiChartLineUpBold as ChartIcon, PiUsersBold as Users, PiUserMinusBold as UserMinus, PiGiftBold as GiftIcon, PiDiamondBold as DiamondIcon, PiClockBold as ClockIcon, PiHeartBold as HeartIcon } from 'react-icons/pi';
+import {
+  PiXBold as X,
+  PiChartLineUpBold as ChartIcon,
+  PiUsersBold as Users,
+  PiUserMinusBold as UserMinus,
+  PiGiftBold as GiftIcon,
+  PiDiamondBold as DiamondIcon,
+  PiClockBold as ClockIcon,
+  PiHeartBold as HeartIcon,
+} from 'react-icons/pi';
 
 export interface LiveDataStats {
-  usersJoined: number;
-  usersLeft: number;
-  giftsCount: number;
-  valuationDiamonds: number;
-  elapsedSeconds: number;
-  likeCount: number;
-  peakViewers: number;
+  usersJoined?: number;
+  totalJoined?: number;
+  usersLeft?: number;
+  totalLeft?: number;
+  giftsCount?: number;
+  totalGifts?: number;
+  valuationDiamonds?: number;
+  valuation?: number;
+  elapsedSeconds?: number;
+  liveTime?: string;
+  likeCount?: number;
+  totalLikes?: number;
+  peakViewers?: number;
 }
 
 interface LiveDataModalProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   stats: LiveDataStats;
   streamTitle?: string;
 }
 
 const formatDuration = (totalSeconds: number): string => {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds || 0));
+  const h = Math.floor(safeSeconds / 3600);
+  const m = Math.floor((safeSeconds % 3600) / 60);
+  const s = safeSeconds % 60;
   if (h > 0) {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   }
@@ -31,46 +48,63 @@ const formatDuration = (totalSeconds: number): string => {
 
 export const LiveDataModal: React.FC<LiveDataModalProps> = ({
   open,
+  isOpen,
   onClose,
   stats,
   streamTitle = 'Live Room',
 }) => {
-  if (!open) return null;
+  const isModalOpen = Boolean(isOpen ?? open);
+  if (!isModalOpen) return null;
+
+  const joined = stats.totalJoined ?? stats.usersJoined ?? 0;
+  const left = stats.totalLeft ?? stats.usersLeft ?? 0;
+  const gifts = stats.totalGifts ?? stats.giftsCount ?? 0;
+  const valuation = stats.valuation ?? stats.valuationDiamonds ?? 0;
+  const likes = stats.totalLikes ?? stats.likeCount ?? 0;
+  const peak = stats.peakViewers ?? 1;
+
+  // Format live duration
+  let liveDurationDisplay = '00:00';
+  if (stats.liveTime) {
+    liveDurationDisplay = stats.liveTime;
+  } else if (typeof stats.elapsedSeconds === 'number') {
+    liveDurationDisplay = formatDuration(stats.elapsedSeconds);
+  }
 
   const cards = [
     {
       label: 'Live Time',
-      value: formatDuration(stats.elapsedSeconds),
+      value: liveDurationDisplay,
       icon: ClockIcon,
       color: 'from-blue-500/20 to-indigo-500/20 text-blue-400 border-blue-500/30',
     },
     {
       label: 'Valuation',
-      value: `${stats.valuationDiamonds.toLocaleString()} 💎`,
+      value: `${valuation.toLocaleString()} 💎`,
       icon: DiamondIcon,
       color: 'from-amber-500/20 to-yellow-500/20 text-amber-400 border-amber-500/30',
     },
     {
       label: 'Users Joined',
-      value: stats.usersJoined.toLocaleString(),
+      value: joined.toLocaleString(),
       icon: Users,
       color: 'from-emerald-500/20 to-teal-500/20 text-emerald-400 border-emerald-500/30',
     },
     {
       label: 'Users Left',
-      value: stats.usersLeft.toLocaleString(),
+      value: left.toLocaleString(),
       icon: UserMinus,
       color: 'from-rose-500/20 to-red-500/20 text-rose-400 border-rose-500/30',
     },
     {
       label: 'Gifts Received',
-      value: stats.giftsCount.toLocaleString(),
+      value: gifts.toLocaleString(),
       icon: GiftIcon,
       color: 'from-pink-500/20 to-purple-500/20 text-pink-400 border-pink-500/30',
     },
     {
       label: 'Total Likes',
-      value: stats.likeCount.toLocaleString(),
+      value: likes.toLocaleString(),
       icon: HeartIcon,
       color: 'from-red-500/20 to-pink-500/20 text-red-400 border-red-500/30',
     },
@@ -143,7 +177,7 @@ export const LiveDataModal: React.FC<LiveDataModalProps> = ({
               <span className="text-xs font-semibold text-white/80">Peak Audience Concurrency</span>
             </div>
             <span className="text-sm font-black text-emerald-400 tabular-nums">
-              {stats.peakViewers.toLocaleString()} Viewers
+              {peak.toLocaleString()} Viewers
             </span>
           </div>
 

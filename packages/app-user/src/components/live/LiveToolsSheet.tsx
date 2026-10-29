@@ -308,6 +308,20 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
 
               {!isHost && (
                 <ToolButton
+                  id="live_data_viewer"
+                  label="Live Data"
+                  icon={<Star className="w-6 h-6 text-amber-400 fill-current" />}
+                  badge="HOT"
+                  badgeColor="bg-amber-500"
+                  onClick={() => {
+                    onClose();
+                    onOpenLiveData?.();
+                  }}
+                />
+              )}
+
+              {!isHost && (
+                <ToolButton
                   id="viewer_mic"
                   label={isSpeaker ? (micOn ? 'Mic ON' : 'Mic OFF') : (micRequestPending ? 'Requested' : 'Request Mic')}
                   icon={isSpeaker ? (micOn ? <MouthIcon className="w-6 h-6" /> : <MouthOffIcon className="w-6 h-6" />) : <MouthIcon className="w-6 h-6" />}
