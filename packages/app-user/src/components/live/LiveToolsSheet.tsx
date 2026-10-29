@@ -27,6 +27,7 @@ import {
   PiHeartFill as Heart,
   PiWaveformBold as Waveform,
   PiSwordBold as Swords,
+  PiCornersOutBold as ExpandIcon,
 } from 'react-icons/pi';
 import { MouthIcon, MouthOffIcon } from './MouthIcons';
 import { useUIStore } from '../../stores';
@@ -43,6 +44,8 @@ export interface LiveToolsSheetProps {
   micRequestPending?: boolean;
   mirrorOn?: boolean;
   noiseReductionOn?: boolean;
+  cameraFitMode?: 'contain' | 'cover';
+  onToggleCameraFit?: () => void;
   speakers?: import('./TopGifterSeats').LiveSpeakerItem[];
   pendingMicRequester?: import('./MicRequestBanner').MicRequester | null;
   onAcceptMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
@@ -136,6 +139,8 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
   micRequestPending = false,
   mirrorOn = false,
   noiseReductionOn = true,
+  cameraFitMode = 'contain',
+  onToggleCameraFit,
   speakers = [],
   pendingMicRequester = null,
   onAcceptMicRequest,
@@ -407,6 +412,20 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   onToggleMirror?.();
                 }}
               />
+
+              {isHost && (
+                <ToolButton
+                  id="camera_fit"
+                  label="Camera Size"
+                  icon={<ExpandIcon className="w-6 h-6 text-amber-400" />}
+                  badge={cameraFitMode === 'contain' ? 'Normal' : 'Fill'}
+                  badgeColor={cameraFitMode === 'contain' ? 'bg-emerald-500' : 'bg-purple-500'}
+                  active={cameraFitMode === 'contain'}
+                  onClick={() => {
+                    onToggleCameraFit?.();
+                  }}
+                />
+              )}
 
               <ToolButton
                 id="share"

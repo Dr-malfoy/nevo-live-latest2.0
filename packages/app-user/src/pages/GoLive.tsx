@@ -204,6 +204,21 @@ export const GoLive: React.FC = () => {
           return;
         }
 
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          try {
+            const caps = (videoTrack.getCapabilities?.() as any) || {};
+            if (caps.zoom) {
+              const minZoom = caps.zoom.min ?? 1;
+              await (videoTrack.applyConstraints as any)({
+                advanced: [{ zoom: minZoom }],
+              });
+            }
+          } catch {
+            // Ignore if zoom constraints are not supported on this platform
+          }
+        }
+
         mediaStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -472,8 +487,8 @@ export const GoLive: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Video / Game Camera Feed Viewport */
-            <div className="relative aspect-[16/10] sm:aspect-[16/9] bg-black overflow-hidden group">
+            /* Video / Game Camera Feed Viewport (Natural portrait ratio 3/4 to eliminate cropping) */
+            <div className="relative aspect-[3/4] sm:aspect-[16/9] max-h-[460px] bg-black overflow-hidden group flex items-center justify-center">
               {cameraActive && hasCameraAccess !== false ? (
                 <video
                   ref={videoRef}

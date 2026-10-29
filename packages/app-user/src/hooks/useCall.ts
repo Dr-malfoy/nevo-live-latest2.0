@@ -124,8 +124,7 @@ export const useCall = () => {
         return;
       }
 
-      const remoteFacing = remoteFacingModesRef.current.get(String(uid)) || remoteFacingMode || 'user';
-      const shouldMirror = shouldMirrorFeed(remoteFacing, remoteMirrorRef.current);
+      const shouldMirror = remoteMirrorRef.current;
 
       // 1. Check Agora remote video track
       const track = remoteVideoTracksRef.current.get(uid);
@@ -315,12 +314,9 @@ export const useCall = () => {
     socketRef.current = socket;
     callIdRef.current = callId;
 
-    const applyRemoteMirror = () => {
+    const applyRemoteMirror = (mirror: boolean = remoteMirrorRef.current) => {
       document.querySelectorAll('[id^="remote-container-"]').forEach((container) => {
-        const id = container.id.replace('remote-container-', '');
-        const remoteFacing = remoteFacingModesRef.current.get(id) || 'user';
-        const shouldMirror = shouldMirrorFeed(remoteFacing, remoteMirrorRef.current);
-        setElementMirror(container as HTMLElement, shouldMirror);
+        setElementMirror(container as HTMLElement, mirror);
       });
     };
 
@@ -337,7 +333,7 @@ export const useCall = () => {
     socket.on('call:camera:mirror', ({ mirror }: { mirror: boolean }) => {
       remoteMirrorRef.current = mirror;
       setRemoteMirror(mirror);
-      applyRemoteMirror();
+      applyRemoteMirror(mirror);
     });
 
     // Broadcast our initial camera state to the room
@@ -349,6 +345,19 @@ export const useCall = () => {
       callId,
       mirror: mirrorOnRef.current,
     });
+  }, []);
+
+  const broadcastCameraState = useCallback(() => {
+    if (socketRef.current && callIdRef.current) {
+      socketRef.current.emit('call:camera:facingMode', {
+        callId: callIdRef.current,
+        facingMode: currentFacingModeRef.current,
+      });
+      socketRef.current.emit('call:camera:mirror', {
+        callId: callIdRef.current,
+        mirror: mirrorOnRef.current,
+      });
+    }
   }, []);
 
   const initLocalMediaFallback = useCallback(
@@ -424,7 +433,7 @@ export const useCall = () => {
     const tryPlay = (attempt: number) => {
       const el = document.getElementById('call-local-video-container');
       if (el) {
-        const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, mirrorOnRef.current);
+        const shouldMirror = mirrorOnRef.current;
         if (localVideoRef.current) {
           try {
             localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
@@ -780,8 +789,8 @@ export const useCall = () => {
           }
         }
 
-        const shouldMirror = shouldMirrorFeed(nextMode, mirrorOnRef.current);
-        // Replay local preview with correct mirror configuration (Front: mirrored, Rear: natural unmirrored)
+        const shouldMirror = mirrorOnRef.current;
+        // Replay local preview with mirror configuration
         const el = document.getElementById('call-local-video-container');
         if (el) {
           try {
@@ -812,7 +821,7 @@ export const useCall = () => {
         }
         const el = document.getElementById('call-local-video-container');
         if (el) {
-          const shouldMirror = shouldMirrorFeed(nextMode, mirrorOnRef.current);
+          const shouldMirror = mirrorOnRef.current;
           setElementMirror(el, shouldMirror);
         }
 
@@ -837,8 +846,7 @@ export const useCall = () => {
     // 1. Immediately apply mirror transform to local preview
     const localEl = document.getElementById('call-local-video-container');
     if (localEl) {
-      const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, next);
-      setElementMirror(localEl, shouldMirror);
+      setElementMirror(localEl, next);
     }
     playLocalPreview();
 
@@ -948,6 +956,7 @@ export const useCall = () => {
     toggleMirror,
     setSpeaker,
     switchCamera,
+    broadcastCameraState,
     playLocalPreview,
     playRemoteVideo,
     endCall,

@@ -111,23 +111,6 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
   return await AgoraRTC.createCameraVideoTrack({ facingMode });
 }
 
-let beautyExtensionInstance: any = null;
-
-async function getBeautyExtension() {
-  if (typeof window === 'undefined') return null;
-  if (!beautyExtensionInstance) {
-    try {
-      const mod = await import('agora-extension-beauty-effect');
-      const BeautyExtensionClass = mod.default || (mod as any).BeautyExtension || mod;
-      beautyExtensionInstance = new BeautyExtensionClass();
-      AgoraRTC.registerExtensions([beautyExtensionInstance]);
-    } catch (e) {
-      console.warn('[useAgora] Failed to register BeautyExtension:', e);
-    }
-  }
-  return beautyExtensionInstance;
-}
-
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localVideoRef = useRef<ICameraVideoTrack | null>(null);
@@ -182,37 +165,18 @@ export const useAgora = () => {
 
     const shouldEnable = smoothness > 0 || whitening > 0;
 
-    try {
-      if (!beautyProcessorRef.current && shouldEnable) {
-        const ext = await getBeautyExtension();
-        if (ext && localVideoRef.current) {
-          const processor = ext.createProcessor();
-          // Pipe the camera video track through the beauty effect processor
-          try {
-            localVideoRef.current.pipe(processor).pipe(localVideoRef.current.processorDestination);
-            beautyProcessorRef.current = processor;
-          } catch (pipeErr) {
-            console.warn('[useAgora] Error piping beauty processor:', pipeErr);
-          }
-        }
+    // Use safe built-in Agora SDK beauty effect if available (never crashes WebGL or turns screen black)
+    if (typeof (localVideoRef.current as any)?.setBeautyEffect === 'function') {
+      try {
+        await (localVideoRef.current as any).setBeautyEffect(shouldEnable, {
+          lighteningLevel: Math.min(1, Math.max(0, (whitening / 100) * 0.85)),
+          smoothnessLevel: Math.min(1, Math.max(0, (smoothness / 100) * 0.85)),
+          rednessLevel: 0.1,
+          lighteningContrastLevel: 1,
+        });
+      } catch (err) {
+        console.warn('[useAgora] SDK setBeautyEffect error (CSS filter active):', err);
       }
-
-      if (beautyProcessorRef.current) {
-        if (shouldEnable) {
-          await beautyProcessorRef.current.enable();
-          beautyProcessorRef.current.setOptions({
-            lighteningContrastLevel: 2, // High contrast for intense porcelain glowing skin
-            lighteningLevel: Math.min(1, Math.max(0, (whitening / 100) * 1.0)),
-            smoothnessLevel: Math.min(1, Math.max(0, (smoothness / 100) * 1.0)),
-            sharpnessLevel: 0.25, // Retains clear eye/mouth/hair contours while maximizing skin smoothness
-            rednessLevel: Math.min(0.3, Math.max(0, 0.08 + (whitening / 100) * 0.2)), // Vibrant radiant blush
-          });
-        } else {
-          await beautyProcessorRef.current.disable();
-        }
-      }
-    } catch (err) {
-      console.warn('[useAgora] applyBeautyOptions error:', err);
     }
   }, []);
 

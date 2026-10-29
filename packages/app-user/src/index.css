@@ -484,9 +484,20 @@
   #pk-video-right video {
     width: 100% !important;
     height: 100% !important;
-    object-fit: cover !important;
     object-position: center center !important;
     image-rendering: -webkit-optimize-contrast;
     backface-visibility: hidden;
+  }
+
+  #agora-video-area.fit-contain video,
+  #agora-video-area.fit-contain .agora_video_player video {
+    object-fit: contain !important;
+  }
+
+  #agora-video-area.fit-cover video,
+  #agora-video-area.fit-cover .agora_video_player video,
+  #agora-video-area:not(.fit-contain) video,
+  #agora-video-area:not(.fit-contain) .agora_video_player video {
+    object-fit: cover !important;
   }
 }

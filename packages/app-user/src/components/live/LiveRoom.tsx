@@ -124,6 +124,15 @@ export const LiveRoom = ({
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
+  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
+
+  const handleToggleCameraFit = useCallback(() => {
+    setCameraFitMode((m) => {
+      const next = m === 'contain' ? 'cover' : 'contain';
+      showToast(next === 'contain' ? 'Camera Size: Normal (Full View)' : 'Camera Size: Fill Screen', 'info');
+      return next;
+    });
+  }, [showToast]);
 
   const isSideA = pkBattle
     ? (pkBattle.hostA?.userId === user?._id || (currentStreamId ? currentStreamId === pkBattle.streamIdA : pkBattle.streamIdA === stream?._id))
@@ -203,17 +212,17 @@ export const LiveRoom = ({
   // Effective Video Filters (Combining color filter preset + real-time whitening and skin tone glow)
   const beautyCss = useMemo(() => {
     if (smoothness === 0 && whitening === 0) return '';
-    // High-power radiant whitening & skin softness:
-    // Brightness boosts luminous white tone up to +35%
-    // Contrast balances highlights for porcelain glow
-    // Saturation adds healthy vibrant skin tone
-    const bLevel = whitening > 0 ? 1 + (whitening / 100) * 0.35 : 1;
+    // High-power radiant whitening & porcelain glow:
+    const bLevel = whitening > 0 ? 1 + (whitening / 100) * 0.42 : 1;
     const cLevel = (whitening > 0 || smoothness > 0)
-      ? Math.max(0.85, 1 - (whitening / 100) * 0.05 - (smoothness / 100) * 0.08)
+      ? Math.max(0.85, 1 - (whitening / 100) * 0.06 - (smoothness / 100) * 0.12)
       : 1;
-    const sLevel = whitening > 0 ? 1 + (whitening / 100) * 0.15 : 1;
+    const sLevel = whitening > 0 ? 1 + (whitening / 100) * 0.18 : 1;
+    // Skin smoothing: subtle soft-focus blur (0.3px to 1px max) to soften pores & blemishes
+    const blurPx = smoothness > 0 ? (smoothness / 100) * 0.8 : 0;
+    const blurStr = blurPx > 0 ? `blur(${blurPx.toFixed(2)}px)` : '';
 
-    return `brightness(${bLevel.toFixed(3)}) contrast(${cLevel.toFixed(3)}) saturate(${sLevel.toFixed(3)})`;
+    return `brightness(${bLevel.toFixed(3)}) contrast(${cLevel.toFixed(3)}) saturate(${sLevel.toFixed(3)}) ${blurStr}`.trim();
   }, [smoothness, whitening]);
 
   const combinedFilterCss = useMemo(() => {
@@ -382,7 +391,9 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
+        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_div]:!w-full [&_div]:!h-full ${
+          cameraFitMode === 'contain' ? 'fit-contain [&_video]:!object-contain' : 'fit-cover [&_video]:!object-cover'
+        }`}
         style={{
           filter: combinedFilterCss,
         }}
@@ -664,6 +675,8 @@ export const LiveRoom = ({
         onOpenBeauty={() => setShowBeauty(true)}
         onToggleMirror={handleToggleMirror}
         mirrorOn={mirrorOn}
+        cameraFitMode={cameraFitMode}
+        onToggleCameraFit={handleToggleCameraFit}
         onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
         noiseReductionOn={noiseReductionOn}
         onOpenPK={() => setShowPKModal(true)}

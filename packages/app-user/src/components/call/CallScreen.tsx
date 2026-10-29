@@ -102,6 +102,7 @@ export const CallScreen = ({
     toggleSpeaker,
     toggleMirror,
     switchCamera,
+    broadcastCameraState,
     playLocalPreview,
     playRemoteVideo,
     endCall,
@@ -359,6 +360,8 @@ export const CallScreen = ({
         setRinging(false);
         setCallConnected(true);
         setAnswering(true);
+        broadcastCameraState();
+        setTimeout(broadcastCameraState, 600);
       }
       setRoster((prev) => {
         if (!payload?.userId || prev.some((p) => p._id === payload.userId)) return prev;
@@ -385,6 +388,8 @@ export const CallScreen = ({
       setRinging(false);
       setCallConnected(true);
       setAnswering(true);
+      broadcastCameraState();
+      setTimeout(broadcastCameraState, 600);
       if (payload?.audienceDiamonds != null) {
         updateUser({ diamonds: payload.audienceDiamonds });
       }
@@ -532,6 +537,15 @@ export const CallScreen = ({
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, chatOpen]);
+
+  // Synchronize camera facing mode and mirror state when call connects
+  useEffect(() => {
+    if (callConnected) {
+      broadcastCameraState();
+      const t = setTimeout(broadcastCameraState, 600);
+      return () => clearTimeout(t);
+    }
+  }, [callConnected, broadcastCameraState]);
 
   // Join call when session is ready
   useEffect(() => {
