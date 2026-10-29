@@ -130,10 +130,25 @@ export const LiveRoom = ({
     onApplyBeautyEffect?.(0, 0);
   }, [onApplyBeautyEffect]);
 
-  // Effective Video Filters (Preset colors only — NEVER applies blur() to the whole screen)
+  // Effective Video Filters (Combining color filter preset + real-time whitening and skin tone glow)
+  const beautyCss = useMemo(() => {
+    if (smoothness === 0 && whitening === 0) return '';
+    // High-power radiant whitening & skin softness:
+    // Brightness boosts luminous white tone up to +35%
+    // Contrast balances highlights for porcelain glow
+    // Saturation adds healthy vibrant skin tone
+    const bLevel = whitening > 0 ? 1 + (whitening / 100) * 0.35 : 1;
+    const cLevel = (whitening > 0 || smoothness > 0)
+      ? Math.max(0.85, 1 - (whitening / 100) * 0.05 - (smoothness / 100) * 0.08)
+      : 1;
+    const sLevel = whitening > 0 ? 1 + (whitening / 100) * 0.15 : 1;
+
+    return `brightness(${bLevel.toFixed(3)}) contrast(${cLevel.toFixed(3)}) saturate(${sLevel.toFixed(3)})`;
+  }, [smoothness, whitening]);
+
   const combinedFilterCss = useMemo(() => {
-    return filterCss || undefined;
-  }, [filterCss]);
+    return [filterCss, beautyCss].filter(Boolean).join(' ') || undefined;
+  }, [filterCss, beautyCss]);
 
   // Derive viewer list from chat participants (plus host + self).
   const viewers = useMemo<Viewer[]>(() => {

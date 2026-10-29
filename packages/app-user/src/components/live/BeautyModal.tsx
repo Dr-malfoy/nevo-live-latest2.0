@@ -49,33 +49,33 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center pointer-events-auto">
-        {/* Backdrop */}
+      <div className="fixed inset-0 z-[70] flex items-end justify-center pointer-events-none">
+        {/* Transparent Backdrop (NO blur) so the host can clearly see their live face and effects in real-time */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="absolute inset-0 bg-black/75 backdrop-blur-md"
+          className="absolute inset-0 bg-black/20 pointer-events-auto"
         />
 
-        {/* Modal Sheet */}
+        {/* Modal Bottom Sheet — compact bottom controller */}
         <motion.div
-          initial={{ opacity: 0, y: 100, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 100, scale: 0.95 }}
-          transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-          className="relative w-full max-w-md bg-[#161428]/95 border-t sm:border border-white/15 rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 text-white z-10 backdrop-blur-2xl flex flex-col gap-6"
+          initial={{ opacity: 0, y: '100%' }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: '100%' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+          className="pointer-events-auto relative w-full max-w-lg bg-[#141224]/95 border-t border-pink-500/30 rounded-t-3xl shadow-[0_-12px_40px_rgba(0,0,0,0.7)] p-5 text-white z-10 flex flex-col gap-4"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-[0_0_12px_rgba(244,63,94,0.5)]">
-                <WandIcon className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-pink-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-[0_0_12px_rgba(244,63,94,0.5)]">
+                <WandIcon className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white tracking-wide">Beauty & Video Effects</h3>
-                <p className="text-xs text-white/50">Enhance camera smoothness and whitening</p>
+                <h3 className="text-sm font-bold text-white tracking-wide">Beauty & Video Effects</h3>
+                <p className="text-[11px] text-white/50">Real-time facial skin smoothing and whitening</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -83,16 +83,17 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
                 type="button"
                 onClick={handleReset}
                 title="Reset to default"
-                className="p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white/70 hover:text-white"
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-xs text-white/70 hover:text-white flex items-center gap-1"
               >
-                <ResetIcon className="w-4 h-4" />
+                <ResetIcon className="w-3.5 h-3.5" />
+                <span>Reset</span>
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white/70 hover:text-white"
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center text-white/70 hover:text-white"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

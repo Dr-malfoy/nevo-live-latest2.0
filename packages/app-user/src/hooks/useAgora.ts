@@ -178,11 +178,11 @@ export const useAgora = () => {
         if (shouldEnable) {
           await beautyProcessorRef.current.enable();
           beautyProcessorRef.current.setOptions({
-            lighteningContrastLevel: 1,
-            lighteningLevel: Math.min(1, Math.max(0, whitening / 100)),
-            smoothnessLevel: Math.min(1, Math.max(0, smoothness / 100)),
-            sharpnessLevel: 0.35, // Preserves clear facial contours, eyes & background without screen blur
-            rednessLevel: 0.1,    // Subtle rosy cheeks
+            lighteningContrastLevel: 2, // High contrast for intense porcelain glowing skin
+            lighteningLevel: Math.min(1, Math.max(0, (whitening / 100) * 1.0)),
+            smoothnessLevel: Math.min(1, Math.max(0, (smoothness / 100) * 1.0)),
+            sharpnessLevel: 0.25, // Retains clear eye/mouth/hair contours while maximizing skin smoothness
+            rednessLevel: Math.min(0.3, Math.max(0, 0.08 + (whitening / 100) * 0.2)), // Vibrant radiant blush
           });
         } else {
           await beautyProcessorRef.current.disable();
