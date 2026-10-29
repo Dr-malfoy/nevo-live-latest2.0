@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X, PiSwordBold as Swords } from 'react-icons/pi';
 import { TopToolbar } from './TopToolbar';
