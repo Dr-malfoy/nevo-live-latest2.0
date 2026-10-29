@@ -6,6 +6,7 @@ import { ToastContainer } from './components/ui';
 import { useAuthStore, useSocketStore, useUIStore } from './stores';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import { CallScreen } from './components/call/CallScreen';
+import { GlobalLivePlayer } from './components/live';
 import { usersApi } from './api';
 import { pushNotificationService } from './services/pushNotification';
 import { handleFirebaseRedirectResult } from './lib/firebase';
@@ -39,6 +40,7 @@ import {
   OfficialNotifications,
   VerificationCenter,
   Income,
+  IncomeHistory,
   TransferPoints,
   WithdrawMethods,
   TopUp,
@@ -75,6 +77,7 @@ import {
   Bag,
   AgentRequests,
   HostApplicationPage,
+  DiamondSellerApply,
   CoinValuation,
 } from './pages';
 
@@ -417,6 +420,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
   return (
     <>
       {children}
+      <GlobalLivePlayer />
       {globalIncomingCall && (
         <CallScreen
           incoming={globalIncomingCall}
@@ -504,8 +508,8 @@ export default function App() {
 
             {/* Stream pages — no nav, full screen */}
             <Route element={<StreamLayout />}>
-              <Route path="/live/:id" element={<LiveStreamPage />} />
-              <Route path="/stream/:id" element={<LiveStreamPage />} />
+              <Route path="/live/:id" element={<div className="min-h-screen bg-black" />} />
+              <Route path="/stream/:id" element={<div className="min-h-screen bg-black" />} />
               <Route path="/match" element={<ProtectedRoute><Match /></ProtectedRoute>} />
               <Route path="/go-live" element={<ProtectedRoute><GoLive /></ProtectedRoute>} />
               <Route path="/official-notifications" element={<OfficialNotifications />} />
@@ -587,7 +591,7 @@ export default function App() {
             />
             <Route
               path="/income/:source"
-              element={<ProtectedRoute><Income /></ProtectedRoute>}
+              element={<ProtectedRoute><IncomeHistory /></ProtectedRoute>}
             />
             <Route
               path="/my-agency"
@@ -673,6 +677,8 @@ export default function App() {
             <Route path="/creator-center" element={<ProtectedRoute><CreatorCenter /></ProtectedRoute>} />
             <Route path="/host-application" element={<ProtectedRoute><HostApplicationPage /></ProtectedRoute>} />
             <Route path="/apply-host" element={<ProtectedRoute><HostApplicationPage /></ProtectedRoute>} />
+            <Route path="/diamond-seller-apply" element={<ProtectedRoute><DiamondSellerApply /></ProtectedRoute>} />
+            <Route path="/diamond-seller" element={<ProtectedRoute><DiamondSellerApply /></ProtectedRoute>} />
 
             {/* #53 achievement posters */}
             <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />

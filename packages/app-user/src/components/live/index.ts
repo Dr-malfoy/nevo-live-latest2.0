@@ -25,4 +25,5 @@ export type { MicRequester } from './MicRequestBanner';
 export { UserProfileModal } from './UserProfileModal';
 export { StreamEndedRecap } from './StreamEndedRecap';
 export type { StreamEndedRecapProps } from './StreamEndedRecap';
+export { GlobalLivePlayer } from './GlobalLivePlayer';
 export type { LiveRoomProps, RoomMessage, RoomNotification } from './types';

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PiCameraSlashFill as CameraOff, PiCheckBold as Check } from 'react-icons/pi';
+import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X } from 'react-icons/pi';
 import { TopToolbar } from './TopToolbar';
 import { CommentOverlay } from './CommentOverlay';
 import { BottomToolbar } from './BottomToolbar';
@@ -31,6 +31,9 @@ export const LiveRoom = ({
   error,
   isReconnecting,
   reconnectCountdown,
+  isMinimized = false,
+  onMaximize,
+  onMinimize,
   elapsed,
   isFollowing,
   followBusy,
@@ -140,6 +143,108 @@ export const LiveRoom = ({
       /* share dismissed */
     }
   };
+
+  if (isMinimized) {
+    return (
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragConstraints={{
+          left: 10,
+          right: typeof window !== 'undefined' ? window.innerWidth - 150 : 250,
+          top: 60,
+          bottom: typeof window !== 'undefined' ? window.innerHeight - 240 : 500,
+        }}
+        onClick={onMaximize}
+        className="fixed bottom-20 right-3.5 w-36 h-52 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none flex items-center justify-center touch-none transition-shadow"
+        role="region"
+        aria-label="Minimized live stream"
+      >
+        {/* Background ambient cover/avatar poster behind video */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          {stream?.cover || host?.avatar ? (
+            <img
+              src={stream?.cover || host?.avatar}
+              alt=""
+              className="w-full h-full object-cover blur-sm opacity-50"
+            />
+          ) : (
+            <div className="w-full h-full bg-[#181824]" />
+          )}
+        </div>
+
+        {/* Agora / WebRTC video renders here — id contract kept identical */}
+        <div
+          id="agora-video-area"
+          className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover"
+          style={{ filter: filterCss || undefined }}
+        />
+
+        {/* Voice room placeholder */}
+        {joined && !videoEnabled && (
+          <div className="absolute inset-0 z-[1] flex items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="w-12 h-12 rounded-full border-2 border-white/30 overflow-hidden shadow-lg">
+                <img src={host?.avatar} alt="" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="w-1 h-3 rounded-full bg-brand-primary animate-pulse"
+                    style={{ animationDelay: `${i * 150}ms` }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mini Player Controls Overlay */}
+        <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/65 via-transparent to-black/85 flex flex-col justify-between p-2 pointer-events-none">
+          {/* Top row */}
+          <div className="flex items-center justify-between pointer-events-auto">
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.6)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              <span className="text-[9px] font-black text-white tracking-widest uppercase">LIVE</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMaximize?.();
+                }}
+                aria-label="Maximize stream"
+                className="w-6 h-6 rounded-full bg-black/60 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+              >
+                <PiArrowsOutBold className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isHost) onEnd();
+                  else onLeave();
+                }}
+                aria-label="Close stream"
+                className="w-6 h-6 rounded-full bg-black/60 hover:bg-red-500/80 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom row */}
+          <div className="pointer-events-none">
+            <p className="text-[11px] font-bold text-white drop-shadow truncate">
+              {host?.nickname || stream?.title || 'Live'}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <div className="relative h-[100dvh] overflow-hidden bg-brand-bg" role="region" aria-label="Live stream">
@@ -269,6 +374,7 @@ export const LiveRoom = ({
         isFollowing={isFollowing}
         followBusy={followBusy}
         onBack={isHost ? onEnd : onLeave}
+        onMinimize={onMinimize}
         onFollowToggle={onFollowToggle}
         onShare={handleShare}
         onReport={onReport}

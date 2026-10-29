@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { streamsApi, giftsApi } from '../api';
 import { gamesApi } from '../api/economy.api';
-import { useSocketStore, useAuthStore, useUIStore } from '../stores';
+import { useSocketStore, useAuthStore, useUIStore, useLivePlayerStore } from '../stores';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
@@ -21,9 +21,26 @@ const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30
 const NETWORK_GRACE_MS = 30_000; // 30s grace window before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-export const LiveStreamPage = () => {
-  const { id } = useParams<{ id: string }>();
+export interface LiveStreamPageProps {
+  streamIdProp?: string;
+  isMinimized?: boolean;
+  onMaximize?: () => void;
+  onMinimize?: () => void;
+  onClose?: () => void;
+}
+
+export const LiveStreamPage = ({
+  streamIdProp,
+  isMinimized: isMinimizedProp,
+  onMaximize: onMaximizeProp,
+  onMinimize: onMinimizeProp,
+  onClose: onCloseProp,
+}: LiveStreamPageProps = {}) => {
+  const { id: paramId } = useParams<{ id: string }>();
+  const id = streamIdProp || paramId;
   const navigate = useNavigate();
+  const { isMinimized: storeMinimized, setMinimized, closeStream } = useLivePlayerStore();
+  const isMinimized = isMinimizedProp ?? storeMinimized;
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const userRef = useRef(user);
@@ -419,6 +436,7 @@ export const LiveStreamPage = () => {
     };
     const onEnded = () => {
       endedRef.current = true;
+      setMinimized(false);
       try {
         if (timerRef.current) clearInterval(timerRef.current);
         leaveChannel();
@@ -826,9 +844,28 @@ export const LiveStreamPage = () => {
     setShowLeaveConfirm(true);
   }, []);
 
+  const handleMinimize = useCallback(() => {
+    if (onMinimizeProp) {
+      onMinimizeProp();
+    } else {
+      setMinimized(true);
+      navigate(-1);
+    }
+  }, [onMinimizeProp, setMinimized, navigate]);
+
+  const handleMaximize = useCallback(() => {
+    if (onMaximizeProp) {
+      onMaximizeProp();
+    } else {
+      setMinimized(false);
+      if (id) navigate(`/live/${id}`);
+    }
+  }, [onMaximizeProp, setMinimized, id, navigate]);
+
   const confirmEndStream = useCallback(async () => {
     setShowEndConfirm(false);
     endedRef.current = true;
+    setMinimized(false);
 
     const recap = {
       duration: formatRecapDuration(elapsedRef.current),
@@ -866,16 +903,16 @@ export const LiveStreamPage = () => {
     }
 
     setStreamEndedRecap(recap);
-  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user]);
+  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user, setMinimized]);
 
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);
-    // Navigate away immediately so the user never sees "Connecting to stream".
-    // fireEnd() runs cleanup in the background (leaveChannel, socket leave, etc.).
     navigatingAwayRef.current = true;
+    closeStream();
+    onCloseProp?.();
     navigate(-1);
     if (id) fireEnd();
-  }, [id, fireEnd, navigate]);
+  }, [id, fireEnd, navigate, closeStream, onCloseProp]);
 
   // Robust receiver id for gifts: populated hostId → raw string hostId → host fallback.
   const giftReceiverId =
@@ -909,6 +946,8 @@ export const LiveStreamPage = () => {
         hostAvatar={streamEndedRecap.hostAvatar}
         isHost={streamEndedRecap.isHost}
         onGoHome={() => {
+          closeStream();
+          onCloseProp?.();
           navigate('/', { replace: true });
         }}
       />
@@ -916,7 +955,7 @@ export const LiveStreamPage = () => {
   }
 
   return (
-    <div className="h-screen bg-black text-white">
+    <div className={isMinimized ? 'contents' : 'h-screen bg-black text-white'}>
       <LiveRoom
         stream={stream}
         streamTitle={stream?.title}
@@ -931,6 +970,9 @@ export const LiveStreamPage = () => {
         error={error}
         isReconnecting={isReconnecting}
         reconnectCountdown={reconnectCountdown}
+        isMinimized={isMinimized}
+        onMaximize={handleMaximize}
+        onMinimize={handleMinimize}
         elapsed={formatElapsed(elapsed)}
         isFollowing={isFollowing}
         followBusy={followBusy}

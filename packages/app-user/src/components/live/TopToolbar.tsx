@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { PiCaretLeftBold as ArrowLeft, PiShareNetworkFill as Share2, PiClockFill as Clock, PiXBold as X, PiCrownFill as Crown, PiGiftFill as Gift } from 'react-icons/pi';
+import { PiCaretLeftBold as ArrowLeft, PiShareNetworkFill as Share2, PiClockFill as Clock, PiXBold as X, PiCrownFill as Crown, PiGiftFill as Gift, PiCornersInBold as MinimizeIcon } from 'react-icons/pi';
 import { HostCard } from './HostCard';
 import { ViewerCounter } from './ViewerCounter';
 import { MoreMenu } from './MoreMenu';
@@ -17,6 +17,7 @@ interface TopToolbarProps {
   isFollowing: boolean;
   followBusy?: boolean;
   onBack: () => void;
+  onMinimize?: () => void;
   onFollowToggle: () => void;
   onShare: () => void;
   onReport: () => void;
@@ -51,6 +52,7 @@ export const TopToolbar = ({
   isFollowing,
   followBusy,
   onBack,
+  onMinimize,
   onFollowToggle,
   onShare,
   onReport,
@@ -81,6 +83,16 @@ export const TopToolbar = ({
       <div className="flex flex-col items-end gap-2 shrink-0 pointer-events-auto">
         <div className="flex items-center gap-2">
            <ViewerCounter count={viewerCount} onClick={onViewersClick} />
+           {onMinimize && (
+             <motion.button
+               whileTap={{ scale: 0.9 }}
+               onClick={onMinimize}
+               aria-label="Minimize stream"
+               className="w-8 h-8 flex items-center justify-center shrink-0 hover:bg-white/20 rounded-full transition-colors bg-black/30 backdrop-blur-sm"
+             >
+               <MinimizeIcon className="w-4 h-4 text-white" />
+             </motion.button>
+           )}
            <motion.button
              whileTap={{ scale: 0.9 }}
              onClick={onBack}

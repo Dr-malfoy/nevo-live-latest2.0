@@ -38,6 +38,9 @@ export interface LiveRoomProps {
   error?: string;
   isReconnecting?: boolean;
   reconnectCountdown?: number;
+  isMinimized?: boolean;
+  onMaximize?: () => void;
+  onMinimize?: () => void;
   elapsed: string;
   isFollowing: boolean;
   followBusy?: boolean;
