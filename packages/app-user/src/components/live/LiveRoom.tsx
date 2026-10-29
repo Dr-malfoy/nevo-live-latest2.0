@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X, PiSwordBold as Swords } from 'react-icons/pi';
 import { TopToolbar } from './TopToolbar';
@@ -595,6 +595,12 @@ export const LiveRoom = ({
         isSpeaker={isSpeaker}
         micRequestPending={micRequestPending}
         onRequestMic={onRequestMic}
+        speakers={speakers}
+        pendingMicRequester={pendingMicRequester}
+        onAcceptMicRequest={onAcceptMicRequest}
+        onDeclineMicRequest={onDeclineMicRequest}
+        onMuteSpeaker={onMuteSpeaker}
+        onKickSpeaker={onKickSpeaker}
         onToggleCamera={onToggleCamera}
         onToggleMic={onToggleMic}
         onSwitchCamera={onSwitchCamera}
@@ -818,6 +824,15 @@ export const LiveRoom = ({
           onToggleCamera={onToggleCamera}
           onToggleMic={onToggleMic}
           onSwitchCamera={onSwitchCamera}
+          speakers={speakers}
+          isSpeaker={isSpeaker}
+          micRequestPending={micRequestPending}
+          onRequestMic={onRequestMic}
+          onMuteSpeaker={onMuteSpeaker}
+          onKickSpeaker={onKickSpeaker}
+          pendingMicRequester={pendingMicRequester}
+          onAcceptMicRequest={onAcceptMicRequest}
+          onDeclineMicRequest={onDeclineMicRequest}
           onOpenTools={() => setToolsOpen(true)}
           onOpenBeauty={() => setShowBeauty(true)}
           onOpenFilters={onToggleFilters}

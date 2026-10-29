@@ -448,17 +448,35 @@ export const streamService = {
   async joinStream(streamId: string, userId: string) {
     const stream = await LiveStream.findById(streamId);
     if (!stream) throw new AppError('Stream not found', 404);
-    if (stream.status !== 'live') throw new AppError('Stream has ended', 400);
 
-    // Self-heal: if the host app vanished (no heartbeat), refresh the flag so the
-    // session is not treated as dead the instant the host returns.
-    if (stream.hostId.toString() === userId && Date.now() - new Date(stream.heartbeatAt).getTime() > HEARTBEAT_STALE_MS) {
-      stream.heartbeatAt = new Date();
-      await stream.save();
+    const isHost = stream.hostId.toString() === userId;
+
+    // Self-heal / Reconnect for the host:
+    // If the host is returning to their own stream, revive or refresh it so browser refresh /
+    // transient network drop or reaper does not lock them out with "Stream has ended".
+    if (isHost) {
+      const now = Date.now();
+      const lastActive = Math.max(
+        stream.heartbeatAt ? new Date(stream.heartbeatAt).getTime() : 0,
+        stream.endedAt ? new Date(stream.endedAt).getTime() : 0,
+        stream.startedAt ? new Date(stream.startedAt).getTime() : 0
+      );
+      const RECOVERY_WINDOW_MS = 15 * 60 * 1000; // 15 minutes grace window
+
+      if (stream.status !== 'live' && (now - lastActive < RECOVERY_WINDOW_MS)) {
+        stream.status = 'live';
+        stream.endedAt = undefined as any;
+        stream.heartbeatAt = new Date();
+        await stream.save();
+      } else if (stream.status === 'live') {
+        stream.heartbeatAt = new Date();
+        await stream.save();
+      }
     }
 
+    if (stream.status !== 'live') throw new AppError('Stream has ended', 400);
+
     // Don't count host as a viewer when joining their own stream
-    const isHost = stream.hostId.toString() === userId;
     if (!isHost) {
       // Idempotent: a viewer is counted only once (re-joins / retries don't inflate).
       await LiveStream.updateOne(

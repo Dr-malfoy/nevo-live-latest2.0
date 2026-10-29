@@ -42,6 +42,12 @@ export interface LiveToolsSheetProps {
   micRequestPending?: boolean;
   mirrorOn?: boolean;
   noiseReductionOn?: boolean;
+  speakers?: import('./TopGifterSeats').LiveSpeakerItem[];
+  pendingMicRequester?: import('./MicRequestBanner').MicRequester | null;
+  onAcceptMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
+  onDeclineMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
+  onMuteSpeaker?: (userId: string, isMuted: boolean) => void;
+  onKickSpeaker?: (userId: string) => void;
   onToggleCamera?: () => void;
   onToggleMic?: () => void;
   onRequestMic?: () => void;
@@ -129,6 +135,12 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
   micRequestPending = false,
   mirrorOn = false,
   noiseReductionOn = true,
+  speakers = [],
+  pendingMicRequester = null,
+  onAcceptMicRequest,
+  onDeclineMicRequest,
+  onMuteSpeaker,
+  onKickSpeaker,
   onToggleCamera,
   onToggleMic,
   onRequestMic,
@@ -205,6 +217,115 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   }}
                 />
               </div>
+
+              {/* Guest Mic Access & Active Co-Speakers Manager */}
+              <div className="mt-4 bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white/70 uppercase tracking-wider flex items-center gap-1.5">
+                    <MouthIcon className="w-3.5 h-3.5 text-pink-400" />
+                    Mic Access & Co-Speakers ({speakers?.length || 0})
+                  </span>
+                  {speakers && speakers.length > 0 && (
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Live on Mic
+                    </span>
+                  )}
+                </div>
+
+                {/* Pending Mic Requester alert inside tools */}
+                {pendingMicRequester && onAcceptMicRequest && onDeclineMicRequest && (
+                  <div className="bg-gradient-to-r from-pink-950/60 to-purple-950/60 border border-pink-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-black/40 border border-pink-400 shrink-0">
+                        {pendingMicRequester.avatar ? (
+                          <img src={pendingMicRequester.avatar} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center font-bold text-xs text-white">
+                            {pendingMicRequester.nickname?.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{pendingMicRequester.nickname}</p>
+                        <p className="text-[10px] text-pink-300">Requested to speak on mic</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onAcceptMicRequest(pendingMicRequester)}
+                        className="px-2.5 py-1 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-[11px] font-bold shadow-md shadow-pink-600/30"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeclineMicRequest(pendingMicRequester)}
+                        className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 text-[11px] font-bold"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Speakers on Mic */}
+                {speakers && speakers.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {speakers.map((sp) => (
+                      <div
+                        key={sp.userId}
+                        className="flex items-center justify-between p-2 rounded-xl bg-black/40 border border-white/5"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-black/50 border border-purple-400 shrink-0">
+                            {sp.avatar ? (
+                              <img src={sp.avatar} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs font-bold text-purple-200">
+                                {sp.nickname?.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-xs font-bold text-white truncate">{sp.nickname}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {onMuteSpeaker && (
+                            <button
+                              type="button"
+                              onClick={() => onMuteSpeaker(sp.userId, !sp.isMuted)}
+                              className={`p-1.5 rounded-lg border text-xs font-bold transition-all ${
+                                sp.isMuted
+                                  ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              }`}
+                              title={sp.isMuted ? 'Unmute Speaker' : 'Mute Speaker'}
+                            >
+                              {sp.isMuted ? <MouthOffIcon className="w-3.5 h-3.5" /> : <MouthIcon className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                          {onKickSpeaker && (
+                            <button
+                              type="button"
+                              onClick={() => onKickSpeaker(sp.userId)}
+                              className="p-1.5 rounded-lg bg-white/10 hover:bg-red-600/30 text-white/70 hover:text-red-200 border border-white/10 text-xs font-bold transition-all"
+                              title="Remove from Mic"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !pendingMicRequester && (
+                    <p className="text-[11px] text-white/40 italic py-1">
+                      No guest audience on mic currently. Audience can request mic during live.
+                    </p>
+                  )
+                )}
+              </div>
             </div>
           )}
 
@@ -235,6 +356,18 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   badgeColor={cameraOn ? 'bg-emerald-500' : 'bg-red-500'}
                   active={cameraOn}
                   onClick={() => onToggleCamera()}
+                />
+              )}
+
+              {isHost && onToggleMic && (
+                <ToolButton
+                  id="host_mic"
+                  label={micOn ? 'Mic ON' : 'Mic OFF'}
+                  icon={micOn ? <Mic className="w-6 h-6 text-emerald-400" /> : <MicOff className="w-6 h-6 text-red-400" />}
+                  badge={micOn ? 'ON' : 'OFF'}
+                  badgeColor={micOn ? 'bg-emerald-500' : 'bg-red-500'}
+                  active={micOn}
+                  onClick={() => onToggleMic()}
                 />
               )}
 

@@ -29,6 +29,7 @@ import {
   PiTrendUpBold as TrendUp,
 } from 'react-icons/pi';
 import { getMediaUrl } from '../../lib/media';
+import { MicRequestBanner } from './MicRequestBanner';
 import type { LiveHost, RoomMessage } from './types';
 
 export interface PKHostData {
@@ -88,6 +89,15 @@ export interface PKBattleViewProps {
   onToggleCamera?: () => void;
   onToggleMic?: () => void;
   onSwitchCamera?: () => void;
+  speakers?: import('./TopGifterSeats').LiveSpeakerItem[];
+  isSpeaker?: boolean;
+  micRequestPending?: boolean;
+  onRequestMic?: () => void;
+  onMuteSpeaker?: (userId: string, isMuted: boolean) => void;
+  onKickSpeaker?: (userId: string) => void;
+  pendingMicRequester?: import('./MicRequestBanner').MicRequester | null;
+  onAcceptMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
+  onDeclineMicRequest?: (requester: import('./MicRequestBanner').MicRequester) => void;
   onOpenTools?: () => void;
   onOpenBeauty?: () => void;
   onOpenFilters?: () => void;
@@ -129,6 +139,15 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   onToggleCamera,
   onToggleMic,
   onSwitchCamera,
+  speakers = [],
+  isSpeaker = false,
+  micRequestPending = false,
+  onRequestMic,
+  onMuteSpeaker,
+  onKickSpeaker,
+  pendingMicRequester = null,
+  onAcceptMicRequest,
+  onDeclineMicRequest,
   onOpenTools,
   onOpenBeauty,
   onOpenFilters,
@@ -596,8 +615,38 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
           </span>
         </div>
 
-        {/* Right: Host Tools button / Settings & Exit */}
+        {/* Right: Host Mic, Tools button / Settings & Exit */}
         <div className="flex items-center gap-1.5">
+          {/* Quick Host Mic On/Off button */}
+          {isHost && onToggleMic && (
+            <button
+              type="button"
+              onClick={onToggleMic}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-black transition-all shadow-sm active:scale-95 ${
+                micOn
+                  ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.3)]'
+                  : 'bg-red-500/25 border-red-400/50 text-red-300'
+              }`}
+              title={micOn ? 'Microphone On (Tap to Mute)' : 'Microphone Muted (Tap to Unmute)'}
+            >
+              {micOn ? <Mic className="w-3.5 h-3.5 text-emerald-300 animate-pulse" /> : <MicOff className="w-3.5 h-3.5 text-red-400" />}
+              <span className="hidden sm:inline">{micOn ? 'Mic On' : 'Muted'}</span>
+            </button>
+          )}
+
+          {/* Quick Co-Speakers Pill if any guest on mic */}
+          {speakers && speakers.length > 0 && (
+            <button
+              type="button"
+              onClick={onOpenTools}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-pink-500/20 border border-pink-400/40 text-[10px] font-bold text-pink-300 active:scale-95 shadow-sm"
+              title="Active Guest Speakers on Mic"
+            >
+              <Mic className="w-3 h-3 text-pink-400" />
+              <span>{speakers.length}</span>
+            </button>
+          )}
+
           {/* Quick Host Live Tools button if Host */}
           {isHost && (
             <button
@@ -632,6 +681,15 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Host Incoming Mic Request Popup Banner */}
+      {isHost && pendingMicRequester && onAcceptMicRequest && onDeclineMicRequest && (
+        <MicRequestBanner
+          requester={pendingMicRequester}
+          onAccept={onAcceptMicRequest}
+          onDecline={onDeclineMicRequest}
+        />
+      )}
 
       {/* 2. LIVE STAGE: Two Hosts' Live Videos (Takes 2 out of 4 parts = 50% of screen height) */}
       <div className="relative z-10 px-2 shrink-0 h-[48dvh] max-h-[50dvh] flex flex-col justify-center my-1">
@@ -1163,6 +1221,43 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
               title="Host Live Tools (Mic, Camera, Beauty, Settings)"
             >
               <Sliders className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Audience Request Mic / Co-host Button (like normal live) */}
+          {!isHost && onRequestMic && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isSpeaker) {
+                  onToggleMic?.();
+                } else if (!micRequestPending) {
+                  onRequestMic();
+                }
+              }}
+              className={`w-10 h-10 rounded-2xl active:scale-95 transition-all flex flex-col items-center justify-center shrink-0 border ${
+                isSpeaker
+                  ? micOn
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300 shadow-md shadow-emerald-500/30'
+                    : 'bg-red-500/25 border-red-400 text-red-300'
+                  : micRequestPending
+                  ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                  : 'bg-gradient-to-tr from-pink-600/40 to-purple-600/40 border-pink-400/40 text-pink-200 hover:text-white'
+              }`}
+              title={
+                isSpeaker
+                  ? micOn ? 'Speaking on Mic (Tap to mute)' : 'Muted (Tap to unmute)'
+                  : micRequestPending ? 'Mic Request Pending' : 'Request to Speak on Mic'
+              }
+            >
+              {isSpeaker ? (
+                micOn ? <Mic className="w-4 h-4 animate-pulse" /> : <MicOff className="w-4 h-4" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+              <span className="text-[7px] font-black uppercase tracking-tighter leading-none mt-0.5">
+                {isSpeaker ? (micOn ? 'ON' : 'OFF') : micRequestPending ? 'WAIT' : 'MIC'}
+              </span>
             </button>
           )}
 

@@ -291,14 +291,39 @@ export const LiveStreamPage = ({
     streamsApi.getStream(id).then(({ data }) => {
       if (data.success && data.data) {
         setStream(data.data);
+        const hostId = data.data.host?._id || data.data.hostId;
+        const myId = userRef.current?._id;
+        const amIHost = Boolean((myId && hostId && String(myId) === String(hostId)) || serverIsHost || isHostRef.current);
+
         if (typeof data.data.viewerCount === 'number') {
           peakViewersRef.current = Math.max(peakViewersRef.current, data.data.viewerCount);
           totalViewersRef.current = Math.max(totalViewersRef.current, data.data.viewerCount);
         }
+
+        // If the stream was ended and current viewer is not the host, display the recap directly
+        if (data.data.status === 'ended' && !amIHost) {
+          endedRef.current = true;
+          const titlePicture = data.data.cover || data.data.thumbnail;
+          const profilePicture = data.data.host?.avatar;
+          const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+          setStreamEndedRecap({
+            duration: 'Ended',
+            viewers: Math.max(data.data.totalViewers || 0, data.data.viewerCount || 0, 1),
+            likes: data.data.likeCount || 0,
+            hostName: data.data.host?.nickname || 'Streamer',
+            hostAvatar: resolvedImage,
+            image: resolvedImage,
+            isHost: false,
+          });
+          return;
+        }
+
         // Now that we know the stream (and thus isHost), fetch the token
         return streamsApi.joinStream(id);
       }
-    }).then(({ data }: any) => {
+    }).then((res: any) => {
+      if (!res) return;
+      const { data } = res;
       if (data?.success && data?.data) {
         setToken(data.data.token);
         tokenRef.current = data.data.token;
@@ -312,15 +337,39 @@ export const LiveStreamPage = ({
         }
       }
     }).catch((err) => {
-      console.error('Failed to load stream:', err);
-      showToast(err.response?.data?.error || 'Failed to load stream', 'error');
+      console.warn('Failed to load stream:', err?.response?.data?.error || err?.message);
+      const errMsg = String(err?.response?.data?.error || err?.message || '');
+      const isEnded = errMsg.toLowerCase().includes('ended') || err?.response?.status === 400;
+
+      if (isEnded) {
+        endedRef.current = true;
+        const titlePicture = stream?.cover || stream?.thumbnail;
+        const profilePicture = host?.avatar || userRef.current?.avatar;
+        const resolvedImage = titlePicture ? getMediaUrl(titlePicture) : (profilePicture ? getMediaUrl(profilePicture) : undefined);
+        setStreamEndedRecap({
+          duration: 'Ended',
+          viewers: Math.max(totalViewersRef.current, peakViewersRef.current, 1),
+          likes: likeCount,
+          hostName: host?.nickname || 'Streamer',
+          hostAvatar: resolvedImage,
+          image: resolvedImage,
+          isHost: false,
+        });
+      } else {
+        showToast(err.response?.data?.error || 'Failed to load stream', 'error');
+      }
     });
 
     return () => {
-      // Unmount → centralized cleanup (Back button / navigation / screen disposal).
-      // Only fire if a session actually started (token received) — this avoids
-      // StrictMode's dev double-mount cancelling the join before it begins.
-      if (tokenRef.current) fireEnd();
+      // Clean up timers & Agora tracks on unmount
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      // Only fire end cleanup if not host, or if host explicitly confirmed ending stream
+      if (tokenRef.current && (!isHostRef.current || endedRef.current)) {
+        fireEnd();
+      } else {
+        leaveChannel().catch(() => {});
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
