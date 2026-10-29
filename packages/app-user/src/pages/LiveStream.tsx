@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { streamsApi, giftsApi } from '../api';
 import { gamesApi } from '../api/economy.api';
+import { transferApi } from '../api/transfer.api';
 import { useSocketStore, useAuthStore, useUIStore, useLivePlayerStore } from '../stores';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GiftPanel } from '../components/stream';
@@ -664,6 +665,19 @@ export const LiveStreamPage = ({
     socket.on('stream:viewer-joined', onViewerJoined);
     socket.on('stream:viewer-left', onViewerLeft);
     socket.on('stream:viewer-count', onViewerCount);
+
+    const onReward = (payload: any) => {
+      setNotifications((prev) => [
+        ...prev,
+        {
+          id: `reward-${Date.now()}-${Math.random()}`,
+          content: `🎁 ${payload.senderName || 'Host'} rewarded ${Number(payload.amount).toLocaleString()} diamonds to ${payload.receiverName || 'Audience'}!`,
+          type: 'gift',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
+    };
+    socket.on('stream:reward-received', onReward);
     const onSocketDisconnect = (reason: string) => {
       if (reason === 'io client disconnect') return;
       handleNetworkLost();
@@ -734,6 +748,7 @@ export const LiveStreamPage = ({
       socket.off('stream:viewer-joined', onViewerJoined);
       socket.off('stream:viewer-left', onViewerLeft);
       socket.off('stream:viewer-count', onViewerCount);
+      socket.off('stream:reward-received', onReward);
       socket.off('stream:top-gifters', onTopGifters);
       socket.off('stream:speakers-update', onSpeakersUpdate);
       socket.off('stream:mic:requested', onMicRequested);
@@ -1096,12 +1111,66 @@ export const LiveStreamPage = ({
 
   const handleRewardAudienceUser = async (targetUserId: string, amount: number, note?: string) => {
     try {
-      if (userRef.current?.diamonds !== undefined) {
-        updateUser({ diamonds: Math.max(0, userRef.current.diamonds - amount) });
+      const points = Math.floor(Number(amount));
+      if (!points || points <= 0) {
+        throw new Error('Please enter a valid diamond amount');
       }
-      showToast(`Rewarded ${amount} diamonds to viewer!`, 'success');
+
+      if ((userRef.current?.diamonds || 0) < points) {
+        throw new Error('Insufficient diamond balance');
+      }
+
+      let success = false;
+      let newBalance: number | undefined;
+
+      // 1. Try real-time stream socket reward for instant live broadcast and atomic diamond credit
+      if (socket && socket.connected && id) {
+        try {
+          const res: any = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), 3500);
+            socket.emit('stream:reward', { streamId: id, receiverId: targetUserId, amount: points, note }, (ack: any) => {
+              clearTimeout(timer);
+              resolve(ack);
+            });
+          });
+          if (res && res.success) {
+            success = true;
+            newBalance = res.balance;
+          } else if (res && res.error) {
+            throw new Error(res.error);
+          }
+        } catch (sockErr: any) {
+          if (sockErr?.message) throw sockErr;
+        }
+      }
+
+      // 2. Fallback to direct HTTP transfer API endpoint
+      if (!success) {
+        const res = await transferApi.transfer(targetUserId, points, 'diamond');
+        if (res.data?.success) {
+          success = true;
+          newBalance = res.data.data.balance;
+          if (socket && socket.connected && id) {
+            socket.emit('stream:chat', {
+              streamId: id,
+              message: `🎁 Host rewarded ${points.toLocaleString()} diamonds!`,
+            });
+          }
+        } else {
+          throw new Error(res.data?.error?.message || 'Failed to reward diamonds');
+        }
+      }
+
+      if (typeof newBalance === 'number') {
+        updateUser({ diamonds: newBalance });
+      } else if (userRef.current?.diamonds !== undefined) {
+        updateUser({ diamonds: Math.max(0, userRef.current.diamonds - points) });
+      }
+
+      showToast(`Rewarded ${points.toLocaleString()} diamonds to viewer!`, 'success');
     } catch (err: any) {
       showToast(err?.message || 'Failed to reward user', 'error');
+      throw err;
     }
   };
 

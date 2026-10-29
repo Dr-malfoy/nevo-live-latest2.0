@@ -531,6 +531,55 @@ export const registerStreamHandlers = (socket: Socket): void => {
     }
   });
 
+  socket.on('stream:reward', async ({ streamId, receiverId, amount, note }: any, ack: any) => {
+    try {
+      const senderId = socket.data.user?.userId;
+      if (!senderId) return ack?.({ success: false, error: 'Unauthorized' });
+
+      const points = Math.floor(Number(amount));
+      if (!points || points <= 0) return ack?.({ success: false, error: 'Invalid diamond amount' });
+
+      const { incomeService } = await import('../services/income.service');
+      const result = await incomeService.transferPoints(senderId, String(receiverId).trim(), points, 'diamond');
+
+      const sender = await User.findById(senderId).select('nickname avatar uid').lean();
+      const receiver = await User.findById(receiverId).select('nickname avatar uid').lean();
+
+      // Broadcast reward event to everyone in the live room
+      getIO().to(`stream:${streamId}`).emit('stream:reward-received', {
+        streamId,
+        senderId,
+        senderName: sender?.nickname || 'Host',
+        receiverId,
+        receiverName: receiver?.nickname || 'Audience',
+        amount: points,
+        note: note || '',
+        createdAt: new Date().toISOString(),
+      });
+
+      // Also trigger celebratory gift burst/animation in room
+      getIO().to(`stream:${streamId}`).emit('stream:gift-received', {
+        streamId,
+        user: {
+          id: senderId,
+          nickname: sender?.nickname || 'Host',
+          avatar: sender?.avatar,
+        },
+        gift: {
+          name: `${points} Diamonds Reward`,
+          icon: '💎',
+          priceDiamonds: points,
+        },
+        count: 1,
+        receiverName: receiver?.nickname || 'Audience',
+      });
+
+      ack?.({ success: true, balance: result.balance, finalAmount: result.finalAmount });
+    } catch (err: any) {
+      ack?.({ success: false, error: err?.message || 'Failed to reward diamonds' });
+    }
+  });
+
   socket.on('stream:like', async ({ streamId, nickname: clientNickname, avatar: clientAvatar }: any) => {
     if (!streamId) return;
 

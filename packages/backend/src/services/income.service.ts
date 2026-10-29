@@ -295,10 +295,13 @@ export const incomeService = {
     }
 
     // Receiver check
-    const cleanUid = receiverUid.trim();
-    let receiver: any = await User.findOne({ uid: cleanUid });
-    if (!receiver && mongoose.isValidObjectId(cleanUid)) {
+    const cleanUid = String(receiverUid || '').trim();
+    let receiver: any = null;
+    if (mongoose.isValidObjectId(cleanUid)) {
       receiver = await User.findById(cleanUid);
+    }
+    if (!receiver) {
+      receiver = await User.findOne({ uid: cleanUid });
     }
     if (!receiver) {
       receiver = await User.findOne({ phone: cleanUid });

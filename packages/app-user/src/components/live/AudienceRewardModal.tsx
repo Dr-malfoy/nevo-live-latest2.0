@@ -48,7 +48,6 @@ export const AudienceRewardModal: React.FC<AudienceRewardModalProps> = ({
     try {
       setSending(true);
       await onRewardUser(selectedUser.userId, rewardAmount, customMsg);
-      showToast(`Rewarded ${rewardAmount} diamonds to ${selectedUser.nickname}!`, 'success');
       onClose();
     } catch (err: any) {
       showToast(err?.message || 'Failed to send reward', 'error');
