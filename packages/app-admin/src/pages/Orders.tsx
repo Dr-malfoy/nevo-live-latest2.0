@@ -29,6 +29,8 @@ interface OrderItem {
   isOfficial?: boolean;
   paymentMethod: string;
   amountBdt: number;
+  amountUsd?: number;
+  currencyMode?: 'USD' | 'BDT';
   diamonds: number;
   coins: number;
   screenshot: string;
@@ -332,7 +334,14 @@ export const Orders = () => {
       label: 'Amount & Diamonds',
       render: (r: OrderItem) => (
         <div className="text-xs space-y-0.5">
-          <div className="font-bold text-emerald-400 text-sm">৳{r.amountBdt?.toLocaleString()} BDT</div>
+          {r.currencyMode === 'USD' || (r.amountUsd && r.amountUsd > 0) ? (
+            <div>
+              <div className="font-bold text-emerald-400 text-sm">${r.amountUsd?.toLocaleString()} USD</div>
+              <div className="text-[10px] text-dark-400">≈ ৳{r.amountBdt?.toLocaleString()} BDT</div>
+            </div>
+          ) : (
+            <div className="font-bold text-emerald-400 text-sm">৳{r.amountBdt?.toLocaleString()} BDT</div>
+          )}
           <div className="text-cyan-400 font-semibold inline-flex items-center gap-1">
             <DiamondIcon className="w-3.5 h-3.5" />
             <span>{r.diamonds?.toLocaleString()}</span>

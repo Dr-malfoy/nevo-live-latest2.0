@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
         ],
       },
     },
+    build: {
+      emptyOutDir: false,
+    },
     server: {
       port: 3000,
       proxy: {

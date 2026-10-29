@@ -1,7 +1,7 @@
 import client from './client';
 import type { ApiResponse } from '../types';
 
-/** Requirement #15 — the five income sources on the diamond dashboard. */
+/** Requirement #15 — the five income sources on the diamond / coin dashboard. */
 export type IncomeSourceKey =
   | 'livestream'
   | 'party'
@@ -9,7 +9,15 @@ export type IncomeSourceKey =
   | 'transfer'
   | 'platform_rewards';
 
-export type IncomeRange = '24h' | '7d' | '30d';
+export type IncomeRange = '24h' | '7d' | '30d' | '1y' | 'all';
+
+export const SOURCE_LABELS: Record<IncomeSourceKey, string> = {
+  livestream: 'Live Stream Earning',
+  party: 'Party Earning',
+  commission: 'Commission',
+  transfer: 'Transfer Point',
+  platform_rewards: 'Platform Rewards',
+};
 
 export interface IncomeSource {
   key: IncomeSourceKey;
@@ -27,30 +35,37 @@ export interface IncomeSummary {
 
 export interface IncomeEntry {
   _id: string;
+  txId?: string;
   from?: { _id: string; nickname: string; avatar?: string; uid?: string };
   points: number;
+  currency?: string;
+  type?: string;
+  sourceType?: string;
   giftName?: string;
+  giftIcon?: string;
+  description?: string;
+  status?: string;
   createdAt: string;
 }
 
 export const incomeApi = {
-  /* ── Not built yet — specified in API-SPEC.md (#15) ──────────────── */
-
   getSummary: (range: IncomeRange = '30d') =>
     client.get<ApiResponse<IncomeSummary>>('/income/summary', { params: { range } }),
 
-  getSource: (key: IncomeSourceKey, params?: { range?: IncomeRange; page?: number }) =>
-    client.get<ApiResponse<IncomeEntry[]>>(`/income/source/${key}`, { params }),
+  getSource: (
+    key: IncomeSourceKey,
+    params?: { range?: IncomeRange | string; page?: number; limit?: number }
+  ) =>
+    client.get<ApiResponse<IncomeEntry[]> & { totalPoints?: number; range?: string }>(
+      `/income/source/${key}`,
+      { params }
+    ),
 
   exchangePointsForCoins: (points: number) =>
     client.post<ApiResponse<{ coins: number; diamonds: number }>>('/income/exchange', { points }),
 
-  /* ── Exists ──────────────────────────────────────────────────────── */
-
   /**
-   * Raw ledger. Used as the fallback so the dashboard still shows real
-   * numbers before `/income/summary` ships: the client groups these rows by
-   * `type` into the five sources.
+   * Raw ledger fallback.
    */
   getTransactions: (params?: { type?: string; page?: number; limit?: number }) =>
     client.get<ApiResponse<any[]>>('/transactions', { params }),

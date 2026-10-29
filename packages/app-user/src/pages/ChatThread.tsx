@@ -45,7 +45,7 @@ import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
-import { CoinIcon } from '../components/ui/CurrencyIcon';
+import { CoinIcon, DiamondIcon } from '../components/ui/CurrencyIcon';
 import { CallScreen } from '../components/call/CallScreen';
 import { InsufficientCoinsModal } from '../components/call/InsufficientCoinsModal';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
@@ -1895,10 +1895,10 @@ export const ChatThread = () => {
             </div>
             {!isGroup && (
               <div
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-[10px] font-extrabold text-amber-600 leading-none select-none -mt-0.5"
-                title={`Call rate: ${(other?.callPricePerMinute ?? 1000).toLocaleString()} coins / minute`}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-[10px] font-extrabold text-cyan-600 leading-none select-none -mt-0.5"
+                title={`Call rate: ${(other?.callPricePerMinute ?? 1000).toLocaleString()} diamonds / minute`}
               >
-                <CoinIcon className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                <DiamondIcon className="w-2.5 h-2.5 text-cyan-500 shrink-0" />
                 <span>{(other?.callPricePerMinute ?? 1000).toLocaleString()}/m</span>
               </div>
             )}
@@ -2002,12 +2002,23 @@ export const ChatThread = () => {
                     nickname={senderObj?.nickname || other?.nickname || '?'}
                     size="xs"
                     className="mt-auto mb-1 ring-1 ring-black/5"
+                    userId={senderObj?._id || other?._id}
                   />
                 )}
 
                 <div className="max-w-[76%] flex flex-col group">
                   {isGroup && !mine && (
-                    <span className="text-[10px] font-bold text-rose-500 mb-0.5 ml-1">
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        const targetId = senderObj?._id || other?._id;
+                        if (targetId) {
+                          navigate(targetId === user?._id ? '/profile' : `/user/${targetId}`);
+                        }
+                      }}
+                      className="text-[10px] font-bold text-rose-500 mb-0.5 ml-1 cursor-pointer hover:underline"
+                    >
                       {senderObj?.nickname || 'Member'}
                     </span>
                   )}
@@ -2646,15 +2657,15 @@ export const ChatThread = () => {
               setCallPriceInput((user as any)?.callPricePerMinute ?? 1000);
               setShowSetCallPriceModal(true);
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 active:bg-amber-100 text-sm font-semibold text-amber-700 transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-cyan-50 active:bg-cyan-100 text-sm font-semibold text-cyan-700 transition-colors"
           >
             <div className="w-5 h-5 flex items-center justify-center shrink-0">
-              <CoinIcon className="w-4.5 h-4.5 text-amber-500" />
+              <DiamondIcon className="w-4.5 h-4.5 text-cyan-500" />
             </div>
             <div className="flex-1 flex items-center justify-between min-w-0">
               <span className="truncate">Set My Call Rate</span>
-              <span className="text-[11px] font-extrabold text-amber-600 bg-amber-500/15 border border-amber-500/25 px-2 py-0.5 rounded-full shrink-0">
-                {((user as any)?.callPricePerMinute ?? 1000).toLocaleString()} coins/m
+              <span className="text-[11px] font-extrabold text-cyan-600 bg-cyan-500/15 border border-cyan-500/25 px-2 py-0.5 rounded-full shrink-0">
+                {((user as any)?.callPricePerMinute ?? 1000).toLocaleString()} 💎/m
               </span>
             </div>
           </button>
@@ -2878,11 +2889,11 @@ export const ChatThread = () => {
                     onClick={() => setCallPriceInput(preset)}
                     className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                       selected
-                        ? 'border-amber-500 bg-amber-500/15 text-amber-700 shadow-sm'
+                        ? 'border-cyan-500 bg-cyan-500/15 text-cyan-700 shadow-sm'
                         : 'border-slate-200 hover:border-slate-300 text-ink bg-slate-50'
                     }`}
                   >
-                    <CoinIcon className="w-3 h-3 text-amber-500" />
+                    <DiamondIcon className="w-3 h-3 text-cyan-500" />
                     <span>{preset.toLocaleString()}</span>
                   </button>
                 );
@@ -2892,7 +2903,7 @@ export const ChatThread = () => {
 
           <div>
             <label className="block text-[11px] font-bold text-ink uppercase tracking-wider mb-1.5">
-              Or Custom Rate (Coins / Minute)
+              Or Custom Rate (Diamonds / Minute)
             </label>
             <div className="relative">
               <input
@@ -2901,10 +2912,10 @@ export const ChatThread = () => {
                 step={100}
                 value={callPriceInput}
                 onChange={(e) => setCallPriceInput(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                className="w-full pl-9 pr-14 py-2.5 text-sm font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-amber-500 text-ink"
+                className="w-full pl-9 pr-14 py-2.5 text-sm font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-cyan-500 text-ink"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <CoinIcon className="w-4 h-4 text-amber-500" />
+                <DiamondIcon className="w-4 h-4 text-cyan-500" />
               </div>
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-ink-muted pointer-events-none">
                 / min
@@ -2914,10 +2925,10 @@ export const ChatThread = () => {
 
           {/* Earnings calculator preview */}
           <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-xs flex items-center justify-between">
-            <span className="text-ink font-medium">Estimated 10m Call Earning:</span>
+            <span className="text-ink font-medium">Host Earning (10m Call, 70% Coins):</span>
             <span className="font-extrabold text-amber-600 flex items-center gap-1">
               <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
-              {(callPriceInput * 10).toLocaleString()} Coins
+              {Math.floor(callPriceInput * 10 * 0.7).toLocaleString()} Coins
             </span>
           </div>
 
@@ -2938,7 +2949,7 @@ export const ChatThread = () => {
                   const res = await securityApi.setCallPrice(callPriceInput);
                   if (res.data?.success) {
                     updateUser({ callPricePerMinute: callPriceInput } as any);
-                    showToast(`Call price updated to ${callPriceInput.toLocaleString()} coins/min`, 'success');
+                    showToast(`Call price updated to ${callPriceInput.toLocaleString()} diamonds/min`, 'success');
                     setShowSetCallPriceModal(false);
                   } else {
                     showToast(res.data?.error || 'Could not update call price', 'error');
@@ -3020,7 +3031,18 @@ export const ChatThread = () => {
               const isCreator = p._id === chatData?.creator || p._id === chatData?.creator?._id;
               const isMe = p._id === user?._id;
               return (
-                <div key={p._id} className="flex items-center gap-3 py-2">
+                <div
+                  key={p._id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (p._id) {
+                      setShowGroupInfo(false);
+                      navigate(p._id === user?._id ? '/profile' : `/user/${p._id}`);
+                    }
+                  }}
+                  className="flex items-center gap-3 py-2 px-1 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
+                >
                   <Avatar src={p.avatar} nickname={p.nickname || '?'} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">

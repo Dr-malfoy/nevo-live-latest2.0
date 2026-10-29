@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from './stores/adminAuth';
 import { Sidebar } from './components/Sidebar';
 import { adminApi } from './api';
-import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, Orders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords, HostApplications } from './pages';
+import { AdminLogin, Dashboard, Users, Hosts, Streams, Transactions, Gifts, Badges, Agents, PurchaseOrders, Orders, PaymentConfig, AdminPaymentInfo, AgentOrders, WithdrawalRequests, AuditLogs, Reports, ModerationReports, ContactMessages, AdminWallet, RewardConfig, OfficialNotifications, Verification, AssetPasswords, HostApplications, DiamondSellerApplications } from './pages';
 
 const AdminLayout = () => {
   const { logout } = useAdminAuth();
@@ -11,6 +11,7 @@ const AdminLayout = () => {
   const [pendingVerifications, setPendingVerifications] = useState(0);
   const [pendingTickets, setPendingTickets] = useState(0);
   const [pendingHostApplications, setPendingHostApplications] = useState(0);
+  const [pendingDiamondSellers, setPendingDiamondSellers] = useState(0);
   const [pendingOrders, setPendingOrders] = useState(0);
 
   useEffect(() => {
@@ -30,6 +31,9 @@ const AdminLayout = () => {
       adminApi.getHostApplications({ status: 'pending', limit: 1 }).then(({ data }) => {
         if (data.success) setPendingHostApplications(data.pagination?.total || 0);
       }).catch(() => {});
+      adminApi.getDiamondSellerApplications({ status: 'pending', limit: 1 }).then(({ data }) => {
+        if (data.success) setPendingDiamondSellers(data.pagination?.total || 0);
+      }).catch(() => {});
     };
     load();
     const interval = setInterval(load, 20000);
@@ -44,6 +48,7 @@ const AdminLayout = () => {
         pendingVerifications={pendingVerifications}
         pendingTickets={pendingTickets}
         pendingHostApplications={pendingHostApplications}
+        pendingDiamondSellers={pendingDiamondSellers}
         pendingOrders={pendingOrders}
       />
       <main className="flex-1 p-6 overflow-y-auto">
@@ -69,6 +74,7 @@ export default function App() {
           <Route path="users" element={<Users />} />
           <Route path="hosts" element={<Hosts />} />
           <Route path="host-applications" element={<HostApplications />} />
+          <Route path="diamond-seller-applications" element={<DiamondSellerApplications />} />
           <Route path="streams" element={<Streams />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="gifts" element={<Gifts />} />

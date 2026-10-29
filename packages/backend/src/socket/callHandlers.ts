@@ -113,4 +113,14 @@ export const registerCallHandlers = (socket: Socket): void => {
       console.warn('call:message error:', err);
     }
   });
+
+  /** Relay camera facing mode so callee/caller can mirror front camera output */
+  socket.on('call:camera:facingMode', ({ callId, facingMode }) => {
+    if (!callId || !facingMode) return;
+    socket.to(`call:${callId}`).emit('call:camera:facingMode', {
+      callId,
+      senderId: socket.data.user?.userId,
+      facingMode,
+    });
+  });
 };

@@ -57,7 +57,7 @@ export function calculateTransferBreakdown(amount: number): TransferBreakdown {
 
 /** Returns an error string, or null when the amount is valid. */
 export function validateTransferUnits(amount: number): string | null {
-  if (!amount || amount <= 0) return 'Enter a coin amount';
+  if (!amount || amount <= 0) return 'Enter a diamond amount';
   return null;
 }
 
@@ -72,14 +72,15 @@ export const transferApi = {
   getQuote: (receiverUid: string) =>
     client.get<ApiResponse<TransferQuote>>('/transfer/quote', { params: { receiverUid } }),
 
-  transfer: (receiverUid: string, points: number) =>
+  transfer: (receiverUid: string, points: number, currency: 'diamond' | 'coin' = 'diamond') =>
     client.post<ApiResponse<{
       points: number;
       units: number;
       charge: number;
       finalAmount: number;
       balance: number;
-    }>>('/transfer', { receiverUid, points }),
+      currency?: string;
+    }>>('/transfer', { receiverUid, points, currency }),
 
   getHistory: (page = 1) =>
     client.get<ApiResponse<TransferRecord[]>>('/transfer/history', { params: { page } }),

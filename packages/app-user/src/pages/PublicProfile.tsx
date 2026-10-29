@@ -36,6 +36,7 @@ import {
   LevelDetailSheet,
   VerifiedBadge,
   NobleBadge,
+  SellerBadge,
 } from '../components/user';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 import { ReportModal } from '../components/report/ReportModal';
@@ -414,15 +415,15 @@ export const PublicProfile = () => {
           {!isSelf && (
             <div className="flex items-center gap-1.5 pt-12 flex-wrap justify-end">
               {/* Call Rate Badge */}
-              <div className="h-9 px-3 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 font-extrabold text-xs inline-flex items-center gap-1.5 shadow-2xs">
-                <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>{(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins / min</span>
+              <div className="h-9 px-3 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 font-extrabold text-xs inline-flex items-center gap-1.5 shadow-2xs">
+                <DiamondIcon className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                <span>{(profile.callPricePerMinute ?? 1000).toLocaleString()} Diamonds / min</span>
               </div>
 
               <button
                 onClick={() => startProfileCall('audio')}
                 className="h-9 px-3 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-emerald-100 transition-all shadow-2xs border border-emerald-200/60 active:scale-95"
-                title={`Audio Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins/min)`}
+                title={`Audio Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Diamonds/min)`}
               >
                 <Phone className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Call</span>
@@ -431,7 +432,7 @@ export const PublicProfile = () => {
               <button
                 onClick={() => startProfileCall('video')}
                 className="h-9 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold inline-flex items-center gap-1.5 active:bg-indigo-100 transition-all shadow-2xs border border-indigo-200/60 active:scale-95"
-                title={`Video Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Coins/min)`}
+                title={`Video Call (${(profile.callPricePerMinute ?? 1000).toLocaleString()} Diamonds/min)`}
               >
                 <VideoCamera className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Video</span>
@@ -459,12 +460,12 @@ export const PublicProfile = () => {
             <div className="flex items-center gap-1.5 pt-12 flex-wrap justify-end">
               <button
                 onClick={() => navigate('/call-price')}
-                className="h-9 px-3.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-700 text-xs font-black inline-flex items-center gap-1.5 active:scale-95 transition-all shadow-2xs"
+                className="h-9 px-3.5 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-700 text-xs font-black inline-flex items-center gap-1.5 active:scale-95 transition-all shadow-2xs"
                 title="Configure your 1:1 call per-minute rate"
               >
-                <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span>Rate: {((user as any)?.callPricePerMinute ?? profile.callPricePerMinute ?? 1000).toLocaleString()} Coins / min</span>
-                <span className="text-[10px] text-amber-600 underline font-bold ml-0.5">Edit</span>
+                <DiamondIcon className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                <span>Rate: {((user as any)?.callPricePerMinute ?? profile.callPricePerMinute ?? 1000).toLocaleString()} Diamonds / min</span>
+                <span className="text-[10px] text-cyan-600 underline font-bold ml-0.5">Edit</span>
               </button>
             </div>
           )}
@@ -484,6 +485,10 @@ export const PublicProfile = () => {
 
             {profile.hostBadge && profile.hostBadge !== 'none' && (
               <HostBadge badge={profile.hostBadge} size="sm" />
+            )}
+
+            {((profile as any).sellerType === 'diamond_seller' || (profile as any).isDiamondSeller || (profile as any).diamondSellerBadge) && (
+              <SellerBadge sellerType="diamond_seller" showLabel={true} />
             )}
 
             {profile.equippedBadge && (
@@ -538,10 +543,10 @@ export const PublicProfile = () => {
               className={`h-6 px-2.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 text-[11px] font-bold flex items-center gap-1 shadow-2xs ${
                 isSelf ? 'cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-transform' : ''
               }`}
-              title="1:1 Call Rate (Coins per minute)"
+              title="1:1 Call Rate (Diamonds per minute)"
             >
-              <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
-              <span>{((isSelf ? (user as any)?.callPricePerMinute : profile.callPricePerMinute) ?? 1000).toLocaleString()} Coins/min</span>
+              <DiamondIcon className="w-3.5 h-3.5 text-cyan-500" />
+              <span>{((isSelf ? (user as any)?.callPricePerMinute : profile.callPricePerMinute) ?? 1000).toLocaleString()} Diamonds/min</span>
             </div>
 
             {/* Mutual Follow / Friend Tag */}

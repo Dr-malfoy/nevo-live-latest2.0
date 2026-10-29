@@ -91,4 +91,13 @@ export interface LiveRoomProps {
   showStickers?: boolean;
   onToggleFilters?: () => void;
   onToggleStickers?: () => void;
+  /** PK battle & interactive tools props */
+  pkBattle?: any;
+  pendingPkInvite?: any;
+  onAcceptPkInvite?: (battleId: string) => void;
+  onDeclinePkInvite?: (battleId: string) => void;
+  onEndPkBattle?: (battleId: string) => void;
+  onQuitPkBattle?: (battleId: string) => void;
+  onSendPkGift?: (targetHostId: string, side: 'left' | 'right') => void;
+  onRewardAudienceUser?: (userId: string, amount: number, note?: string) => Promise<void>;
 }

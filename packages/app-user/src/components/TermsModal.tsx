@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PiCheckBold, PiFileTextFill, PiXBold } from 'react-icons/pi';
 import { legalDocs } from '../content/legal';
+import { CountrySelect } from './ui/CountrySelect';
 
 interface TermsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAccept: () => void;
+  onAccept: (country: string) => void;
   title?: string;
   subtitle?: string;
   actionText?: string;
+  requireCountry?: boolean;
+  defaultCountry?: string;
 }
 
 export const TermsModal: React.FC<TermsModalProps> = ({
@@ -16,16 +19,27 @@ export const TermsModal: React.FC<TermsModalProps> = ({
   onClose,
   onAccept,
   title = 'Terms & Conditions',
-  subtitle = 'Please review and accept our Terms & Conditions before creating your account.',
+  subtitle = 'Please review terms and choose your permanent country to create your account.',
   actionText = 'Accept & Continue',
+  requireCountry = false,
+  defaultCountry = '',
 }) => {
   const [agreed, setAgreed] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState(defaultCountry || '');
+
+  useEffect(() => {
+    if (defaultCountry) {
+      setSelectedCountry(defaultCountry);
+    }
+  }, [defaultCountry]);
 
   if (!isOpen) return null;
 
+  const isReady = agreed && (!requireCountry || (Boolean(selectedCountry) && selectedCountry.trim().length === 2));
+
   const handleAccept = () => {
-    if (!agreed) return;
-    onAccept();
+    if (!isReady) return;
+    onAccept(selectedCountry);
   };
 
   return (
@@ -55,6 +69,30 @@ export const TermsModal: React.FC<TermsModalProps> = ({
 
         {/* Scrollable Terms Body */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs text-ink-muted leading-relaxed">
+          {/* Mandatory Country Selector (for new accounts/social signups) */}
+          {requireCountry && (
+            <div className="bg-[#4C3BFF]/5 border border-[#4C3BFF]/20 rounded-2xl p-4 space-y-2 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <span>🌍</span> Select Account Country <span className="text-red-500">*</span>
+                </label>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  Permanent (Cannot change)
+                </span>
+              </div>
+              
+              <CountrySelect
+                value={selectedCountry}
+                onChange={setSelectedCountry}
+                placeholder="-- Select Your Country (Required) --"
+              />
+              
+              <p className="text-[11px] text-amber-800 leading-snug">
+                ⚠️ <strong>Note:</strong> This country will permanently belong to this account and cannot be modified later.
+              </p>
+            </div>
+          )}
+
           <div className="p-3 bg-brand/5 border border-brand/20 rounded-2xl text-brand text-[11px] font-medium">
             By creating an account, you confirm that you are at least 13 years of age and agree to comply with our platform policies and community standards.
           </div>
@@ -101,14 +139,18 @@ export const TermsModal: React.FC<TermsModalProps> = ({
             <button
               type="button"
               onClick={handleAccept}
-              disabled={!agreed}
+              disabled={!isReady}
               className={`flex-1 py-3 px-4 rounded-xl font-bold text-xs text-white transition-all shadow-md ${
-                agreed
+                isReady
                   ? 'bg-[#4C3BFF] hover:bg-[#3D2DE0] shadow-[#4C3BFF]/30 cursor-pointer active:scale-98'
                   : 'bg-gray-300 opacity-60 cursor-not-allowed shadow-none'
               }`}
             >
-              {actionText}
+              {!agreed
+                ? 'Agree to Terms'
+                : requireCountry && (!selectedCountry || selectedCountry.length !== 2)
+                ? 'Select Country to Continue'
+                : actionText}
             </button>
           </div>
         </div>

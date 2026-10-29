@@ -12,8 +12,8 @@ interface AuthState {
   error: string | null;
   login: (phone: string, password: string) => Promise<void>;
   loginWithOTP: (phone: string, code?: string, idToken?: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithFacebook: (idToken?: string, accessToken?: string) => Promise<void>;
+  loginWithGoogle: (idToken: string, country?: string) => Promise<void>;
+  loginWithFacebook: (idToken?: string, accessToken?: string, country?: string) => Promise<void>;
   register: (
     payloadOrPhone:
       | {
@@ -21,6 +21,7 @@ interface AuthState {
           username?: string;
           phone?: string;
           email?: string;
+          country?: string;
           nickname?: string;
           password?: string;
           confirmPassword?: string;
@@ -32,6 +33,7 @@ interface AuthState {
           verificationToken?: string;
           idToken?: string;
           code?: string;
+          deviceId?: string;
         }
       | string,
     nickname?: string,
@@ -98,10 +100,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      loginWithGoogle: async (idToken) => {
+      loginWithGoogle: async (idToken, country) => {
         set({ isLoading: true, error: null });
         try {
-          const { data } = await authApi.googleLogin(idToken);
+          const { data } = await authApi.googleLogin(idToken, country);
           if (data.success && data.data) {
             set({
               user: data.data.user,
@@ -120,10 +122,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      loginWithFacebook: async (idToken, accessToken) => {
+      loginWithFacebook: async (idToken, accessToken, country) => {
         set({ isLoading: true, error: null });
         try {
-          const { data } = await authApi.facebookLogin(idToken, accessToken);
+          const { data } = await authApi.facebookLogin(idToken, accessToken, country);
           if (data.success && data.data) {
             set({
               user: data.data.user,

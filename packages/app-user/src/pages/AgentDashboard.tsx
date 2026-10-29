@@ -173,8 +173,8 @@ export const AgentDashboard = () => {
   const [leaveReason, setLeaveReason] = useState('');
   const [submittingLeave, setSubmittingLeave] = useState(false);
 
-  // Wallet Actions (Send Coins, Send Diamonds, Convert)
-  const [walletModal, setWalletModal] = useState<'send_coins' | 'send_diamonds' | 'convert' | null>(null);
+  // Wallet Actions (Send Diamonds, Convert)
+  const [walletModal, setWalletModal] = useState<'send_diamonds' | 'convert' | null>(null);
   const [targetIdInput, setTargetIdInput] = useState('');
   const [transferAmountInput, setTransferAmountInput] = useState('');
   const [transferNote, setTransferNote] = useState('');
@@ -362,13 +362,13 @@ export const AgentDashboard = () => {
     }
   };
 
-  // Transfer coins directly to Agent
+  // Transfer diamonds directly to Agent
   const handleOpenSendToAgent = () => {
     const agentObj = typeof myAgency?.agent === 'object' ? myAgency?.agent : null;
     setTargetIdInput(agentObj?.uid || agentObj?._id || '');
     setTransferAmountInput('');
-    setTransferNote('Member coin transfer');
-    setWalletModal('send_coins');
+    setTransferNote('Member diamond transfer');
+    setWalletModal('send_diamonds');
   };
 
   // Copy Agency Code
@@ -417,12 +417,12 @@ export const AgentDashboard = () => {
     }
   };
 
-  // Quick Send Coins or Diamonds to member
-  const handleQuickSend = (uid: string, type: 'send_coins' | 'send_diamonds' = 'send_coins') => {
+  // Quick Send Diamonds to member
+  const handleQuickSend = (uid: string) => {
     setTargetIdInput(uid);
     setTransferAmountInput('');
     setTransferNote('');
-    setWalletModal(type);
+    setWalletModal('send_diamonds');
   };
 
   // Submit Quit / Leave Agency Request
@@ -544,43 +544,6 @@ export const AgentDashboard = () => {
     }
   };
 
-  // Handle Send Coins
-  const handleSendCoins = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = parseInt(transferAmountInput.replace(/\D/g, ''), 10);
-    if (!targetIdInput.trim()) {
-      showToast('Enter recipient UID or Phone', 'error');
-      return;
-    }
-    if (!amount || amount <= 0) {
-      showToast('Enter a valid coin amount', 'error');
-      return;
-    }
-    if ((user?.coins || 0) < amount) {
-      showToast('Insufficient coin balance', 'error');
-      return;
-    }
-
-    setSubmittingTx(true);
-    try {
-      const res = await agencyApi.agentSendCoins(targetIdInput.trim(), amount, transferNote.trim() || undefined);
-      if (res.data?.success) {
-        showToast(`Sent ${amount.toLocaleString()} coins to ${res.data.data?.recipient?.nickname || targetIdInput}!`, 'success');
-        updateUser({ coins: res.data.data?.balance });
-        setWalletModal(null);
-        setTargetIdInput('');
-        setTransferAmountInput('');
-        setTransferNote('');
-      } else {
-        showToast(res.data?.error || 'Transfer failed', 'error');
-      }
-    } catch (err: any) {
-      showToast(err.response?.data?.error || 'Transfer failed', 'error');
-    } finally {
-      setSubmittingTx(false);
-    }
-  };
-
   // Handle Send Diamonds
   const handleSendDiamonds = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -618,25 +581,25 @@ export const AgentDashboard = () => {
     }
   };
 
-  // Handle Convert Currency
+  // Handle Convert Currency (Coin to Diamond only)
   const handleConvertCurrency = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseInt(transferAmountInput.replace(/\D/g, ''), 10);
     if (!amount || amount <= 0) {
-      showToast('Enter an amount to convert', 'error');
+      showToast('Enter an amount of coins to convert', 'error');
       return;
     }
-    const currentBalance = convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0);
+    const currentBalance = user?.coins || 0;
     if (amount > currentBalance) {
-      showToast(`Insufficient ${convertFrom} balance. Available: ${currentBalance.toLocaleString()}`, 'error');
+      showToast(`Insufficient coin balance. Available: ${currentBalance.toLocaleString()} Coins`, 'error');
       return;
     }
 
     setSubmittingTx(true);
     try {
-      const res = await agencyApi.agentConvertCurrency(convertFrom, amount);
+      const res = await agencyApi.agentConvertCurrency('coin', amount);
       if (res.data?.success) {
-        showToast(`Converted ${amount.toLocaleString()} ${convertFrom}s successfully!`, 'success');
+        showToast(`Converted ${amount.toLocaleString()} Coins to ${amount.toLocaleString()} Diamonds successfully!`, 'success');
         updateUser({ coins: res.data.data?.coins, diamonds: res.data.data?.diamonds });
         setWalletModal(null);
         setTransferAmountInput('');
@@ -860,7 +823,7 @@ export const AgentDashboard = () => {
           /* ══════════════════════════════════════════════════════════════════════
              ── MEMBER VIEW (For Streamers / Members joined to an Agency) ──
              Shows agency information, agency statistics, and agent's profile info
-             with communication channels (chat, audio call, video call, send coins).
+             with communication channels (chat, audio call, video call, send diamonds).
              ══════════════════════════════════════════════════════════════════════ */
           <div className="space-y-3">
             {/* Agency Overview Summary */}
@@ -967,10 +930,10 @@ export const AgentDashboard = () => {
 
                   <button
                     onClick={handleOpenSendToAgent}
-                    className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-100 text-amber-800 transition-colors"
+                    className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-100 text-cyan-800 transition-colors"
                   >
-                    <Coins className="w-5 h-5 mb-1" />
-                    <span className="text-[11px] font-bold">Send Coins</span>
+                    <DiamondIcon className="w-5 h-5 mb-1 text-cyan-600" />
+                    <span className="text-[11px] font-bold">Send Diamonds</span>
                   </button>
                 </div>
               </SectionCard>
@@ -1341,10 +1304,14 @@ export const AgentDashboard = () => {
                         {(user?.coins || 0).toLocaleString()}
                       </p>
                       <button
-                        onClick={() => setWalletModal('send_coins')}
+                        onClick={() => {
+                          setConvertFrom('coin');
+                          setTransferAmountInput('');
+                          setWalletModal('convert');
+                        }}
                         className="mt-2 w-full py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-[11px] shadow-2xs transition-all"
                       >
-                        Send Coins
+                        Convert to Diamonds
                       </button>
                     </div>
 
@@ -1521,14 +1488,6 @@ export const AgentDashboard = () => {
                       )}
                       <Lock className="w-6 h-6 text-purple-600 mb-1.5" />
                       <span className="text-xs font-bold text-slate-900">Requests</span>
-                    </button>
-
-                    <button
-                      onClick={() => setWalletModal('send_coins')}
-                      className="flex flex-col items-center p-3 rounded-2xl bg-amber-50 hover:bg-amber-100/70 border border-amber-100 transition-all text-center"
-                    >
-                      <Coins className="w-6 h-6 text-amber-600 mb-1.5" />
-                      <span className="text-xs font-bold text-slate-900">Send Coins</span>
                     </button>
 
                     <button
@@ -1845,14 +1804,14 @@ export const AgentDashboard = () => {
                               <span className="text-[9px] font-extrabold">Video</span>
                             </button>
 
-                            {/* 4. Send Coins */}
+                            {/* 4. Send Diamonds */}
                             <button
-                              onClick={() => handleQuickSend(member.uid, 'send_coins')}
-                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 transition-all border border-amber-100"
-                              title="Send Coins to Member"
+                              onClick={() => handleQuickSend(member.uid)}
+                              className="flex flex-col items-center justify-center py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 active:scale-95 text-cyan-800 transition-all border border-cyan-100"
+                              title="Send Diamonds to Member"
                             >
-                              <Coins className="w-4 h-4 mb-0.5 text-amber-600" />
-                              <span className="text-[9px] font-extrabold">+Coins</span>
+                              <DiamondIcon className="w-4 h-4 mb-0.5 text-cyan-600" />
+                              <span className="text-[9px] font-extrabold">+Diamonds</span>
                             </button>
 
                             {/* 5. Remove Member */}
@@ -2023,10 +1982,14 @@ export const AgentDashboard = () => {
                       {(user?.coins || 0).toLocaleString()}
                     </p>
                     <button
-                      onClick={() => setWalletModal('send_coins')}
+                      onClick={() => {
+                        setConvertFrom('coin');
+                        setTransferAmountInput('');
+                        setWalletModal('convert');
+                      }}
                       className="mt-3 w-full py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs shadow-xs"
                     >
-                      Send Coins
+                      Convert to Diamonds
                     </button>
                   </div>
 
@@ -2050,11 +2013,15 @@ export const AgentDashboard = () => {
                 {/* Conversion Shortcut Card */}
                 <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex items-center justify-between">
                   <div>
-                    <h3 className="font-extrabold text-sm text-slate-900">Currency Conversion</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Convert Coins to Diamonds or Diamonds to Coins</p>
+                    <h3 className="font-extrabold text-sm text-slate-900">Convert Coins to Diamonds</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Instantly convert your earned Coins to Diamonds (1 Coin = 1 Diamond)</p>
                   </div>
                   <button
-                    onClick={() => setWalletModal('convert')}
+                    onClick={() => {
+                      setConvertFrom('coin');
+                      setTransferAmountInput('');
+                      setWalletModal('convert');
+                    }}
                     className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs"
                   >
                     Convert
@@ -2067,7 +2034,8 @@ export const AgentDashboard = () => {
                     Agent Permissions & Rules
                   </h3>
                   <ul className="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
-                    <li>As an Agency Owner/Agent, you can send coins & diamonds to any user or other agents.</li>
+                    <li>As an Agency Owner/Agent, you can send diamonds to any user or other agents.</li>
+                    <li>Coins cannot be sent directly to users; convert your earned coins to diamonds first.</li>
                     <li>Agency members transfer their earned coins directly to you for cash-out/trading.</li>
                     <li>All transactions are recorded with immutable transaction IDs.</li>
                   </ul>
@@ -2558,71 +2526,6 @@ export const AgentDashboard = () => {
         </div>
       )}
 
-      {/* ── Send Coins Modal ── */}
-      {walletModal === 'send_coins' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95 duration-150">
-            <h3 className="text-base font-extrabold text-slate-900 mb-1">Send Coins</h3>
-            <p className="text-xs text-slate-500 mb-3">Available: {(user?.coins || 0).toLocaleString()} Coins</p>
-
-            <form onSubmit={handleSendCoins} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Recipient UID or Phone</label>
-                <input
-                  type="text"
-                  required
-                  value={targetIdInput}
-                  onChange={(e) => setTargetIdInput(e.target.value)}
-                  placeholder="Enter User/Agent UID or Phone"
-                  className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Amount (Coins)</label>
-                <input
-                  type="text"
-                  required
-                  value={transferAmountInput}
-                  onChange={(e) => setTransferAmountInput(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 10000"
-                  className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold tabular-nums"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Note (Optional)</label>
-                <input
-                  type="text"
-                  value={transferNote}
-                  onChange={(e) => setTransferNote(e.target.value)}
-                  placeholder="Transfer note / message"
-                  className="w-full h-10 px-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-medium"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setWalletModal(null)}
-                  disabled={submittingTx}
-                  className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingTx}
-                  className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs shadow-xs"
-                >
-                  {submittingTx ? 'Sending...' : 'Confirm Send'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* ── Send Diamonds Modal ── */}
       {walletModal === 'send_diamonds' && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2688,14 +2591,14 @@ export const AgentDashboard = () => {
         </div>
       )}
 
-      {/* ── Currency Convert Modal ── */}
+      {/* ── Currency Convert Modal (Coins to Diamonds only) ── */}
       {walletModal === 'convert' && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl animate-in zoom-in-95 duration-150 border border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Currency Converter</h3>
-                <p className="text-xs text-slate-500">Exchange between Coins and Diamonds instantly</p>
+                <p className="text-xs text-slate-500">Convert Coins to Diamonds (1 Coin = 1 Diamond)</p>
               </div>
               <button
                 type="button"
@@ -2712,57 +2615,41 @@ export const AgentDashboard = () => {
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                   Your Available Balance
                 </span>
-                <span className="text-[10px] font-bold text-indigo-600">Rate: 1 Diamond = 1 Coin</span>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full">
+                  1 Coin = 1 Diamond
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {/* Available Coins */}
+                {/* Available Coins (Source) */}
                 <div
-                  onClick={() => {
-                    setConvertFrom('coin');
-                    setTransferAmountInput('');
-                  }}
-                  className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
-                    convertFrom === 'coin'
-                      ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/30 shadow-xs'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300'
-                  }`}
+                  onClick={() => setTransferAmountInput(String(user?.coins || 0))}
+                  title="Click to use all coins"
+                  className="p-2.5 rounded-xl border cursor-pointer transition-all bg-amber-50 border-amber-300 ring-2 ring-amber-400/30 shadow-xs hover:bg-amber-100/60"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-amber-950 flex items-center gap-1">
                       <CoinIcon className="w-4 h-4 text-amber-500" /> Coins
                     </span>
-                    {convertFrom === 'coin' && (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900">
-                        From
-                      </span>
-                    )}
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-200/90 text-amber-950">
+                      Convert From
+                    </span>
                   </div>
                   <p className="text-sm font-black text-slate-900 tabular-nums">
                     {(user?.coins || 0).toLocaleString()}
                   </p>
                 </div>
 
-                {/* Available Diamonds */}
+                {/* Current Diamonds (Destination) */}
                 <div
-                  onClick={() => {
-                    setConvertFrom('diamond');
-                    setTransferAmountInput('');
-                  }}
-                  className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
-                    convertFrom === 'diamond'
-                      ? 'bg-cyan-50 border-cyan-300 ring-2 ring-cyan-400/30 shadow-xs'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300'
-                  }`}
+                  className="p-2.5 rounded-xl border bg-cyan-50/60 border-cyan-200 shadow-2xs"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-cyan-950 flex items-center gap-1">
                       <DiamondIcon className="w-4 h-4 text-cyan-500" /> Diamonds
                     </span>
-                    {convertFrom === 'diamond' && (
-                      <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-cyan-200/80 text-cyan-900">
-                        From
-                      </span>
-                    )}
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800">
+                      Target
+                    </span>
                   </div>
                   <p className="text-sm font-black text-slate-900 tabular-nums">
                     {(user?.diamonds || 0).toLocaleString()}
@@ -2772,55 +2659,34 @@ export const AgentDashboard = () => {
             </div>
 
             <form onSubmit={handleConvertCurrency} className="space-y-3">
-              {/* Direction Selection */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConvertFrom('coin');
-                    setTransferAmountInput('');
-                  }}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
-                    convertFrom === 'coin'
-                      ? 'border-amber-500 bg-amber-500 text-white shadow-xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <CoinIcon className={`w-4 h-4 ${convertFrom === 'coin' ? 'text-white' : 'text-amber-500'}`} />
-                  <span>Coins → Diamonds</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConvertFrom('diamond');
-                    setTransferAmountInput('');
-                  }}
-                  className={`p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all ${
-                    convertFrom === 'diamond'
-                      ? 'border-cyan-600 bg-cyan-600 text-white shadow-xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <DiamondIcon className={`w-4 h-4 ${convertFrom === 'diamond' ? 'text-white' : 'text-cyan-500'}`} />
-                  <span>Diamonds → Coins</span>
-                </button>
+              {/* Unidirectional Mode Indicator: Coins -> Diamonds only */}
+              <div className="w-full p-2.5 rounded-xl border border-amber-400/80 bg-gradient-to-r from-amber-50 to-cyan-50 text-slate-900 font-bold text-xs flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-1.5 text-amber-900 font-extrabold">
+                  <CoinIcon className="w-4 h-4 text-amber-500" />
+                  <span>Coins</span>
+                </div>
+                <div className="flex items-center gap-1 text-purple-700 font-black text-xs px-2 py-0.5 rounded-full bg-white/80 border border-purple-200">
+                  <span>1:1</span>
+                  <span className="text-sm">➔</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-cyan-900 font-extrabold">
+                  <DiamondIcon className="w-4 h-4 text-cyan-600" />
+                  <span>Diamonds</span>
+                </div>
               </div>
 
               {/* Amount Input */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-slate-700">
-                    Amount to Convert
+                    Amount of Coins to Convert
                   </label>
                   <button
                     type="button"
-                    onClick={() => {
-                      const maxAmount = convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0);
-                      setTransferAmountInput(String(maxAmount));
-                    }}
-                    className="text-[11px] font-extrabold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    onClick={() => setTransferAmountInput(String(user?.coins || 0))}
+                    className="text-[11px] font-extrabold text-amber-700 hover:text-amber-900 transition-colors"
                   >
-                    Max: {(convertFrom === 'coin' ? (user?.coins || 0) : (user?.diamonds || 0)).toLocaleString()}
+                    Max: {(user?.coins || 0).toLocaleString()} Coins
                   </button>
                 </div>
                 <div className="relative">
@@ -2829,11 +2695,11 @@ export const AgentDashboard = () => {
                     required
                     value={transferAmountInput}
                     onChange={(e) => setTransferAmountInput(e.target.value.replace(/\D/g, ''))}
-                    placeholder={`Enter ${convertFrom === 'coin' ? 'Coins' : 'Diamonds'} to convert`}
-                    className="w-full h-11 px-3 pr-24 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black tabular-nums focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    placeholder="Enter coins to convert"
+                    className="w-full h-11 px-3 pr-20 rounded-xl bg-slate-100 border border-slate-200 text-sm font-black tabular-nums focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase pointer-events-none">
-                    {convertFrom === 'coin' ? 'Coins' : 'Diamonds'}
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-700 uppercase pointer-events-none">
+                    Coins
                   </span>
                 </div>
               </div>
@@ -2850,24 +2716,22 @@ export const AgentDashboard = () => {
                     +{preset.toLocaleString()}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setTransferAmountInput(String(user?.coins || 0))}
+                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-[11px] font-black text-amber-900 transition-colors shrink-0"
+                >
+                  All (Max)
+                </button>
               </div>
 
               {/* Live Estimation Preview */}
               {Number(transferAmountInput) > 0 && (
-                <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-100 flex items-center justify-between text-xs">
-                  <span className="text-indigo-700 font-bold">You will receive approx:</span>
-                  <span className="font-black text-indigo-950 flex items-center gap-1.5">
-                    {convertFrom === 'coin' ? (
-                      <>
-                        <DiamondIcon className="w-4 h-4 text-cyan-600 inline" />
-                        {Number(transferAmountInput).toLocaleString()} Diamonds
-                      </>
-                    ) : (
-                      <>
-                        <CoinIcon className="w-4 h-4 text-amber-500 inline" />
-                        {Number(transferAmountInput).toLocaleString()} Coins
-                      </>
-                    )}
+                <div className="p-2.5 rounded-xl bg-cyan-50/90 border border-cyan-200 flex items-center justify-between text-xs">
+                  <span className="text-cyan-800 font-bold">You will receive:</span>
+                  <span className="font-black text-cyan-950 flex items-center gap-1.5">
+                    <DiamondIcon className="w-4 h-4 text-cyan-600 inline" />
+                    {Number(transferAmountInput).toLocaleString()} Diamonds
                   </span>
                 </div>
               )}
@@ -2884,10 +2748,10 @@ export const AgentDashboard = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingTx || !transferAmountInput || Number(transferAmountInput) <= 0}
+                  disabled={submittingTx || !transferAmountInput || Number(transferAmountInput) <= 0 || Number(transferAmountInput) > (user?.coins || 0)}
                   className="flex-1 h-10 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all"
                 >
-                  {submittingTx ? 'Converting...' : 'Convert Now'}
+                  {submittingTx ? 'Converting...' : 'Convert to Diamonds'}
                 </button>
               </div>
             </form>

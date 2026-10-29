@@ -100,4 +100,5 @@ export const usersApi = {
     hostType?: 'alpha' | 'aurora';
   }) => client.post<ApiResponse<any>>('/users/host-application/apply', data),
   getMyHostApplication: () => client.get<ApiResponse<any>>('/users/host-application/my'),
+  getHostBonusCycle: () => client.get<ApiResponse<any>>('/users/host-application/bonus-cycle'),
 };

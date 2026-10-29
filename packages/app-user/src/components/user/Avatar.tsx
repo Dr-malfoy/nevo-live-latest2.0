@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { initial } from '../../lib/time';
 import { getMediaUrl } from '../../lib/media';
 import { OnlineDot } from './OnlineDot';
@@ -13,6 +14,8 @@ interface AvatarProps {
   ringed?: boolean;
   className?: string;
   onClick?: () => void;
+  /** If provided and onClick is not set, clicking navigates to /user/${userId} */
+  userId?: string;
 }
 
 const sizes = {
@@ -41,13 +44,27 @@ export const Avatar = ({
   ringed = false,
   className = '',
   onClick,
+  userId,
 }: AvatarProps) => {
+  const navigate = useNavigate();
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     setHasError(false);
   }, [src]);
 
+  const isClickable = Boolean(onClick || userId);
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (onClick) {
+      onClick();
+    } else if (userId) {
+      e.stopPropagation();
+      navigate(`/user/${userId}`);
+    }
+  };
+
+  const cursorClass = isClickable ? 'cursor-pointer hover:opacity-90 active:scale-95 transition-all' : '';
   const ring = ringed ? 'ring-2 ring-white' : '';
   const resolvedSrc = getMediaUrl(src);
 
@@ -71,14 +88,14 @@ export const Avatar = ({
   // No presence to show — skip the wrapper entirely.
   if (online === undefined) {
     return (
-      <div className={`shrink-0 ${className}`} onClick={onClick}>
+      <div className={`shrink-0 ${cursorClass} ${className}`} onClick={isClickable ? handleClick : undefined}>
         {inner}
       </div>
     );
   }
 
   return (
-    <div className={`relative shrink-0 overflow-visible ${className}`} onClick={onClick}>
+    <div className={`relative shrink-0 overflow-visible ${cursorClass} ${className}`} onClick={isClickable ? handleClick : undefined}>
       {inner}
       <OnlineDot
         online={online}

@@ -103,11 +103,16 @@ export const paymentService = {
       },
     };
 
-    // Certified Agents with payment info and bound withdraw accounts
+    // Only Diamond Sellers are shown in wallet recharge (not other regular agents)
     const agents = await User.find({
-      role: 'agent',
+      $or: [
+        { role: 'diamond_seller' },
+        { sellerType: 'diamond_seller' },
+        { isDiamondSeller: true },
+      ],
+      isBanned: { $ne: true },
     })
-      .select('uid nickname avatar phone paymentInfo')
+      .select('uid nickname avatar phone paymentInfo role sellerType isDiamondSeller diamondSellerBadge diamonds')
       .lean();
 
     const agentIds = agents.map((a: any) => a._id);
@@ -154,6 +159,9 @@ export const paymentService = {
 
       return {
         ...agent,
+        isDiamondSeller: true,
+        diamondSellerBadge: true,
+        sellerType: agent.sellerType || 'diamond_seller',
         paymentInfo: pi,
       };
     });
@@ -284,9 +292,9 @@ export const paymentService = {
     return order;
   },
 
-  async createOrder(userId: string, body: { paymentMethod: string; amountBdt: number; screenshot: string; transactionId: string; currency?: string; agentId?: string; accountNumber?: string; isOfficial?: boolean }) {
+  async createOrder(userId: string, body: { paymentMethod: string; amountBdt?: number; amountUsd?: number; amount?: number; currencyMode?: 'USD' | 'BDT'; screenshot: string; transactionId: string; currency?: string; agentId?: string; accountNumber?: string; isOfficial?: boolean }) {
     const config = await PaymentConfig.getConfig() as any;
-    const { paymentMethod, amountBdt, screenshot, transactionId, currency = 'diamond', agentId, accountNumber = '' } = body;
+    const { paymentMethod, screenshot, transactionId, currency = 'diamond', agentId, accountNumber = '' } = body;
 
     // We will no longer strictly block non-standard methods here, as they could be dynamic.
     // Assuming custom methods are valid if they are passed. We should ideally verify if they exist in DB.
@@ -326,9 +334,50 @@ export const paymentService = {
       }
     }
 
-    // Rate for diamonds: 130 diamonds per 1 BDT (130,000 diamonds = 1,000 BDT)
-    const rate = config.diamondRate || 130;
-    const units = Math.floor(amountBdt * rate);
+    // Check currency mode: by default USD, unless BDT is specified
+    const isUsd = body.currencyMode === 'USD' || (body.amountUsd !== undefined && Number(body.amountUsd) > 0 && !body.amountBdt);
+    let amountUsd = body.amountUsd ? Number(body.amountUsd) : 0;
+    let amountBdt = body.amountBdt ? Number(body.amountBdt) : 0;
+    let units = 0;
+
+    // Exact package tiers:
+    // $0.99 - 15000 (≈ ৳121)
+    // $4.99 - 78000 (≈ ৳609)
+    // $9.99 - 156000 (≈ ৳1219)
+    // $19.99 - 315000 (≈ ৳2439)
+    // $49.99 - 790000 (≈ ৳6099)
+    // $99.99 - 1586000 (≈ ৳12199)
+    const TIERS = [
+      { usd: 0.99, diamonds: 15000, bdt: 121 },
+      { usd: 4.99, diamonds: 78000, bdt: 609 },
+      { usd: 9.99, diamonds: 156000, bdt: 1219 },
+      { usd: 19.99, diamonds: 315000, bdt: 2439 },
+      { usd: 49.99, diamonds: 790000, bdt: 6099 },
+      { usd: 99.99, diamonds: 1586000, bdt: 12199 },
+    ];
+
+    if (isUsd) {
+      amountUsd = Number(body.amountUsd || body.amount || 0);
+      const matched = TIERS.find(t => Math.abs(t.usd - amountUsd) <= 0.05);
+      if (matched) {
+        units = matched.diamonds;
+        amountBdt = amountBdt || Math.round(matched.usd * (config.usdBdtRate || 122));
+      } else {
+        const dollarRate = config.dollarRate || 15600;
+        units = Math.floor(amountUsd * dollarRate);
+        amountBdt = amountBdt || Math.round(amountUsd * (config.usdBdtRate || 122));
+      }
+    } else {
+      amountBdt = Number(body.amountBdt || body.amount || 0);
+      const matched = TIERS.find(t => Math.abs(t.bdt - amountBdt) <= 3);
+      if (matched) {
+        units = matched.diamonds;
+      } else {
+        const bdtRate = config.diamondRate || 128;
+        units = Math.floor(amountBdt * bdtRate);
+      }
+      amountUsd = undefined as any;
+    }
 
     // Apply recharge bonus
     let bonus = 0;
@@ -342,6 +391,9 @@ export const paymentService = {
       isOfficial,
       paymentMethod,
       amountBdt,
+      amountUsd: isUsd ? amountUsd : undefined,
+      currencyMode: isUsd ? 'USD' : 'BDT',
+      currency,
       diamonds: currency === 'diamond' ? units + bonus : 0,
       coins: currency === 'coin' ? units : 0,
       screenshot,
@@ -349,6 +401,8 @@ export const paymentService = {
       accountNumber,
       status: 'pending',
     });
+
+    const amountLabel = isUsd ? `$${amountUsd} USD` : `৳${amountBdt} BDT`;
 
     if (isOfficial) {
       // Direct to admin portal: notify admins & broadcast socket event
@@ -358,8 +412,8 @@ export const paymentService = {
           a._id.toString(),
           'recharge',
           'New Official Recharge Request',
-          `${user.nickname} submitted an official recharge request of ৳${amountBdt} via ${paymentMethod}`,
-          { orderId: order._id, type: 'recharge', amountBdt, currency, isOfficial: true }
+          `${user.nickname} submitted an official recharge request of ${amountLabel} via ${paymentMethod}`,
+          { orderId: order._id, type: 'recharge', amountBdt, amountUsd, currency, isOfficial: true }
         );
       }
 
@@ -370,6 +424,8 @@ export const paymentService = {
           orderId: order._id,
           user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid, phone: user.phone },
           amountBdt,
+          amountUsd,
+          currencyMode: isUsd ? 'USD' : 'BDT',
           currency,
           paymentMethod,
           diamonds: order.diamonds,
@@ -382,9 +438,9 @@ export const paymentService = {
         userId: targetAgentId.toString(),
         type: 'recharge',
         title: 'New recharge request',
-        message: `${user.nickname} submitted a recharge request of ৳${amountBdt} via ${paymentMethod}`,
+        message: `${user.nickname} submitted a recharge request of ${amountLabel} via ${paymentMethod}`,
         targetUrl: '/agent/requests?tab=recharge',
-        data: { orderId: order._id.toString(), type: 'recharge', role: 'agent', amountBdt, currency },
+        data: { orderId: order._id.toString(), type: 'recharge', role: 'agent', amountBdt, amountUsd, currency },
       });
 
       try {
@@ -394,6 +450,8 @@ export const paymentService = {
           orderId: order._id,
           user: { nickname: user.nickname, avatar: user.avatar, uid: user.uid },
           amountBdt,
+          amountUsd,
+          currencyMode: isUsd ? 'USD' : 'BDT',
           currency,
           paymentMethod,
           diamonds: order.diamonds,
@@ -1087,7 +1145,7 @@ export const paymentService = {
     if (!config) {
       config = await PaymentConfig.create(body);
     } else {
-      const fields = ['bybitEnabled', 'binanceEnabled', 'bkashEnabled', 'nagadEnabled', 'rocketEnabled', 'diamondRate', 'coinRate', 'withdrawalRate', 'rechargeRate', 'bonusRate', 'serviceCharge', 'agentProfitPercent'] as const;
+      const fields = ['bybitEnabled', 'binanceEnabled', 'bkashEnabled', 'nagadEnabled', 'rocketEnabled', 'diamondRate', 'dollarRate', 'usdBdtRate', 'coinRate', 'withdrawalRate', 'rechargeRate', 'bonusRate', 'serviceCharge', 'agentProfitPercent'] as const;
       for (const f of fields) {
         if (body[f] !== undefined) (config as any)[f] = body[f];
       }
@@ -1105,10 +1163,20 @@ export const paymentService = {
   async createCustomPaymentMethod(data: any) {
     const existing = await PaymentMethodModel.findOne({ key: data.key });
     if (existing) throw new AppError('Payment method key already exists', 400);
-    return PaymentMethodModel.create(data);
+    const isBD = !!data.isBD || data.country === 'BD' || data.currency === 'BDT';
+    return PaymentMethodModel.create({
+      ...data,
+      isBD,
+      country: isBD ? 'BD' : (data.country || 'GLOBAL'),
+      currency: isBD ? 'BDT' : (data.currency || 'USD'),
+    });
   },
 
   async updateCustomPaymentMethod(id: string, data: any) {
+    if (data.isBD !== undefined) {
+      data.country = data.isBD ? 'BD' : 'GLOBAL';
+      data.currency = data.isBD ? 'BDT' : 'USD';
+    }
     const method = await PaymentMethodModel.findByIdAndUpdate(id, data, { new: true });
     if (!method) throw new AppError('Payment method not found', 404);
     return method;

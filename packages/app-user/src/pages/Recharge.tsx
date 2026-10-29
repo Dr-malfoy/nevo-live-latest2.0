@@ -39,36 +39,10 @@ interface PaymentMethodItem {
   color: string;
   bgActive: string;
   logo: React.ReactNode;
+  isBD: boolean;
 }
 
 const DEFAULT_METHODS: PaymentMethodItem[] = [
-  {
-    key: 'bkash',
-    label: 'bKash',
-    category: 'mobile',
-    subtitle: 'Instant Mobile Banking',
-    color: '#E2136E',
-    bgActive: 'bg-pink-50',
-    logo: <BkashLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
-  },
-  {
-    key: 'nagad',
-    label: 'Nagad',
-    category: 'mobile',
-    subtitle: 'Fast Mobile Banking',
-    color: '#F7941D',
-    bgActive: 'bg-orange-50',
-    logo: <NagadLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
-  },
-  {
-    key: 'rocket',
-    label: 'Rocket',
-    category: 'mobile',
-    subtitle: 'DBBL Banking',
-    color: '#8C3494',
-    bgActive: 'bg-purple-50',
-    logo: <RocketLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
-  },
   {
     key: 'binance',
     label: 'Binance Pay',
@@ -77,6 +51,7 @@ const DEFAULT_METHODS: PaymentMethodItem[] = [
     color: '#F3BA2F',
     bgActive: 'bg-amber-50',
     logo: <BinanceLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
+    isBD: false,
   },
   {
     key: 'bybit',
@@ -86,10 +61,56 @@ const DEFAULT_METHODS: PaymentMethodItem[] = [
     color: '#F7A600',
     bgActive: 'bg-amber-50',
     logo: <BybitLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
+    isBD: false,
+  },
+  {
+    key: 'bkash',
+    label: 'bKash',
+    category: 'mobile',
+    subtitle: 'Instant Mobile Banking',
+    color: '#E2136E',
+    bgActive: 'bg-pink-50',
+    logo: <BkashLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
+    isBD: true,
+  },
+  {
+    key: 'nagad',
+    label: 'Nagad',
+    category: 'mobile',
+    subtitle: 'Fast Mobile Banking',
+    color: '#F7941D',
+    bgActive: 'bg-orange-50',
+    logo: <NagadLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
+    isBD: true,
+  },
+  {
+    key: 'rocket',
+    label: 'Rocket',
+    category: 'mobile',
+    subtitle: 'DBBL Banking',
+    color: '#8C3494',
+    bgActive: 'bg-purple-50',
+    logo: <RocketLogo className="w-10 h-10 shadow-sm rounded-xl shrink-0" />,
+    isBD: true,
   },
 ];
 
-const PRESET_AMOUNTS = [100, 300, 500, 1000, 2000, 5000];
+export interface RechargePackage {
+  usd: number;
+  diamonds: number;
+  bdt: number;
+  badge?: string;
+  popular?: boolean;
+}
+
+export const RECHARGE_PACKAGES: RechargePackage[] = [
+  { usd: 0.99, diamonds: 15000, bdt: 121 },
+  { usd: 4.99, diamonds: 78000, bdt: 609 },
+  { usd: 9.99, diamonds: 156000, bdt: 1219, popular: true, badge: 'Popular' },
+  { usd: 19.99, diamonds: 315000, bdt: 2439 },
+  { usd: 49.99, diamonds: 790000, bdt: 6099, badge: 'Best Value' },
+  { usd: 99.99, diamonds: 1586000, bdt: 12199, badge: 'VIP Pack' },
+];
 
 export const Recharge = () => {
   const navigate = useNavigate();
@@ -101,9 +122,11 @@ export const Recharge = () => {
     bkashEnabled: true,
     nagadEnabled: true,
     rocketEnabled: true,
-    diamondRate: 130,
+    diamondRate: 128,
+    dollarRate: 15600,
+    usdBdtRate: 122,
     coinRate: 1,
-    rechargeRate: 130,
+    rechargeRate: 128,
     bonusRate: 0,
   });
   const [customMethods, setCustomMethods] = useState<any[]>([]);
@@ -114,8 +137,9 @@ export const Recharge = () => {
   const [linkedAgentId, setLinkedAgentId] = useState<string>('');
   const [linkedAgentInfo, setLinkedAgentInfo] = useState<any>(null);
   const [currency] = useState<'diamond'>('diamond');
-  const [paymentMethod, setPaymentMethod] = useState<string>('bkash');
-  const [amountBdt, setAmountBdt] = useState('500');
+  const [currencyMode, setCurrencyMode] = useState<'USD' | 'BDT'>('USD');
+  const [paymentMethod, setPaymentMethod] = useState<string>('binance');
+  const [amount, setAmount] = useState<string>('9.99');
   const [accountNumber, setAccountNumber] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [screenshot, setScreenshot] = useState('');
@@ -136,7 +160,21 @@ export const Recharge = () => {
       paymentApi.getOrders({ limit: 10 }),
     ])
       .then(([m, cm, a, o]: any) => {
-        if (m?.data?.success) setMethods(m.data.data);
+        if (m?.data?.success) {
+          const cfg = m.data.data;
+          setMethods(cfg);
+          if (!cfg.binanceEnabled) {
+            if (cfg.bybitEnabled) {
+              setPaymentMethod('bybit');
+              setCurrencyMode('USD');
+              setAmount('10');
+            } else if (cfg.bkashEnabled) {
+              setPaymentMethod('bkash');
+              setCurrencyMode('BDT');
+              setAmount('1000');
+            }
+          }
+        }
         if (cm?.data?.success) setCustomMethods(cm.data.data);
         if (a?.data?.success) {
           const list = a.data.data || [];
@@ -204,6 +242,64 @@ export const Recharge = () => {
     setTimeout(() => setCopiedText(false), 2000);
   };
 
+  const isBdMethod = (key: string) => {
+    if (['bkash', 'nagad', 'rocket', 'bank_bdt'].includes(key)) return true;
+    const custom = customMethods.find((cm) => cm.key === key);
+    if (custom && (custom.isBD === true || custom.country === 'BD' || custom.currency === 'BDT')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isUsdOrder = (o: any) => {
+    if (o.currencyMode === 'USD') return true;
+    if (o.currencyMode === 'BDT') return false;
+    const method = (o.paymentMethod || o.method || '').toLowerCase();
+    if (['bkash', 'nagad', 'rocket', 'bank_bdt'].includes(method)) return false;
+    if (['binance', 'bybit', 'usdt', 'crypto'].some((m) => method.includes(m))) return true;
+    return Boolean(o.amountUsd && !o.amountBdt);
+  };
+
+  const handleSelectMethod = (key: string) => {
+    setPaymentMethod(key);
+    if (isBdMethod(key)) {
+      if (currencyMode !== 'BDT') {
+        setCurrencyMode('BDT');
+        const parsed = parseFloat(amount) || 0;
+        const matched = RECHARGE_PACKAGES.find((p) => Math.abs(p.usd - parsed) <= 0.05);
+        setAmount(matched ? matched.bdt.toString() : '1219');
+      }
+    } else {
+      if (currencyMode !== 'USD') {
+        setCurrencyMode('USD');
+        const parsed = parseFloat(amount) || 0;
+        const matched = RECHARGE_PACKAGES.find((p) => Math.abs(p.bdt - parsed) <= 3);
+        setAmount(matched ? matched.usd.toString() : '9.99');
+      }
+    }
+  };
+
+  const handleToggleCurrency = (mode: 'USD' | 'BDT') => {
+    setCurrencyMode(mode);
+    if (mode === 'USD') {
+      const parsed = parseFloat(amount) || 0;
+      const matched = RECHARGE_PACKAGES.find((p) => Math.abs(p.bdt - parsed) <= 3);
+      setAmount(matched ? matched.usd.toString() : '9.99');
+      if (isBdMethod(paymentMethod)) {
+        const firstUsd = enabledMethods.find((m) => !isBdMethod(m.key));
+        if (firstUsd) setPaymentMethod(firstUsd.key);
+      }
+    } else {
+      const parsed = parseFloat(amount) || 0;
+      const matched = RECHARGE_PACKAGES.find((p) => Math.abs(p.usd - parsed) <= 0.05);
+      setAmount(matched ? matched.bdt.toString() : '1219');
+      if (!isBdMethod(paymentMethod)) {
+        const firstBd = enabledMethods.find((m) => isBdMethod(m.key));
+        if (firstBd) setPaymentMethod(firstBd.key);
+      }
+    }
+  };
+
   const handleSubmit = async () => {
     if (!canUseTradeFeatures(user?.verification, user?.role)) {
       setShowGate(true);
@@ -214,11 +310,12 @@ export const Recharge = () => {
       setError('Please select an agent to proceed with payment');
       return;
     }
-    if (!amountBdt || parseInt(amountBdt) <= 0) {
-      setError('Please enter a valid recharge amount');
+    const numAmount = parseFloat(amount);
+    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+      setError(`Please enter a valid recharge amount in ${currencyMode}`);
       return;
     }
-    if (['bkash', 'nagad', 'rocket'].includes(paymentMethod) && !accountNumber) {
+    if (isBdMethod(paymentMethod) && !accountNumber) {
       setError('Please enter your sender account number');
       return;
     }
@@ -234,9 +331,20 @@ export const Recharge = () => {
     setSubmitting(true);
     setError('');
     try {
+      const isUsd = currencyMode === 'USD';
+      let amountUsd = isUsd ? numAmount : Number((numAmount / (methods.usdBdtRate || 122)).toFixed(2));
+      let amountBdt = !isUsd ? Math.round(numAmount) : Math.round(numAmount * (methods.usdBdtRate || 122));
+      if (matchedPackage) {
+        amountUsd = matchedPackage.usd;
+        amountBdt = matchedPackage.bdt;
+      }
+
       await paymentApi.createOrder({
         paymentMethod,
-        amountBdt: parseInt(amountBdt),
+        currencyMode,
+        amountUsd: isUsd ? amountUsd : undefined,
+        amountBdt,
+        amount: numAmount,
         screenshot,
         transactionId,
         currency,
@@ -245,7 +353,7 @@ export const Recharge = () => {
         isOfficial: selectedAgentInfo?.isOfficial || selectedAgent === 'official',
       });
       setSuccess(true);
-      setAmountBdt('');
+      setAmount(isUsd ? '9.99' : '1219');
       setTransactionId('');
       setScreenshot('');
       setAccountNumber('');
@@ -258,10 +366,20 @@ export const Recharge = () => {
     }
   };
 
-  // Diamond recharge calculation: diamondRate (130 diamonds per 1 BDT, 130,000 for 1,000 BDT)
-  const rate = methods.diamondRate || 130;
-  const parsedAmount = parseInt(amountBdt) || 0;
-  const units = Math.floor(parsedAmount * rate);
+  // Diamond recharge calculation with exact package matching:
+  // $0.99 - 15000 | $4.99 - 78000 | $9.99 - 156000 | $19.99 - 315000 | $49.99 - 790000 | $99.99 - 1586000
+  // 1 USD = 122 BDT (১ ডলার = ১২২ টাকা)
+  const parsedAmount = parseFloat(amount) || 0;
+  const matchedPackage = RECHARGE_PACKAGES.find((pkg) => {
+    if (currencyMode === 'USD') {
+      return Math.abs(pkg.usd - parsedAmount) <= 0.05;
+    } else {
+      return Math.abs(pkg.bdt - parsedAmount) <= 3;
+    }
+  });
+
+  const rate = currencyMode === 'USD' ? (methods.dollarRate || 15600) : (methods.diamondRate || 128);
+  const units = matchedPackage ? matchedPackage.diamonds : Math.floor(parsedAmount * rate);
   const bonus =
     methods.bonusRate > 0
       ? Math.floor(units * (methods.bonusRate / 100))
@@ -320,7 +438,7 @@ export const Recharge = () => {
     agentPaymentDetails?.phone ||
     agentPaymentDetails?.accountNumber ||
     (typeof agentPaymentDetails === 'string' ? agentPaymentDetails : '') ||
-    (['bkash', 'nagad', 'rocket'].includes(paymentMethod) ? (selectedAgentInfo?.phone || '') : '');
+    (isBdMethod(paymentMethod) ? (selectedAgentInfo?.phone || '') : '');
 
   const agentQrCode = agentPaymentDetails?.qrCode || '';
 
@@ -334,21 +452,25 @@ export const Recharge = () => {
     }),
     ...customMethods
       .filter((m) => m.enabled)
-      .map((m) => ({
-        key: m.key,
-        label: m.name,
-        category: 'custom' as const,
-        subtitle: 'Custom Payment',
-        color: m.color || '#3B82F6',
-        bgActive: 'bg-blue-50',
-        logo: m.iconUrl ? (
-          <img src={m.iconUrl} alt={m.name} className="w-10 h-10 rounded-xl object-contain shadow-sm" />
-        ) : (
-          <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-sm font-bold text-sm">
-            <PiWalletFill className="w-6 h-6" />
-          </div>
-        ),
-      })),
+      .map((m) => {
+        const isBD = m.isBD === true || m.country === 'BD' || m.currency === 'BDT';
+        return {
+          key: m.key,
+          label: m.name,
+          category: 'custom' as const,
+          subtitle: isBD ? 'BD Mobile Banking' : 'Crypto / Global',
+          color: m.color || '#3B82F6',
+          bgActive: 'bg-blue-50',
+          isBD,
+          logo: m.iconUrl ? (
+            <img src={m.iconUrl} alt={m.name} className="w-10 h-10 rounded-xl object-contain shadow-sm" />
+          ) : (
+            <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-sm font-bold text-sm">
+              <PiWalletFill className="w-6 h-6" />
+            </div>
+          ),
+        };
+      }),
   ];
 
   if (loading) {
@@ -414,6 +536,12 @@ export const Recharge = () => {
               <span className="font-semibold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">Pending Verification</span>
             </div>
             <div className="flex justify-between text-xs text-slate-500">
+              <span>Amount Paid</span>
+              <span className="font-bold text-slate-900">
+                {currencyMode === 'USD' ? `$${parsedAmount} USD` : `৳${parsedAmount.toLocaleString()} BDT`}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs text-slate-500">
               <span>Payment Method</span>
               <span className="font-semibold text-slate-800 capitalize">{paymentMethod}</span>
             </div>
@@ -440,6 +568,42 @@ export const Recharge = () => {
         </div>
       ) : (
         <div className="max-w-lg mx-auto p-4 space-y-5">
+          {/* ── Currency / Country Mode Selector: USD ($) vs BDT (৳) ──── */}
+          <div className="bg-slate-200/80 p-1 rounded-2xl flex gap-1 shadow-inner">
+            <button
+              type="button"
+              onClick={() => handleToggleCurrency('USD')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                currencyMode === 'USD'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🌐 Dollar ($ USD)</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                currencyMode === 'USD' ? 'bg-slate-700 text-amber-300' : 'bg-slate-300 text-slate-700'
+              }`}>
+                Default
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleCurrency('BDT')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                currencyMode === 'BDT'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🇧🇩 Bangladesh (৳ BDT)</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                currencyMode === 'BDT' ? 'bg-slate-700 text-emerald-300' : 'bg-slate-300 text-slate-700'
+              }`}>
+                Local
+              </span>
+            </button>
+          </div>
+
           {/* ── 1. Currency (Diamonds Only) ────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -465,9 +629,6 @@ export const Recharge = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-slate-900 text-sm">Diamonds</span>
-                      <span className="text-[10px] font-bold bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-full">
-                        Rate: 130,000 💎 = ৳1,000 BDT
-                      </span>
                     </div>
                     <span className="text-[11px] text-slate-500 font-medium">Recharge is exclusively for Diamonds (Gifting & VIP Features)</span>
                   </div>
@@ -485,7 +646,9 @@ export const Recharge = () => {
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 2. Choose Payment Method
               </label>
-              <span className="text-[11px] text-slate-400 font-medium">Verified Channels</span>
+              <span className="text-[11px] text-slate-400 font-medium">
+                {currencyMode === 'USD' ? 'Global & Crypto Channels' : 'Bangladesh Mobile Banking'}
+              </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -495,7 +658,7 @@ export const Recharge = () => {
                   <button
                     key={m.key}
                     type="button"
-                    onClick={() => setPaymentMethod(m.key)}
+                    onClick={() => handleSelectMethod(m.key)}
                     style={{ borderColor: isSelected ? m.color : undefined }}
                     className={`relative p-3 rounded-2xl border-2 transition-all flex items-center gap-2.5 text-left ${
                       isSelected
@@ -505,7 +668,16 @@ export const Recharge = () => {
                   >
                     {m.logo}
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-slate-900 truncate">{m.label}</p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-xs font-bold text-slate-900 truncate">{m.label}</p>
+                        <span className={`text-[9px] font-black px-1.5 py-0.2 rounded-full border ${
+                          m.isBD
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {m.isBD ? '৳ BDT' : '$ USD'}
+                        </span>
+                      </div>
                       <p className="text-[10px] text-slate-500 font-medium truncate">{m.subtitle}</p>
                     </div>
 
@@ -525,34 +697,49 @@ export const Recharge = () => {
 
           {/* ── 3. Quick Package Selection & Custom Amount ─────────── */}
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-              3. Select or Enter Amount (BDT)
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+                3. Select Package or Enter Amount ({currencyMode === 'USD' ? '$ USD' : '৳ BDT'})
+              </label>
+            </div>
 
-            {/* Quick Presets */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {PRESET_AMOUNTS.map((amt) => {
-                const isSelected = amountBdt === amt.toString();
-                const previewUnits = Math.floor(amt * rate);
+            {/* Quick Presets Grid with 6 Packages */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
+              {RECHARGE_PACKAGES.map((pkg) => {
+                const isSelected = currencyMode === 'USD'
+                  ? Math.abs(pkg.usd - parsedAmount) <= 0.05
+                  : Math.abs(pkg.bdt - parsedAmount) <= 3;
                 return (
                   <button
-                    key={amt}
+                    key={pkg.usd}
                     type="button"
-                    onClick={() => setAmountBdt(amt.toString())}
-                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                    onClick={() => setAmount(currencyMode === 'USD' ? pkg.usd.toString() : pkg.bdt.toString())}
+                    className={`relative p-3 rounded-2xl border text-center transition-all ${
                       isSelected
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                        : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/10'
+                        : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 shadow-2xs'
                     }`}
                   >
-                    <p className="text-xs font-extrabold">৳{amt.toLocaleString()}</p>
+                    {pkg.badge && (
+                      <span className={`absolute -top-2 right-2 text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase tracking-wider ${
+                        isSelected ? 'bg-amber-400 text-slate-900' : 'bg-cyan-500 text-white shadow-2xs'
+                      }`}>
+                        {pkg.badge}
+                      </span>
+                    )}
+                    <p className="text-sm font-black tracking-tight">
+                      {currencyMode === 'USD' ? `$${pkg.usd}` : `৳${pkg.bdt.toLocaleString()}`}
+                    </p>
                     <p
-                      className={`text-[10px] font-medium mt-0.5 flex items-center justify-center gap-0.5 ${
-                        isSelected ? 'text-slate-300' : 'text-slate-500'
+                      className={`text-xs font-extrabold mt-1 flex items-center justify-center gap-1 ${
+                        isSelected ? 'text-cyan-300' : 'text-cyan-600'
                       }`}
                     >
-                      <DiamondIcon className="w-3 h-3 text-cyan-400" />
-                      {previewUnits.toLocaleString()}
+                      <DiamondIcon className="w-3.5 h-3.5 text-cyan-400" />
+                      {pkg.diamonds.toLocaleString()} 💎
+                    </p>
+                    <p className={`text-[10px] mt-0.5 font-medium ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
+                      {currencyMode === 'USD' ? `≈ ৳${pkg.bdt.toLocaleString()} BDT` : `≈ $${pkg.usd} USD`}
                     </p>
                   </button>
                 );
@@ -562,14 +749,17 @@ export const Recharge = () => {
             {/* Custom Input */}
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <span className="text-slate-500 font-bold text-sm">৳ BDT</span>
+                <span className="text-slate-500 font-bold text-sm">
+                  {currencyMode === 'USD' ? '$ USD' : '৳ BDT'}
+                </span>
               </div>
               <input
                 type="number"
-                min="1"
-                placeholder="Enter custom amount"
-                value={amountBdt}
-                onChange={(e) => setAmountBdt(e.target.value)}
+                min="0.1"
+                step={currencyMode === 'USD' ? '0.01' : '1'}
+                placeholder={currencyMode === 'USD' ? 'Enter USD amount (e.g. 9.99)' : 'Enter BDT amount (e.g. 1219)'}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl pl-20 pr-4 py-3 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 shadow-sm"
               />
             </div>
@@ -592,8 +782,15 @@ export const Recharge = () => {
                 </div>
                 <div className="text-right border-l border-slate-700/80 pl-3">
                   <p className="text-[10px] text-slate-400">Exchange Rate</p>
-                  <p className="text-xs font-bold text-slate-200">1 BDT = {rate} 💎</p>
-                  <p className="text-[10px] text-slate-400">(1,000 BDT = 130,000 💎)</p>
+                  <p className="text-xs font-bold text-slate-200">
+                    {matchedPackage ? (
+                      `${currencyMode === 'USD' ? `$${matchedPackage.usd}` : `৳${matchedPackage.bdt}`} = ${matchedPackage.diamonds.toLocaleString()} 💎`
+                    ) : currencyMode === 'USD' ? (
+                      `1 USD ≈ ${(methods.dollarRate || 15600).toLocaleString()} 💎`
+                    ) : (
+                      `1 BDT ≈ ${(methods.diamondRate || 128).toLocaleString()} 💎`
+                    )}
+                  </p>
                 </div>
               </div>
             )}
@@ -603,11 +800,15 @@ export const Recharge = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                4. Select Agent
+                4. Select Diamond Seller
               </label>
               {selectedAgentInfo?.isOfficial || selectedAgent === 'official' ? (
                 <span className="text-[11px] font-bold text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-cyan-200">
                   <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" /> Default Official Agent
+                </span>
+              ) : (selectedAgentInfo?.isDiamondSeller || selectedAgentInfo?.sellerType === 'diamond_seller') ? (
+                <span className="text-[11px] font-bold text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-cyan-200">
+                  💎 Certified Diamond Seller
                 </span>
               ) : linkedAgentId && selectedAgent === linkedAgentId ? (
                 <span className="text-[11px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full flex items-center gap-1 border border-sky-200">
@@ -648,6 +849,11 @@ export const Recharge = () => {
                       {(selectedAgentInfo?.isOfficial || selectedAgent === 'official') && (
                         <span className="text-[9px] font-black bg-cyan-100 text-cyan-800 px-1.5 py-0.5 rounded-full border border-cyan-200 uppercase">
                           Official
+                        </span>
+                      )}
+                      {(selectedAgentInfo?.isDiamondSeller || selectedAgentInfo?.sellerType === 'diamond_seller') && (
+                        <span className="text-[9px] font-black bg-cyan-100 text-cyan-800 px-1.5 py-0.5 rounded-full border border-cyan-200 uppercase">
+                          💎 Diamond Seller
                         </span>
                       )}
                     </div>
@@ -735,6 +941,11 @@ export const Recharge = () => {
                                   {isOfficial && (
                                     <span className="text-[9px] font-extrabold bg-cyan-100 text-cyan-800 px-1.5 py-0.2 rounded-full border border-cyan-200">
                                       Official
+                                    </span>
+                                  )}
+                                  {(a.isDiamondSeller || a.sellerType === 'diamond_seller') && (
+                                    <span className="text-[9px] font-extrabold bg-cyan-100 text-cyan-800 px-1.5 py-0.2 rounded-full border border-cyan-200">
+                                      💎 Seller
                                     </span>
                                   )}
                                 </div>
@@ -846,7 +1057,7 @@ export const Recharge = () => {
             </h3>
 
             {/* Sender Account Number (Mobile Banking) */}
-            {['bkash', 'nagad', 'rocket'].includes(paymentMethod) && (
+            {isBdMethod(paymentMethod) && (
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
                   Your Sender Phone Number <span className="text-rose-500">*</span>
@@ -934,7 +1145,7 @@ export const Recharge = () => {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitting || !amountBdt || !transactionId || !screenshot}
+            disabled={submitting || !amount || !transactionId || !screenshot}
             className="w-full py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-black hover:bg-black text-white rounded-2xl font-black text-sm tracking-wide shadow-lg shadow-slate-900/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99] flex items-center justify-center gap-2"
           >
             {submitting ? (
@@ -944,7 +1155,7 @@ export const Recharge = () => {
               </span>
             ) : (
               <span className="flex items-center gap-1.5">
-                Confirm & Recharge ৳{parsedAmount.toLocaleString() || '0'}
+                Confirm & Recharge {currencyMode === 'USD' ? `$${parsedAmount || 0} USD` : `৳${parsedAmount.toLocaleString() || '0'} BDT`}
               </span>
             )}
           </button>
@@ -989,7 +1200,11 @@ export const Recharge = () => {
                     >
                       <div>
                         <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>৳{o.amountBdt?.toLocaleString()}</span>
+                          <span>
+                            {isUsdOrder(o)
+                              ? `$${(o.amountUsd || o.amount)?.toLocaleString()} USD`
+                              : `৳${(o.amountBdt || o.amount)?.toLocaleString()} BDT`}
+                          </span>
                           <span className="text-[11px] text-slate-400 font-normal">→</span>
                           {o.diamonds > 0 ? (
                             <span className="inline-flex items-center gap-1 text-cyan-600 font-bold">

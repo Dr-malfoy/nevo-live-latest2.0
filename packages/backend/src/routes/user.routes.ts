@@ -8,10 +8,11 @@ import { updateProfileSchema, changePasswordSchema } from '@bogolive/shared';
 
 const router = Router();
 
-// Alpha & Aurora Host Application
+// Alpha & Aurora Host Application & 7-Day Performance Bonus
 router.get('/host-application/eligibility', authenticate, hostApplicationController.getEligibility);
 router.post('/host-application/apply', authenticate, hostApplicationController.submitApplication);
 router.get('/host-application/my', authenticate, hostApplicationController.getMyApplication);
+router.get('/host-application/bonus-cycle', authenticate, hostApplicationController.getBonusCycle);
 
 router.get('/me', authenticate, userController.getProfile);
 router.put('/me', authenticate, validate(updateProfileSchema), userController.updateProfile);

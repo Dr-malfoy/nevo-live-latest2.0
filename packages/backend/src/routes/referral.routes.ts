@@ -7,6 +7,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/summary', referralController.getSummary);
+router.post('/bind', referralController.bindCode);
 router.post('/claim', referralController.claim);
 router.get('/rank', referralController.getRank);
 router.get('/templates', referralController.getTemplates);

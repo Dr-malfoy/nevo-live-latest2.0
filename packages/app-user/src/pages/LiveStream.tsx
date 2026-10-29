@@ -69,6 +69,8 @@ export const LiveStreamPage = ({
   const [pendingMicRequester, setPendingMicRequester] = useState<MicRequester | null>(null);
   const [customGiftReceiverId, setCustomGiftReceiverId] = useState<string | null>(null);
   const [profileModalUserId, setProfileModalUserId] = useState<string | null>(null);
+  const [pkBattle, setPkBattle] = useState<any>(null);
+  const [pendingPkInvite, setPendingPkInvite] = useState<any>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [streamEndedRecap, setStreamEndedRecap] = useState<{
@@ -677,6 +679,46 @@ export const LiveStreamPage = ({
     socket.on('stream:mic:kicked', onMicKicked);
     socket.on('stream:mic:force-mute', onForceMute);
 
+    // PK Battle socket events
+    const onPkInvite = (data: any) => {
+      setPendingPkInvite(data);
+    };
+
+    const onPkStart = (data: any) => {
+      setPendingPkInvite(null);
+      setPkBattle(data);
+      showToast('PK Battle Started! ⚔️', 'success');
+    };
+
+    const onPkScore = (data: any) => {
+      setPkBattle((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          scoreA: data.scoreA,
+          scoreB: data.scoreB,
+          hostA: { ...prev.hostA, score: data.scoreA },
+          hostB: { ...prev.hostB, score: data.scoreB },
+          recentGifts: [...(prev.recentGifts || []), data.recentGift].filter(Boolean).slice(-8),
+        };
+      });
+    };
+
+    const onPkEnd = (data: any) => {
+      showToast(
+        data.winnerSide === 'tie'
+          ? 'PK Battle Ended: It’s a tie!'
+          : `PK Battle Ended: Host ${data.winnerSide} won!`,
+        'info'
+      );
+      setPkBattle((prev: any) => (prev ? { ...prev, isFinished: true, winner: data.winnerSide } : null));
+    };
+
+    socket.on('pk:live:invite', onPkInvite);
+    socket.on('pk:live:start', onPkStart);
+    socket.on('pk:live:score', onPkScore);
+    socket.on('pk:live:end', onPkEnd);
+
     return () => {
       leaveRoom(`stream:${id}`);
       socket.off('disconnect', onSocketDisconnect);
@@ -696,6 +738,10 @@ export const LiveStreamPage = ({
       socket.off('stream:mic:response', onMicResponse);
       socket.off('stream:mic:kicked', onMicKicked);
       socket.off('stream:mic:force-mute', onForceMute);
+      socket.off('pk:live:invite', onPkInvite);
+      socket.off('pk:live:start', onPkStart);
+      socket.off('pk:live:score', onPkScore);
+      socket.off('pk:live:end', onPkEnd);
     };
   }, [socket, id]);
 
@@ -1013,6 +1059,50 @@ export const LiveStreamPage = ({
     );
   }
 
+  const handleAcceptPkInvite = async (battleId: string) => {
+    try {
+      socket?.emit('pk:live:invite:respond', { battleId, accept: true });
+      setPendingPkInvite(null);
+    } catch {
+      showToast('Failed to accept PK', 'error');
+    }
+  };
+
+  const handleDeclinePkInvite = async (battleId: string) => {
+    try {
+      socket?.emit('pk:live:invite:respond', { battleId, accept: false });
+      setPendingPkInvite(null);
+    } catch {
+      showToast('Failed to decline PK', 'error');
+    }
+  };
+
+  const handleEndPkBattle = async (battleId: string) => {
+    try {
+      socket?.emit('pk:live:battle:end', { battleId });
+    } catch {}
+  };
+
+  const handleQuitPkBattle = () => {
+    setPkBattle(null);
+  };
+
+  const handleSendPkGift = (targetHostId: string, side: 'left' | 'right') => {
+    setCustomGiftReceiverId(targetHostId);
+    setShowGift(true);
+  };
+
+  const handleRewardAudienceUser = async (targetUserId: string, amount: number, note?: string) => {
+    try {
+      if (userRef.current?.diamonds !== undefined) {
+        updateUser({ diamonds: Math.max(0, userRef.current.diamonds - amount) });
+      }
+      showToast(`Rewarded ${amount} diamonds to viewer!`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to reward user', 'error');
+    }
+  };
+
   // Prevent rendering LiveRoom / skeleton when closing or navigating away
   if (isClosing || navigatingAwayRef.current || (endedRef.current && !streamEndedRecap)) {
     return null;
@@ -1079,6 +1169,14 @@ export const LiveStreamPage = ({
         onSelectFilter={handleSelectFilter}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters((v) => !v)}
+        pkBattle={pkBattle}
+        pendingPkInvite={pendingPkInvite}
+        onAcceptPkInvite={handleAcceptPkInvite}
+        onDeclinePkInvite={handleDeclinePkInvite}
+        onEndPkBattle={handleEndPkBattle}
+        onQuitPkBattle={handleQuitPkBattle}
+        onSendPkGift={handleSendPkGift}
+        onRewardAudienceUser={handleRewardAudienceUser}
       />
 
       {/* In-Room User Profile Modal (Keeps live stream running) */}

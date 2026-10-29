@@ -92,6 +92,16 @@ const formatDuration = (seconds: number): string => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+export const formatDurationHuman = (seconds: number): string => {
+  if (!seconds || seconds <= 0) return '0s';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${m}m ${s > 0 ? `${s}s` : ''}`.trim();
+  if (m > 0) return `${m}m ${s > 0 ? `${s}s` : ''}`.trim();
+  return `${s}s`;
+};
+
 export const StreamerCenter = () => {
   const navigate = useNavigate();
   const { user, updateUser } = useAuthStore();
@@ -472,8 +482,8 @@ export const StreamerCenter = () => {
               {/* Duration */}
               <div className="rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-800/90 border border-slate-700/40 p-3 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Clock className="w-3.5 h-3.5 text-blue-400" /> Streaming Time
+                  <span className="flex items-center gap-1 font-semibold text-cyan-300">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" /> Streaming Time
                   </span>
                   {stats?.trend?.liveDuration === 'up' ? (
                     <ArrowUp className="w-3 h-3 text-emerald-400" />
@@ -481,10 +491,15 @@ export const StreamerCenter = () => {
                     <ArrowDown className="w-3 h-3 text-rose-400" />
                   )}
                 </div>
-                <p className="mt-2 text-lg font-black text-white font-mono tracking-tight">
-                  {formatDuration(stats?.liveDurationSec ?? 0)}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
+                <div className="mt-2">
+                  <p className="text-lg font-black text-cyan-200 font-mono tracking-tight">
+                    {formatDurationHuman(stats?.liveDurationSec ?? 0)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    {formatDuration(stats?.liveDurationSec ?? 0)}
+                  </p>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
                   {stats?.streamCount ? `${stats.streamCount} live sessions` : '0 sessions'}
                 </p>
               </div>
@@ -535,6 +550,66 @@ export const StreamerCenter = () => {
 
             {report ? (
               <div className="space-y-3">
+                {/* Prominent Live Summary: Time Count & Total Earning */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* Live Time Count Box */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-950/60 to-slate-900/90 border border-blue-500/35 flex flex-col justify-between shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-blue-400" /> Live Stream Time
+                      </span>
+                      {report.status === 'live' ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-400 text-[9px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> Live
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[9px] font-semibold border border-slate-700">
+                          Ended
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2.5">
+                      <p className="text-xl font-black text-white font-mono tracking-tight">
+                        {formatDurationHuman(report.liveDurationSec)}
+                      </p>
+                      <p className="text-[11px] text-blue-400 font-mono mt-0.5">
+                        Timer: {formatDuration(report.liveDurationSec)}
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1 truncate">
+                      {report.startedAt ? new Date(report.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      {report.endedAt ? ` – ${new Date(report.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    </p>
+                  </div>
+
+                  {/* Total Live Earning Box */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-950/60 to-slate-900/90 border border-amber-500/40 flex flex-col justify-between shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                        <Coins className="w-3.5 h-3.5 text-amber-400" /> Total Live Earning
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/30">
+                        Host Share
+                      </span>
+                    </div>
+                    <div className="mt-2.5">
+                      <p className="text-xl font-black text-amber-300 font-mono tracking-tight flex items-baseline gap-1">
+                        +{(report.coinsEarned ?? report.pointsEarned ?? 0).toLocaleString()}
+                        <span className="text-xs text-amber-400 font-bold">Coins</span>
+                      </p>
+                      <p className="text-[11px] text-amber-400/80 font-medium mt-0.5">
+                        Earned in this live session
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/income')}
+                      className="text-[10px] text-amber-300 hover:text-amber-200 font-bold flex items-center gap-0.5 mt-1 active:translate-x-0.5 transition-transform"
+                    >
+                      View in Wallet →
+                    </button>
+                  </div>
+                </div>
+
                 {/* Cover & AI Scoring Banner */}
                 <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-purple-950/60 to-slate-900 border border-purple-500/20">
                   <div className="relative w-16 h-16 rounded-xl bg-slate-900 overflow-hidden shrink-0 border border-white/10 group">
@@ -632,8 +707,8 @@ export const StreamerCenter = () => {
                   <Coins className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-sm">Live-Wise Earnings</h3>
-                  <p className="text-[11px] text-slate-400">Coins earned per live stream session</p>
+                  <h3 className="font-bold text-white text-sm">Live-Wise Earnings & Time</h3>
+                  <p className="text-[11px] text-slate-400">Time streamed and coins earned in each live broadcast</p>
                 </div>
               </div>
 
@@ -650,7 +725,7 @@ export const StreamerCenter = () => {
                 <BroadcastIcon className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 <p className="text-xs font-semibold text-slate-300">No Live Sessions Yet</p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Start streaming to see your live-wise earned coins here!
+                  Start streaming to see your live-wise earned coins and time count here!
                 </p>
                 <button
                   onClick={() => navigate('/go-live')}
@@ -660,59 +735,85 @@ export const StreamerCenter = () => {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {history.slice(0, 4).map((item) => {
+              <div className="space-y-2.5">
+                {history.slice(0, 5).map((item) => {
                   const itemCoins = item.earningsCoins ?? item.coinsEarned ?? item.pointsEarned ?? 0;
                   return (
                     <div
                       key={item._id}
-                      className="p-3 rounded-2xl bg-slate-900/90 border border-slate-700/40 hover:border-amber-500/30 flex items-center justify-between gap-3 transition-colors"
+                      className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-700/40 hover:border-amber-500/30 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
-                          {item.cover ? (
-                            <img src={getMediaUrl(item.cover)} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-purple-400 bg-purple-950/40">
-                              <Video className="w-5 h-5" />
-                            </div>
-                          )}
-                          {item.status === 'live' && (
-                            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          )}
-                        </div>
-
-                        <div className="min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-white/5">
+                        <div className="flex items-center gap-2 min-w-0">
                           <p className="text-xs font-bold text-white truncate">{item.title}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {new Date(item.startedAt).toLocaleDateString()} • {formatDuration(item.durationSec)}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
-                            <span className="text-emerald-400 font-semibold">{item.viewers} Viewers</span>
-                            <span>•</span>
-                            <span className="capitalize">{item.category || 'Live'}</span>
-                          </div>
+                          {item.status === 'live' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 shrink-0 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> Live Now
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                              Completed
+                            </span>
+                          )}
                         </div>
+                        <span className="text-[10px] text-slate-400 shrink-0">
+                          {new Date(item.startedAt).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
                       </div>
 
-                      {/* Earned Coins Badge */}
-                      <div className="shrink-0 text-right">
-                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/15 border border-amber-500/35 text-amber-300 font-black text-xs font-mono shadow-sm">
-                          <span>+{itemCoins.toLocaleString()}</span>
-                          <span className="text-[10px]">🪙</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                            {item.cover ? (
+                              <img src={getMediaUrl(item.cover)} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-purple-400 bg-purple-950/40">
+                                <Video className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            {/* Live Time Count Badge */}
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-300 text-xs font-bold font-mono">
+                              <Clock className="w-3.5 h-3.5 text-blue-400" />
+                              <span>Live Time: {formatDurationHuman(item.durationSec)}</span>
+                              <span className="text-[10px] text-blue-400/80 font-normal">({formatDuration(item.durationSec)})</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 pl-0.5">
+                              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                                <Eye className="w-3 h-3" /> {item.viewers} Viewers
+                              </span>
+                              <span>•</span>
+                              <span className="capitalize">{item.category || 'talk'}</span>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-[9px] text-slate-500 mt-0.5 font-medium">Live Earned</p>
+
+                        {/* Total Earning in this Live */}
+                        <div className="shrink-0 text-right">
+                          <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/25 to-yellow-500/15 border border-amber-500/40 text-amber-300 font-black text-sm font-mono shadow-sm">
+                            <span>+{itemCoins.toLocaleString()}</span>
+                            <span className="text-xs">🪙</span>
+                          </div>
+                          <p className="text-[10px] text-amber-400/90 mt-0.5 font-bold">Total Live Earning</p>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
 
-                {history.length > 4 && (
+                {history.length > 5 && (
                   <button
                     onClick={() => setShowHistoryModal(true)}
-                    className="w-full py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-center text-xs font-semibold text-amber-400 border border-slate-800 transition-colors mt-1"
+                    className="w-full py-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-center text-xs font-semibold text-amber-400 border border-slate-800 transition-colors mt-1"
                   >
-                    View All {history.length} Live Sessions & Earnings →
+                    View All {history.length} Live Sessions, Times & Earnings →
                   </button>
                 )}
               </div>
@@ -1169,24 +1270,41 @@ export const StreamerCenter = () => {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-white truncate">{item.title}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-bold text-white truncate">{item.title}</p>
+                            {item.status === 'live' && (
+                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                Live
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            {new Date(item.startedAt).toLocaleDateString()} • {formatDuration(item.durationSec)}
+                            {new Date(item.startedAt).toLocaleString([], {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
                           </p>
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-300">
-                            <span className="text-emerald-400 font-semibold">{item.viewers} Viewers</span>
-                            <span>•</span>
-                            <span className="capitalize text-slate-400">{item.category}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[9px] font-bold font-mono">
+                              <Clock className="w-2.5 h-2.5 text-blue-400" />
+                              <span>{formatDurationHuman(item.durationSec)}</span>
+                              <span className="text-blue-400/80">({formatDuration(item.durationSec)})</span>
+                            </span>
+                            <span className="text-[10px] text-emerald-400 font-medium">
+                              {item.viewers} Viewers
+                            </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Session Live Coins Earned Badge */}
                       <div className="shrink-0 text-right">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-xs font-mono">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/15 border border-amber-500/35 text-amber-300 font-black text-xs font-mono shadow-sm">
                           +{itemCoins.toLocaleString()} 🪙
                         </span>
-                        <p className="text-[9px] text-slate-500 mt-0.5 font-medium">Live Earned</p>
+                        <p className="text-[9px] text-amber-400/80 mt-0.5 font-bold">Total Live Earning</p>
                       </div>
                     </div>
                   );

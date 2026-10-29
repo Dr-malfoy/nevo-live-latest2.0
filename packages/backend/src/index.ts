@@ -10,6 +10,7 @@ import { startStreamReaper } from './services/stream.service';
 import { matchService } from './services/match.service';
 import { startRankingEngine } from './services/ranking.service';
 import { agencyService } from './services/agency.service';
+import { startHostBonusWorker } from './services/hostBonus.service';
 
 const start = async (): Promise<void> => {
   await connectDB();
@@ -29,6 +30,9 @@ const start = async (): Promise<void> => {
 
   // 30-day agency member inactivity auto-leave worker
   agencyService.startAgencyInactivityWorker();
+
+  // Host 7-Day Performance Bonus automated worker (settles cycles & credits bonuses)
+  startHostBonusWorker();
 
   // Start the Teen Patti multiplayer engine
   teenPattiService.start().catch((e) => console.error('Teen Patti engine start failed:', e));

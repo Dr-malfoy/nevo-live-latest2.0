@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, forwardRef } from 'react';
 import { PiCaretDownBold as CaretDown, PiMagnifyingGlassBold as Search, PiXBold as X } from 'react-icons/pi';
-import { allCountryDialOptions, flagEmoji, countryDialCode } from '../../lib/countries';
+import { allCountryDialOptions, countryDialCode, flagEmoji } from '../../lib/countries';
+import { CountryFlag } from './CountryFlag';
 
 export interface PhoneInputWithCountryProps {
   countryCode: string;
@@ -103,7 +104,7 @@ export const PhoneInputWithCountry = forwardRef<HTMLInputElement, PhoneInputWith
             className="flex items-center gap-1.5 px-3.5 py-3 bg-surface hover:bg-surface-soft border-r border-line text-ink font-semibold text-sm shrink-0 transition-colors"
             title="Select Country Code"
           >
-            <span className="text-lg leading-none">{currentFlag}</span>
+            <CountryFlag code={countryCode} size="md" />
             <span className="text-xs font-bold text-ink">{currentDial}</span>
             <CaretDown className={`w-3.5 h-3.5 text-ink-muted transition-transform ${isPickerOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -165,7 +166,7 @@ export const PhoneInputWithCountry = forwardRef<HTMLInputElement, PhoneInputWith
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-lg leading-none shrink-0">{item.flag}</span>
+                        <CountryFlag code={item.code} size="md" />
                         <span className="truncate">{item.name}</span>
                         <span className="text-[10px] text-ink-faint uppercase font-mono">({item.code})</span>
                       </div>

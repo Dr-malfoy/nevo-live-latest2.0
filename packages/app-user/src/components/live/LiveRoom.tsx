@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X } from 'react-icons/pi';
+import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X, PiSwordBold as Swords } from 'react-icons/pi';
 import { TopToolbar } from './TopToolbar';
 import { CommentOverlay } from './CommentOverlay';
 import { BottomToolbar } from './BottomToolbar';
@@ -15,6 +15,15 @@ import { FilterPicker } from './FilterPicker';
 import { LiveToolsSheet } from './LiveToolsSheet';
 import { TopGifterSeats } from './TopGifterSeats';
 import { MicRequestBanner } from './MicRequestBanner';
+import { LiveDataModal } from './LiveDataModal';
+import { LiveRoomMessengerModal } from './LiveRoomMessengerModal';
+import { BeautyModal } from './BeautyModal';
+import { PKModal } from './PKModal';
+import { PKRankModal } from './PKRankModal';
+import { PKBattleView } from './PKBattleView';
+import { GiftGalleryModal } from './GiftGalleryModal';
+import { AudienceRewardModal } from './AudienceRewardModal';
+import { ShareModal } from './ShareModal';
 import type { LiveRoomProps } from './types';
 
 export const LiveRoom = ({
@@ -69,12 +78,48 @@ export const LiveRoom = ({
   onSelectFilter,
   showFilters,
   onToggleFilters,
+  pkBattle,
+  pendingPkInvite,
+  onAcceptPkInvite,
+  onDeclinePkInvite,
+  onEndPkBattle,
+  onQuitPkBattle,
+  onSendPkGift,
+  onRewardAudienceUser,
 }: LiveRoomProps) => {
   const [showAudience, setShowAudience] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [shared, setShared] = useState(false);
   const { hearts, burst } = useFloatingHearts();
   const { items: reactions, trigger: triggerReaction } = useReactions();
+
+  // Tools & Modals State
+  const [showLiveData, setShowLiveData] = useState(false);
+  const [showMessenger, setShowMessenger] = useState(false);
+  const [showBeauty, setShowBeauty] = useState(false);
+  const [showPKModal, setShowPKModal] = useState(false);
+  const [showPKRank, setShowPKRank] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
+  const [showGiftGallery, setShowGiftGallery] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  // Beauty, Mirror, Noise Reduction State
+  const [smoothness, setSmoothness] = useState(0);
+  const [whitening, setWhitening] = useState(0);
+  const [mirrorOn, setMirrorOn] = useState(false);
+  const [noiseReductionOn, setNoiseReductionOn] = useState(true);
+
+  // Effective Video Filters (Combining color filter preset + smoothness/whitening)
+  const beautyCss = useMemo(() => {
+    if (smoothness === 0 && whitening === 0) return '';
+    const blur = smoothness > 0 ? `blur(${smoothness * 0.03}px)` : '';
+    const brightness = whitening > 0 ? `brightness(${1 + whitening * 0.003}) contrast(${1 - whitening * 0.001})` : '';
+    return [blur, brightness].filter(Boolean).join(' ');
+  }, [smoothness, whitening]);
+
+  const combinedFilterCss = useMemo(() => {
+    return [filterCss, beautyCss].filter(Boolean).join(' ') || undefined;
+  }, [filterCss, beautyCss]);
 
   // Derive viewer list from chat participants (plus host + self).
   const viewers = useMemo<Viewer[]>(() => {
@@ -130,19 +175,26 @@ export const LiveRoom = ({
   };
 
   const handleShare = async () => {
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: stream?.title || 'Live Stream', url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        setShared(true);
-        window.setTimeout(() => setShared(false), 1800);
-      }
-    } catch {
-      /* share dismissed */
-    }
+    setShowShareModal(true);
   };
+
+  // Live session statistics
+  const liveStats = useMemo(() => {
+    const giftMsgs = messages.filter((m) => m.isGift);
+    const totalGifts = giftMsgs.reduce((acc, m) => acc + (m.count || 1), 0);
+    const valuation = giftMsgs.reduce((acc, m) => acc + ((m.gift?.diamondPrice || 10) * (m.count || 1)), 0);
+    const uniqueUsers = new Set(messages.map((m) => m.userId).filter(Boolean));
+    const totalJoined = Math.max(uniqueUsers.size, viewers.length, stream?.viewerCount || 0, 1);
+    const totalLeft = Math.max(0, Math.floor(totalJoined * 0.15));
+
+    return {
+      totalJoined,
+      totalLeft,
+      totalGifts,
+      valuation,
+      peakViewers: Math.max(stream?.viewerCount || 0, viewers.length, 1),
+    };
+  }, [messages, viewers.length, stream?.viewerCount]);
 
   return (
     <motion.div
@@ -182,7 +234,10 @@ export const LiveRoom = ({
       <div
         id="agora-video-area"
         className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_video]:!object-cover [&_div]:!w-full [&_div]:!h-full"
-        style={{ filter: filterCss || undefined }}
+        style={{
+          filter: combinedFilterCss,
+          transform: mirrorOn ? 'scaleX(-1)' : undefined,
+        }}
       />
 
       {/* Ambient gradient wash over the video (full screen only) */}
@@ -449,7 +504,196 @@ export const LiveRoom = ({
         onOpenGift={onOpenGift}
         onShare={handleShare}
         onReport={onReport}
+        onOpenLiveData={() => setShowLiveData(true)}
+        onOpenMessenger={() => setShowMessenger(true)}
+        onOpenBeauty={() => setShowBeauty(true)}
+        onToggleMirror={() => setMirrorOn((m) => !m)}
+        mirrorOn={mirrorOn}
+        onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
+        noiseReductionOn={noiseReductionOn}
+        onOpenPK={() => setShowPKModal(true)}
+        onOpenPKRank={() => setShowPKRank(true)}
+        onOpenRewards={() => setShowRewards(true)}
+        onOpenGiftGallery={() => setShowGiftGallery(true)}
       />
+
+      {/* Live Data Analytics Modal */}
+      <LiveDataModal
+        isOpen={showLiveData}
+        onClose={() => setShowLiveData(false)}
+        stats={{
+          totalJoined: liveStats.totalJoined,
+          totalLeft: liveStats.totalLeft,
+          totalGifts: liveStats.totalGifts,
+          valuation: liveStats.valuation,
+          liveTime: elapsed,
+          peakViewers: liveStats.peakViewers,
+        }}
+      />
+
+      {/* Live Room Audience Messenger Modal */}
+      <LiveRoomMessengerModal
+        isOpen={showMessenger}
+        onClose={() => setShowMessenger(false)}
+        viewers={viewers}
+        streamTitle={streamTitle || stream?.title}
+      />
+
+      {/* Beauty & Filters Controls Modal */}
+      <BeautyModal
+        isOpen={showBeauty}
+        onClose={() => setShowBeauty(false)}
+        smoothness={smoothness}
+        onSmoothnessChange={setSmoothness}
+        whitening={whitening}
+        onWhiteningChange={setWhitening}
+        mirrorOn={mirrorOn}
+        onToggleMirror={() => setMirrorOn((m) => !m)}
+        noiseReductionOn={noiseReductionOn}
+        onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
+      />
+
+      {/* PK Matchmaking Modal */}
+      <PKModal
+        isOpen={showPKModal}
+        onClose={() => setShowPKModal(false)}
+        streamId={stream?._id || ''}
+      />
+
+      {/* Daily PK Ranking Leaderboard Modal */}
+      <PKRankModal
+        isOpen={showPKRank}
+        onClose={() => setShowPKRank(false)}
+        currentUserId={user?._id}
+      />
+
+      {/* Gift Gallery Top 3 Modal */}
+      <GiftGalleryModal
+        isOpen={showGiftGallery}
+        onClose={() => setShowGiftGallery(false)}
+      />
+
+      {/* Audience Reward Modal */}
+      <AudienceRewardModal
+        isOpen={showRewards}
+        onClose={() => setShowRewards(false)}
+        viewers={viewers.filter((v) => v.userId !== user?._id)}
+        balance={balance?.diamonds || 0}
+        onRewardUser={async (targetId, amount, note) => {
+          if (onRewardAudienceUser) {
+            await onRewardAudienceUser(targetId, amount, note);
+          }
+        }}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        streamTitle={streamTitle || stream?.title}
+        hostName={host?.nickname}
+        friends={viewers.filter((v) => v.userId !== user?._id).map((v) => ({
+          userId: v.userId,
+          nickname: v.nickname,
+          avatar: v.avatar,
+        }))}
+      />
+
+      {/* Incoming PK Invitation Banner */}
+      <AnimatePresence>
+        {pendingPkInvite && (
+          <motion.div
+            initial={{ opacity: 0, y: -40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -40, scale: 0.95 }}
+            className="fixed top-16 inset-x-4 z-[80] max-w-md mx-auto p-4 rounded-3xl bg-gradient-to-r from-purple-900/95 via-indigo-900/95 to-pink-900/95 border-2 border-purple-400 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-white"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 rounded-full border-2 border-purple-300 overflow-hidden bg-purple-950 shrink-0">
+                {pendingPkInvite.inviter?.avatar ? (
+                  <img
+                    src={pendingPkInvite.inviter.avatar}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center font-bold text-sm">
+                    {pendingPkInvite.inviter?.nickname?.charAt(0) || 'H'}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-wider text-pink-300 flex items-center gap-1">
+                  <Swords className="w-3.5 h-3.5" /> PK Challenge!
+                </span>
+                <h5 className="text-sm font-extrabold text-white truncate">
+                  {pendingPkInvite.inviter?.nickname || 'A Host'}
+                </h5>
+                <p className="text-[11px] text-white/70">
+                  Duration: {pendingPkInvite.durationMinutes || 3} min
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => onDeclinePkInvite?.(pendingPkInvite.battleId)}
+                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white transition-colors"
+              >
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={() => onAcceptPkInvite?.(pendingPkInvite.battleId)}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-xs font-black text-white shadow-lg shadow-purple-500/40 active:scale-95 transition-all"
+              >
+                Accept
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Active PK Battle Full Screen View (Matching Image 2) */}
+      {pkBattle && (
+        <PKBattleView
+          battleId={pkBattle.battleId}
+          initialDurationSeconds={pkBattle.durationSeconds || (pkBattle.durationMinutes ? pkBattle.durationMinutes * 60 : 180)}
+          leftHost={{
+            userId: pkBattle.hostA?.userId || host?._id || '',
+            nickname: pkBattle.hostA?.nickname || host?.nickname || 'Host A',
+            avatar: pkBattle.hostA?.avatar || host?.avatar,
+            level: pkBattle.hostA?.level || host?.level || 1,
+            score: pkBattle.hostA?.score ?? pkBattle.scoreA ?? 0,
+            viewerCount: stream?.viewerCount,
+          }}
+          rightHost={{
+            userId: pkBattle.hostB?.userId || '',
+            nickname: pkBattle.hostB?.nickname || 'Opponent',
+            avatar: pkBattle.hostB?.avatar,
+            level: pkBattle.hostB?.level || 1,
+            score: pkBattle.hostB?.score ?? pkBattle.scoreB ?? 0,
+            viewerCount: pkBattle.hostB?.viewerCount || 50,
+          }}
+          isHost={isHost}
+          currentUserId={user?._id}
+          messages={messages}
+          onSendMessage={onChatSend}
+          onSendGift={(targetHostId, side) => {
+            if (onSendPkGift) {
+              onSendPkGift(targetHostId, side);
+            } else {
+              onOpenGift();
+            }
+          }}
+          onEndPK={() => onEndPkBattle?.(pkBattle.battleId)}
+          onQuitPK={() => onQuitPkBattle?.(pkBattle.battleId)}
+          onLike={onLike}
+          likeCount={likeCount}
+          recentGifts={pkBattle.recentGifts || []}
+        />
+      )}
 
       <AudienceList
         open={showAudience}

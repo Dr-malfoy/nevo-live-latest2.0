@@ -11,4 +11,5 @@ export const sendGiftSchema = z.object({
   receiverId: z.string().regex(/^[0-9a-fA-F]{24}$/),
   giftId: z.string().regex(/^[0-9a-fA-F]{24}$/),
   quantity: z.number().int().min(1).max(999).default(1),
+  sourceType: z.enum(['live', 'party', 'call', 'other']).default('live').optional(),
 });

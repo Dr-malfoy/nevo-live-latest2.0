@@ -8,9 +8,10 @@ import { Loading } from '../components/ui';
 import { countryName } from '../lib/countries';
 
 const TABS = [
-  { key: 'popular', label: 'Popular' },
-  { key: 'follow', label: 'Follow' },
-  { key: 'newest', label: 'Newest' },
+  { key: 'follow', label: 'Following' },
+  { key: 'explore', label: 'Explore' },
+  { key: 'foryou', label: 'For You' },
+  { key: 'newest', label: 'New' },
 ] as const;
 
 export const Home = () => {
@@ -56,18 +57,19 @@ export const Home = () => {
         <div className="flex items-center gap-[18px] text-[16px] text-ink-muted font-medium transition-all">
           <button 
             onClick={() => handleTabChange('follow')}
-            className={activeTab === 'follow' ? "text-[22px] text-ink font-bold" : ""}
+            className={`cursor-pointer transition-all ${activeTab === 'follow' ? "text-[22px] text-ink font-bold" : "hover:text-ink"}`}
           >Following</button>
           <button 
-            onClick={() => handleTabChange('popular')}
-            className={activeTab === 'popular' ? "text-[22px] text-ink font-bold" : ""}
+            onClick={() => handleTabChange('explore')}
+            className={`cursor-pointer transition-all ${(activeTab === 'explore' || activeTab === 'popular') ? "text-[22px] text-ink font-bold" : "hover:text-ink"}`}
           >Explore</button>
           <button 
-            onClick={() => handleTabChange('popular')}
+            onClick={() => handleTabChange('foryou')}
+            className={`cursor-pointer transition-all ${activeTab === 'foryou' ? "text-[22px] text-ink font-bold" : "hover:text-ink"}`}
           >For You</button>
           <button 
             onClick={() => handleTabChange('newest')}
-            className={activeTab === 'newest' ? "text-[22px] text-ink font-bold" : ""}
+            className={`cursor-pointer transition-all ${activeTab === 'newest' ? "text-[22px] text-ink font-bold" : "hover:text-ink"}`}
           >New</button>
         </div>
         <div className="flex items-center gap-4">

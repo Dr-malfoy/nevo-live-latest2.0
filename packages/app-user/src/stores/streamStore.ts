@@ -3,16 +3,18 @@ import { streamsApi } from '../api';
 import { useCountryStore } from './countryStore';
 import type { LiveStream } from '../types';
 
+export type StreamTab = 'popular' | 'follow' | 'newest' | 'explore' | 'foryou';
+
 interface StreamState {
   streams: LiveStream[];
   currentStream: LiveStream | null;
   asChannel: string | null;
   asToken: string | null;
   isLoading: boolean;
-  activeTab: 'popular' | 'follow' | 'newest';
+  activeTab: StreamTab;
   fetchStreams: (tab?: string, type?: string) => Promise<void>;
   fetchFollowFeed: () => Promise<void>;
-  setActiveTab: (tab: 'popular' | 'follow' | 'newest') => void;
+  setActiveTab: (tab: StreamTab) => void;
   joinStream: (id: string) => Promise<void>;
   leaveStream: (id: string) => Promise<void>;
   setCurrentStream: (stream: LiveStream | null) => void;

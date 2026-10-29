@@ -25,7 +25,8 @@ export type TransactionType =
   | 'fanclub_join'
   | 'highlight'
   | 'creator_reward'
-  | 'ranking_prize';
+  | 'ranking_prize'
+  | 'host_bonus';
 
 export interface ITransactionDocument extends Document {
   txId?: string;
@@ -51,7 +52,7 @@ const TRANSACTION_TYPES: TransactionType[] = [
   'agent_recharge', 'commission', 'transfer', 'transfer_in', 'income_exchange',
   'game_bet', 'game_win', 'daily_reward', 'task_reward', 'signin_reward',
   'activity_reward', 'spin_reward', 'store_purchase', 'call_payment',
-  'call_earning', 'fanclub_join', 'highlight', 'creator_reward', 'ranking_prize',
+  'call_earning', 'fanclub_join', 'highlight', 'creator_reward', 'ranking_prize', 'host_bonus',
 ];
 
 export function getTxPrefix(type: TransactionType | string): 'TRX' | 'TICKET' | 'DEP' | 'WTH' {

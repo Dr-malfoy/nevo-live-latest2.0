@@ -23,6 +23,18 @@ export const referralController = {
     }
   },
 
+  /** POST /api/referral/bind */
+  async bindCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code } = req.body;
+      const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
+      const result = await referralService.bindReferralCode(req.user!.userId, code, deviceId);
+      sendSuccess(res, result, 'Referral code confirmed successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
+
   /** GET /api/referral/rank */
   async getRank(req: Request, res: Response, next: NextFunction) {
     try {

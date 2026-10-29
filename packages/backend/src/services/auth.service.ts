@@ -190,7 +190,7 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithGoogle(idToken: string, deviceId?: string) {
+  async loginWithGoogle(idToken: string, country?: string, deviceId?: string) {
     const decoded = await verifyIdToken(idToken);
     if (!decoded) throw new AppError('Firebase auth unavailable — check FIREBASE_SERVICE_ACCOUNT', 503);
     const googleId = decoded.uid;
@@ -205,17 +205,30 @@ export const authService = {
     }
 
     if (!user) {
+      const cleanCountry = (country || '').trim().toUpperCase();
+      if (!cleanCountry || cleanCountry.length !== 2) {
+        throw new AppError('Please select your country to create an account', 400);
+      }
       const uid = await generateUid();
       user = await User.create({
         uid,
         phone: `google_${googleId}`,
         googleId,
+        email: email || undefined,
         nickname: name,
         avatar,
+        country: cleanCountry,
+        deviceId: deviceId || undefined,
       });
-    } else if (user.avatar && /googleusercontent\.com|ggpht\.com/i.test(user.avatar) && /=[sw]\d+.*$/i.test(user.avatar)) {
-      user.avatar = user.avatar.replace(/=[sw]\d+.*$/i, '=s0');
-      await user.save().catch(() => {});
+    } else {
+      if (!user.country && country && country.trim().length === 2) {
+        user.country = country.trim().toUpperCase();
+        await user.save().catch(() => {});
+      }
+      if (user.avatar && /googleusercontent\.com|ggpht\.com/i.test(user.avatar) && /=[sw]\d+.*$/i.test(user.avatar)) {
+        user.avatar = user.avatar.replace(/=[sw]\d+.*$/i, '=s0');
+        await user.save().catch(() => {});
+      }
     }
 
     if (user.isBanned) throw new AppError('Account is banned', 403);
@@ -234,7 +247,7 @@ export const authService = {
     return { token, user: user.toObject() };
   },
 
-  async loginWithFacebook(idToken?: string, accessToken?: string, deviceId?: string) {
+  async loginWithFacebook(idToken?: string, accessToken?: string, country?: string, deviceId?: string) {
     let facebookId: string = '';
     let email: string = '';
     let name: string = 'Facebook User';
@@ -282,6 +295,10 @@ export const authService = {
     });
 
     if (!user) {
+      const cleanCountry = (country || '').trim().toUpperCase();
+      if (!cleanCountry || cleanCountry.length !== 2) {
+        throw new AppError('Please select your country to create an account', 400);
+      }
       const uid = await generateUid();
       user = await User.create({
         uid,
@@ -290,13 +307,19 @@ export const authService = {
         email: email || undefined,
         nickname: name,
         avatar,
+        country: cleanCountry,
         deviceId: deviceId || undefined,
       });
-    } else if (!user.facebookId) {
-      user.facebookId = facebookId;
+    } else {
+      if (!user.country && country && country.trim().length === 2) {
+        user.country = country.trim().toUpperCase();
+      }
+      if (!user.facebookId) {
+        user.facebookId = facebookId;
+      }
       if (!user.avatar && avatar) user.avatar = avatar;
       if (deviceId && !user.deviceId) user.deviceId = deviceId;
-      await user.save();
+      await user.save().catch(() => {});
     }
 
     if (user.isBanned) throw new AppError('Account is banned', 403);
@@ -412,6 +435,8 @@ export const authService = {
           verificationToken?: string;
           code?: string;
           deviceId?: string;
+          country?: string;
+          countryCode?: string;
         },
     nicknameParam?: string,
     passwordParam?: string,
@@ -562,9 +587,18 @@ export const authService = {
       }
     }
 
-    const userDeviceId = (typeof phoneOrParams === 'object' && phoneOrParams !== null && phoneOrParams.deviceId)
-      ? String(phoneOrParams.deviceId).trim()
+    const paramObj = typeof phoneOrParams === 'object' && phoneOrParams !== null ? (phoneOrParams as any) : null;
+    const userDeviceId = paramObj?.deviceId
+      ? String(paramObj.deviceId).trim()
       : undefined;
+
+    const userCountry = (paramObj?.country || paramObj?.countryCode)
+      ? String(paramObj.country || paramObj.countryCode).trim().toUpperCase()
+      : undefined;
+
+    if (!userCountry || userCountry.length !== 2) {
+      throw new AppError('Please select your country to create an account', 400);
+    }
 
     const uid = await generateUid();
     const data: any = {
@@ -576,6 +610,7 @@ export const authService = {
       nickname: nickname.trim() || fullName.trim() || `User${uid.slice(-4)}`,
       gender: gender || 'unspecified',
       birthday: birthday || undefined,
+      country: userCountry,
       invitedBy: invitedById,
       avatar: '',
       deviceId: userDeviceId,

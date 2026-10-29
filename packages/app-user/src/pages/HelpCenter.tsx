@@ -81,7 +81,7 @@ const FAQ_ITEMS: FAQItem[] = [
     id: 'f6',
     category: 'Account & Security',
     question: 'How do I change my password or set an Asset Password?',
-    answer: 'Go to Profile > Settings > Change Password to update your login password. To secure your wallet transactions and coin transfers, go to Profile > Asset Password to create a 6-digit payment PIN.',
+    answer: 'Go to Profile > Settings > Change Password to update your login password. To secure your wallet transactions and diamond transfers, go to Profile > Asset Password to create a 6-digit payment PIN.',
   },
   {
     id: 'f7',

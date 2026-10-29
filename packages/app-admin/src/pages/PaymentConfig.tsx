@@ -6,7 +6,7 @@ import { PiUploadSimpleBold as Upload, PiTrashBold as Trash, PiCheckCircleFill a
 export const PaymentConfig = () => {
   const [form, setForm] = useState({
     bybitEnabled: true, binanceEnabled: true, bkashEnabled: true, nagadEnabled: true, rocketEnabled: true,
-    diamondRate: 130, coinRate: 1, withdrawalRate: 1, rechargeRate: 130, bonusRate: 0, serviceCharge: 0,
+    diamondRate: 130, dollarRate: 13000, usdBdtRate: 120, coinRate: 1, withdrawalRate: 1, rechargeRate: 130, bonusRate: 0, serviceCharge: 0,
     agentProfitPercent: 5,
   });
   const [customMethods, setCustomMethods] = useState<any[]>([]);
@@ -14,7 +14,7 @@ export const PaymentConfig = () => {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   
-  const [newMethod, setNewMethod] = useState({ key: '', name: '', color: 'text-white', iconUrl: '', enabled: true, feeType: 'percent', fee: 0, arrival: '24 hours' });
+  const [newMethod, setNewMethod] = useState({ key: '', name: '', color: 'text-white', iconUrl: '', enabled: true, isBD: false, country: 'GLOBAL', currency: 'USD', feeType: 'percent', fee: 0, arrival: '24 hours' });
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -31,7 +31,9 @@ export const PaymentConfig = () => {
           bkashEnabled: data.data.bkashEnabled ?? true,
           nagadEnabled: data.data.nagadEnabled ?? true,
           rocketEnabled: data.data.rocketEnabled ?? true,
-          diamondRate: data.data.diamondRate ?? 130,
+          diamondRate: data.data.diamondRate ?? 128,
+          dollarRate: data.data.dollarRate ?? 15600,
+          usdBdtRate: data.data.usdBdtRate ?? 122,
           coinRate: data.data.coinRate || 1,
           withdrawalRate: data.data.withdrawalRate || 1,
           rechargeRate: data.data.rechargeRate ?? 130,
@@ -73,7 +75,7 @@ export const PaymentConfig = () => {
       const { data } = await adminApi.createCustomMethod(newMethod);
       if (data.success) {
         setCustomMethods(prev => [data.data, ...prev]);
-        setNewMethod({ key: '', name: '', color: 'text-white', iconUrl: '', enabled: true, feeType: 'percent', fee: 0, arrival: '24 hours' });
+        setNewMethod({ key: '', name: '', color: 'text-white', iconUrl: '', enabled: true, isBD: false, country: 'GLOBAL', currency: 'USD', feeType: 'percent', fee: 0, arrival: '24 hours' });
       }
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to create custom method');
@@ -87,6 +89,20 @@ export const PaymentConfig = () => {
         setCustomMethods(prev => prev.map(m => m._id === method._id ? data.data : m));
       }
     } catch { alert('Failed to update method'); }
+  };
+
+  const toggleBDMethod = async (method: any) => {
+    try {
+      const newIsBD = !method.isBD;
+      const { data } = await adminApi.updateCustomMethod(method._id, {
+        isBD: newIsBD,
+        country: newIsBD ? 'BD' : 'GLOBAL',
+        currency: newIsBD ? 'BDT' : 'USD',
+      });
+      if (data.success) {
+        setCustomMethods(prev => prev.map(m => m._id === method._id ? data.data : m));
+      }
+    } catch { alert('Failed to update country mode'); }
   };
 
   const deleteCustomMethod = async (id: string) => {
@@ -145,6 +161,27 @@ export const PaymentConfig = () => {
                 {newMethod.iconUrl && <img src={newMethod.iconUrl} alt="icon" className="w-8 h-8 object-contain" />}
               </div>
             </div>
+            <div className="flex items-center justify-between p-3 bg-dark-600 rounded mb-3">
+              <div>
+                <p className="text-xs font-bold text-slate-200">Bangladesh (BD) Method / BDT Currency</p>
+                <p className="text-[11px] text-dark-400">If ON, users pay in BDT (৳). If OFF, users pay in Dollar ($ USD).</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewMethod(prev => ({
+                  ...prev,
+                  isBD: !prev.isBD,
+                  country: !prev.isBD ? 'BD' : 'GLOBAL',
+                  currency: !prev.isBD ? 'BDT' : 'USD',
+                }))}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  newMethod.isBD ? 'bg-emerald-600 text-white' : 'bg-dark-500 text-slate-300'
+                }`}
+              >
+                {newMethod.isBD ? '🇧🇩 BD (BDT)' : '🌐 Global (USD)'}
+              </button>
+            </div>
+
             <button onClick={handleAddCustomMethod} className="w-full py-2 bg-primary-600 text-white rounded text-sm font-bold">Add Payment Method</button>
           </div>
 
@@ -154,7 +191,21 @@ export const PaymentConfig = () => {
                 <div className="flex items-center gap-3">
                   {m.iconUrl ? <img src={m.iconUrl} alt={m.name} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-dark-600 rounded-full" />}
                   <div>
-                    <p className={`font-bold text-sm ${m.color || 'text-white'}`}>{m.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-bold text-sm ${m.color || 'text-white'}`}>{m.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => toggleBDMethod(m)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                          m.isBD
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        }`}
+                        title="Click to toggle BD/Global mode"
+                      >
+                        {m.isBD ? '🇧🇩 BD (BDT)' : '🌐 Global (USD)'}
+                      </button>
+                    </div>
                     <p className="text-xs text-dark-400">Key: {m.key}</p>
                   </div>
                 </div>
@@ -185,8 +236,10 @@ export const PaymentConfig = () => {
 
         {/* Conversion rates */}
         <div>
-          <h3 className="text-sm font-medium text-dark-400 mb-3">Conversion Rates</h3>
-          <RateRow label="1 BDT =" value={form.diamondRate} onChange={(v: number) => setForm({ ...form, diamondRate: v, rechargeRate: v })} suffix={<span className="text-cyan-400">Diamonds (130,000 Diamonds = 1,000 BDT)</span>} />
+          <h3 className="text-sm font-medium text-dark-400 mb-3">Conversion Rates (USD & BDT)</h3>
+          <RateRow label="1 USD =" value={form.dollarRate} onChange={(v: number) => setForm({ ...form, dollarRate: v })} suffix={<span className="text-cyan-400">Diamonds ($9.99 = 156,000 | $0.99 = 15,000)</span>} />
+          <RateRow label="1 USD =" value={form.usdBdtRate} onChange={(v: number) => setForm({ ...form, usdBdtRate: v })} suffix={<span className="text-emerald-400">BDT (১ ডলার = ১২২ টাকা)</span>} />
+          <RateRow label="1 BDT =" value={form.diamondRate} onChange={(v: number) => setForm({ ...form, diamondRate: v, rechargeRate: v })} suffix={<span className="text-cyan-400">Diamonds (৳1,219 BDT = 156,000 Diamonds)</span>} />
           <RateRow label="1 BDT =" value={form.coinRate} onChange={(v: number) => setForm({ ...form, coinRate: v })} suffix={<span className="text-yellow-400">Coins</span>} />
           <RateRow label="Withdrawal 1 unit =" value={form.withdrawalRate} onChange={(v: number) => setForm({ ...form, withdrawalRate: v })} suffix={<span className="text-dark-400">BDT</span>} />
           <RateRow label="Recharge 1 BDT =" value={form.rechargeRate} onChange={(v: number) => setForm({ ...form, rechargeRate: v })} suffix={<span className="text-dark-400">Diamonds</span>} />

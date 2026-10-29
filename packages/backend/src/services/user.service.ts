@@ -15,7 +15,7 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  * the flag, and lastActiveAt for the online dot (requirement #3).
  */
 const CARD_FIELDS =
-  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds callPricePerMinute';
+  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent isDiamondSeller diamondSellerBadge noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds callPricePerMinute';
 
 /** A user counts as online if they were active in the last 5 minutes. */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -373,7 +373,13 @@ export const userService = {
       update.genderUpdatedAt = new Date();
     }
 
-    if (data.country !== undefined) update.country = data.country.toUpperCase();
+    if (data.country !== undefined) {
+      const cleanCountry = data.country.trim().toUpperCase();
+      if (currentUser.country && currentUser.country.trim() && currentUser.country.toUpperCase() !== cleanCountry) {
+        throw new AppError('Country cannot be changed once set.', 400);
+      }
+      update.country = cleanCountry;
+    }
     if (data.birthday !== undefined) update.birthday = data.birthday ? new Date(data.birthday) : null;
     if (data.tags !== undefined) update.tags = data.tags.slice(0, 10);
 

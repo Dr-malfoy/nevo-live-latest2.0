@@ -80,8 +80,11 @@ export const TransactionDetails = () => {
     switch (type) {
       case 'transfer':
       case 'transfer_in':
-        if (isTransferReceived) return 'Coin Transfer Received';
-        return 'Coin Transfer Sent';
+        {
+          const curr = tx?.currency === 'diamond' ? 'Diamond' : 'Coin';
+          if (isTransferReceived) return `${curr} Transfer Received`;
+          return `${curr} Transfer Sent`;
+        }
       case 'recharge':
       case 'agent_recharge':
         return 'Deposit / Top-Up';
@@ -289,11 +292,11 @@ export const TransactionDetails = () => {
             <>
               <div className="py-2.5 flex items-center justify-between">
                 <span className="text-ink-muted">Transfer Fee</span>
-                <span className="font-bold text-emerald-700">0 Coins (Free)</span>
+                <span className="font-bold text-emerald-700">0 {tx.currency === 'diamond' ? 'Diamonds' : 'Coins'} (Free)</span>
               </div>
               <div className="py-2.5 flex items-center justify-between">
                 <span className="text-ink-muted">{isTransferReceived ? 'Net Received' : 'Net Sent'}</span>
-                <span className="font-bold text-ink tabular-nums">{tx.amount.toLocaleString()} Coins</span>
+                <span className="font-bold text-ink tabular-nums">{tx.amount.toLocaleString()} {tx.currency === 'diamond' ? 'Diamonds' : 'Coins'}</span>
               </div>
             </>
           )}

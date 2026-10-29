@@ -37,7 +37,7 @@ import {
   PiArrowsOutSimpleBold as ExpandIcon,
 } from 'react-icons/pi';
 import { useAuthStore, useSocketStore } from '../stores';
-import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge } from '../components/user';
+import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge, SellerBadge } from '../components/user';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { ImageLightboxModal } from '../components/ui';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
@@ -63,7 +63,7 @@ const QUICK_ACTIONS = [
 const getAgentActions = (isAgent: boolean, pendingRequestsCount: number = 0) => [
   { to: '/agency', label: 'Agency', Icon: PiBuildingsFill, tint: 'bg-[#E8F4FF] text-[#2563EB]' },
   { to: isAgent ? '/agent' : '/my-agency', label: 'My Agency', Icon: UserCog, tint: 'bg-[#F3EDFF] text-[#8B5CF6]' },
-  { to: '/transfer', label: 'Coin Transfer', Icon: Coins, tint: 'bg-[#FFF3E0] text-[#F59E0B]' },
+  { to: '/transfer', label: 'Diamond Transfer', Icon: DiamondIcon, tint: 'bg-[#E0F2FE] text-[#0284C7]' },
   ...(isAgent
     ? [
         {
@@ -386,6 +386,9 @@ export const Profile = () => {
                 </span>
                 {user.hostBadge && user.hostBadge !== 'none' && (
                   <HostBadge badge={user.hostBadge} size="sm" />
+                )}
+                {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge) && (
+                  <SellerBadge sellerType="diamond_seller" showLabel={true} />
                 )}
                 {user.equippedBadge && (
                   <EquippedBadge

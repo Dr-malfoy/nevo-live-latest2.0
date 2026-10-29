@@ -4,7 +4,7 @@ import { env } from '../config/env';
 export interface JwtPayload {
   userId: string;
   uid: string;
-  role: 'admin' | 'agent' | 'host' | 'user';
+  role: 'admin' | 'agent' | 'host' | 'user' | 'diamond_seller';
   isAgent: boolean;
   isAdmin: boolean;
 }

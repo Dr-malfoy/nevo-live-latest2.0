@@ -255,6 +255,12 @@ export const Login = () => {
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Google login error:', err);
+      const errMsg = err?.response?.data?.error || err?.response?.data?.message || '';
+      if (errMsg.toLowerCase().includes('country')) {
+        setPendingSocialAuth({ provider: 'Google', idToken: (err as any).idToken });
+        setShowTermsModal(true);
+        return;
+      }
       if (err?.code !== 'auth/popup-closed-by-user') {
         setLocalError(mapFirebaseAuthError(err));
       }
@@ -279,6 +285,12 @@ export const Login = () => {
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Facebook login error:', err);
+      const errMsg = err?.response?.data?.error || err?.response?.data?.message || '';
+      if (errMsg.toLowerCase().includes('country')) {
+        setPendingSocialAuth({ provider: 'Facebook', idToken: (err as any).idToken, accessToken: (err as any).accessToken });
+        setShowTermsModal(true);
+        return;
+      }
       if (err?.code !== 'auth/popup-closed-by-user') {
         setLocalError(mapFirebaseAuthError(err));
       }
@@ -287,19 +299,20 @@ export const Login = () => {
     }
   };
 
-  const handleAcceptTermsAndCompleteLogin = async () => {
+  const handleAcceptTermsAndCompleteLogin = async (selectedModalCountry?: string) => {
     setAgreedToTerms(true);
     setShowTermsModal(false);
 
     if (pendingSocialAuth) {
       setIsActionLoading(true);
       try {
+        const countryToUse = (selectedModalCountry || '').trim().toUpperCase();
         if (pendingSocialAuth.provider === 'Google' && pendingSocialAuth.idToken) {
-          await loginWithGoogle(pendingSocialAuth.idToken);
+          await loginWithGoogle(pendingSocialAuth.idToken, countryToUse || undefined);
           showToast('Signed in with Google!', 'success');
           navigate('/', { replace: true });
         } else if (pendingSocialAuth.provider === 'Facebook') {
-          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken);
+          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken, countryToUse || undefined);
           showToast('Signed in with Facebook!', 'success');
           navigate('/', { replace: true });
         }
@@ -826,6 +839,7 @@ export const Login = () => {
         isOpen={showTermsModal}
         onClose={handleCloseTermsModal}
         onAccept={handleAcceptTermsAndCompleteLogin}
+        requireCountry={true}
         actionText={pendingSocialAuth ? `Accept & Sign In with ${pendingSocialAuth.provider}` : 'Accept Terms'}
       />
     </div>

@@ -66,6 +66,8 @@ export { ReferralRecord, IReferralRecordDocument } from './ReferralRecord';
 // ── Agent analytics (§4.7) ──────────────────────────────────────────
 export { HostApplication, IHostApplicationDocument } from './HostApplication';
 export { OfficialHostApplication, IOfficialHostApplicationDocument, OfficialHostType, OfficialHostApplicationStatus } from './OfficialHostApplication';
+export { HostBonusCycle, IHostBonusCycleDocument, IHostBonusCycleDailyStat } from './HostBonusCycle';
+export { DiamondSellerApplication, IDiamondSellerApplicationDocument, DiamondSellerApplicationStatus } from './DiamondSellerApplication';
 export { HostGroup, IHostGroupDocument } from './HostGroup';
 
 // ── Levels & achievements (§4.6) ────────────────────────────────────

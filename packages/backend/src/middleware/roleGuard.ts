@@ -20,12 +20,12 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction): v
 };
 
 export const requireAgent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  if (req.user?.role === 'agent' || req.user?.isAgent || req.user?.role === 'admin' || req.user?.isAdmin) {
+  if (req.user?.role === 'agent' || req.user?.role === 'diamond_seller' || req.user?.isAgent || req.user?.role === 'admin' || req.user?.isAdmin) {
     return next();
   }
   try {
-    const user = await User.findById(req.user?.userId).select('role isAgent isAdmin agencyId');
-    if (user && (user.role === 'agent' || user.isAgent || user.role === 'admin' || user.isAdmin)) {
+    const user = await User.findById(req.user?.userId).select('role isAgent isAdmin agencyId isDiamondSeller');
+    if (user && (user.role === 'agent' || user.role === 'diamond_seller' || user.isAgent || user.role === 'admin' || user.isAdmin)) {
       if (req.user) {
         req.user.role = user.role;
         req.user.isAgent = user.isAgent;

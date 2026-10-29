@@ -23,6 +23,8 @@ import {
   PiClockFill as Clock,
   PiCheckCircleFill as CheckCircle,
   PiArrowsClockwiseBold as RefreshIcon,
+  PiTicketFill as TicketIcon,
+  PiUserCheckFill as UserCheck,
 } from 'react-icons/pi';
 import { referralApi, type ReferralSummary } from '../api/social.api';
 import { optional } from '../api/pending';
@@ -70,6 +72,8 @@ export const InviteFriends = () => {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [activeTickerIdx, setActiveTickerIdx] = useState(0);
+  const [inputCode, setInputCode] = useState('');
+  const [submittingCode, setSubmittingCode] = useState(false);
 
   const fetchReferralData = async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -190,6 +194,42 @@ export const InviteFriends = () => {
       }
     } finally {
       setClaiming(false);
+    }
+  };
+
+  const handleConfirmInviteCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = inputCode.trim();
+    if (!clean) {
+      showToast('Please enter an invitation code', 'error');
+      return;
+    }
+    if (clean === myId || clean === user?.uid) {
+      showToast('You cannot enter your own referral code', 'error');
+      return;
+    }
+
+    setSubmittingCode(true);
+    try {
+      const res = await referralApi.bindCode(clean);
+      if (res.data?.success) {
+        showToast(
+          `🎉 Referral code confirmed! Linked to ${res.data?.data?.inviter?.nickname || 'inviter'}.`,
+          'success'
+        );
+        setInputCode('');
+        await Promise.all([
+          fetchReferralData(),
+          useAuthStore.getState().fetchProfile().catch(() => {}),
+        ]);
+      } else {
+        showToast(res.data?.error || 'Failed to bind referral code', 'error');
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Invalid or expired referral code';
+      showToast(msg, 'error');
+    } finally {
+      setSubmittingCode(false);
     }
   };
 
@@ -453,6 +493,74 @@ export const InviteFriends = () => {
                 Your friends get credited 13,000 Coins right after registration and completing <strong className="text-white">10 min watch time</strong>!
               </p>
             </div>
+          </div>
+
+          {/* Submit Referral Code Card (Bind Friend's Invite Code) */}
+          <div className="rounded-2xl p-4 bg-gradient-to-r from-[#7A5AF8]/20 via-[#4F2DB8]/25 to-[#FF4D8A]/20 border border-white/15 shadow-xl">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                <TicketIcon className="w-4 h-4 text-[#FFD277]" />
+                Have an Invite Code?
+              </span>
+              <span className="text-[10px] text-white/60 font-semibold">
+                {summary?.inviter ? 'Linked' : 'Enter Friend\'s Code'}
+              </span>
+            </div>
+
+            {summary?.inviter ? (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Avatar src={summary.inviter.avatar} nickname={summary.inviter.nickname} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate flex items-center gap-1">
+                      <span>Invited by {summary.inviter.nickname}</span>
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    </p>
+                    <p className="text-[10px] text-white/60 font-mono">UID: {summary.inviter.uid}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full shrink-0">
+                  Bound ✓
+                </span>
+              </div>
+            ) : (
+              <form onSubmit={handleConfirmInviteCode} className="space-y-2.5">
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Enter your friend&apos;s referral code to confirm and link your account to earn the <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> welcome bonus.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={inputCode}
+                      onChange={(e) => setInputCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                      placeholder="Enter friend's invite code (e.g. 168001)"
+                      disabled={submittingCode}
+                      className="w-full h-11 px-3.5 rounded-xl bg-white/[0.08] border border-white/20 text-white placeholder-white/40 text-xs font-mono tracking-wider focus:outline-none focus:border-[#7A5AF8] focus:ring-1 focus:ring-[#7A5AF8] transition-all"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submittingCode || !inputCode.trim()}
+                    className="h-11 px-5 rounded-xl bg-gradient-to-r from-[#FF6B00] to-[#FF2E7E] hover:opacity-95 active:scale-95 text-white text-xs font-black shadow-md shadow-[#FF2E7E]/20 transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {submittingCode ? (
+                      <>
+                        <Loading size="sm" />
+                        <span>Confirming...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        <span>Confirm</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Referral Validation Logic Card */}

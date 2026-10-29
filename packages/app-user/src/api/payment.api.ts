@@ -47,12 +47,16 @@ export const paymentApi = {
   getAgents: () => client.get('/payment/agents'),
   createOrder: (data: {
     paymentMethod: string;
-    amountBdt: number;
+    amountBdt?: number;
+    amountUsd?: number;
+    amount?: number;
+    currencyMode?: 'USD' | 'BDT';
     screenshot: string;
     transactionId: string;
     currency?: string;
     agentId?: string;
     accountNumber?: string;
+    isOfficial?: boolean;
   }) => client.post('/payment/orders', data),
   getOrders: (params?: any) => client.get('/payment/orders', { params }),
 

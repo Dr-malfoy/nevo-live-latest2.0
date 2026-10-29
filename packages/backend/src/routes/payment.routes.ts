@@ -41,13 +41,13 @@ router.get('/admin-info', async (_req, res, next) => {
 // User — create a purchase order (buy diamonds/coins through an agent)
 router.post('/orders', authenticate, requireNidVerified, async (req, res, next) => {
   try {
-    const { paymentMethod, amountBdt, screenshot, transactionId, currency, agentId, accountNumber, isOfficial } = req.body;
-    if (!paymentMethod || !amountBdt || !screenshot || !transactionId) {
-      sendError(res, 'Missing required fields: paymentMethod, amountBdt, screenshot, transactionId', 400);
+    const { paymentMethod, amountBdt, amountUsd, amount, currencyMode, screenshot, transactionId, currency, agentId, accountNumber, isOfficial } = req.body;
+    if (!paymentMethod || (!amountBdt && !amountUsd && !amount) || !screenshot || !transactionId) {
+      sendError(res, 'Missing required fields: paymentMethod, amount, screenshot, transactionId', 400);
       return;
     }
     const order = await paymentService.createOrder(req.user!.userId, {
-      paymentMethod, amountBdt, screenshot, transactionId,
+      paymentMethod, amountBdt, amountUsd, amount, currencyMode, screenshot, transactionId,
       currency: currency || 'diamond', agentId, accountNumber, isOfficial,
     });
     sendSuccess(res, order, 'Order created', 201);

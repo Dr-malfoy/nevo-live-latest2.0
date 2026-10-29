@@ -9,10 +9,13 @@ import { Schema, model, Document } from 'mongoose';
 export interface IPkBattleDocument extends Document {
   type: 'friend' | 'random' | 'team';
   roomId?: Schema.Types.ObjectId;
+  streamIdA?: Schema.Types.ObjectId;
+  streamIdB?: Schema.Types.ObjectId;
   teamA: Schema.Types.ObjectId[];
   teamB: Schema.Types.ObjectId[];
   scoreA: number;
   scoreB: number;
+  durationSeconds?: number;
   startedAt: Date;
   endsAt: Date;
   status: 'pending' | 'active' | 'ended';
@@ -26,10 +29,13 @@ const pkBattleSchema = new Schema<IPkBattleDocument>(
   {
     type: { type: String, enum: ['friend', 'random', 'team'], required: true },
     roomId: { type: Schema.Types.ObjectId, ref: 'Room', index: true },
+    streamIdA: { type: Schema.Types.ObjectId, ref: 'LiveStream', index: true },
+    streamIdB: { type: Schema.Types.ObjectId, ref: 'LiveStream', index: true },
     teamA: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     teamB: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     scoreA: { type: Number, default: 0 },
     scoreB: { type: Number, default: 0 },
+    durationSeconds: { type: Number, default: 180 },
     startedAt: { type: Date, default: Date.now },
     endsAt: { type: Date, required: true },
     status: {

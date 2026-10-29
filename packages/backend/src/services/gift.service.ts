@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Gift, User, Transaction, PlatformWallet, Agency, LiveStream } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
@@ -20,6 +21,19 @@ export const giftService = {
     /** §4.1 — which surface the gift came from, so income can split live vs party. */
     sourceType: 'live' | 'party' | 'call' | 'other' = 'other'
   ) {
+    const receiverObjId = mongoose.Types.ObjectId.isValid(receiverId) ? new mongoose.Types.ObjectId(receiverId) : receiverId;
+
+    // Auto-detect if receiver is currently live hosting a live stream
+    if (!sourceType || sourceType === 'other') {
+      const activeStream = await LiveStream.findOne({
+        hostId: { $in: [receiverObjId, receiverId] },
+        status: 'live',
+      }).select('_id').lean();
+      if (activeStream) {
+        sourceType = 'live';
+      }
+    }
+
     const gift = await Gift.findById(giftId);
     if (!gift || !gift.isActive) throw new AppError('Gift not found', 404);
 
@@ -107,10 +121,21 @@ export const giftService = {
 
     // 1b. If gift is sent in a live stream, increment live stream earnings
     if (sourceType === 'live') {
-      LiveStream.updateOne(
-        { hostId: receiverId, status: 'live' },
-        { $inc: { earningsCoins: hostCoins } }
-      ).catch((err) => console.warn('Failed to update live stream earningsCoins:', err));
+      LiveStream.findOneAndUpdate(
+        { hostId: { $in: [receiverObjId, receiverId] }, status: 'live' },
+        { $inc: { earningsCoins: hostCoins } },
+        { new: true, sort: { startedAt: -1 } }
+      ).then(async (updated) => {
+        if (!updated) {
+          const recentStream = await LiveStream.findOne({
+            hostId: { $in: [receiverObjId, receiverId] },
+          }).sort({ startedAt: -1 });
+          if (recentStream && Date.now() - new Date(recentStream.startedAt).getTime() < 86400000) {
+            recentStream.earningsCoins = (recentStream.earningsCoins || 0) + hostCoins;
+            await recentStream.save();
+          }
+        }
+      }).catch((err) => console.warn('Failed to update live stream earningsCoins:', err));
     }
 
     // 2. Agency's coin share flows directly into the Agent's account

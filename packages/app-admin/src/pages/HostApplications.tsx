@@ -27,6 +27,8 @@ import { DataTable } from '../components/DataTable';
 import { getMediaUrl } from '../lib/media';
 
 export const HostApplications = () => {
+  const [activeMainTab, setActiveMainTab] = useState<'applications' | 'bonuses'>('applications');
+
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -35,6 +37,16 @@ export const HostApplications = () => {
   const [hostTypeFilter, setHostTypeFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
+
+  // Host 7-Day Performance Bonuses states
+  const [bonuses, setBonuses] = useState<any[]>([]);
+  const [bonusesLoading, setBonusesLoading] = useState(false);
+  const [bonusPage, setBonusPage] = useState(1);
+  const [bonusTotalPages, setBonusTotalPages] = useState(1);
+  const [bonusHostTypeFilter, setBonusHostTypeFilter] = useState('all');
+  const [bonusStatusFilter, setBonusStatusFilter] = useState('all');
+  const [bonusSearch, setBonusSearch] = useState('');
+  const [settlingCycleId, setSettlingCycleId] = useState<string | null>(null);
 
   // Detail Modal & History states
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
@@ -70,6 +82,32 @@ export const HostApplications = () => {
     }
   };
 
+  const loadBonuses = async (
+    p = bonusPage,
+    hostType = bonusHostTypeFilter,
+    status = bonusStatusFilter,
+    q = bonusSearch
+  ) => {
+    setBonusesLoading(true);
+    try {
+      const { data } = await adminApi.getHostBonuses({
+        page: p,
+        limit: 15,
+        hostType: hostType !== 'all' ? hostType : undefined,
+        status: status !== 'all' ? status : undefined,
+        search: q.trim() || undefined,
+      });
+      if (data.success) {
+        setBonuses(data.data || []);
+        setBonusTotalPages(data.pagination?.totalPages || 1);
+      }
+    } catch (err) {
+      console.error('Failed to load host bonuses', err);
+    } finally {
+      setBonusesLoading(false);
+    }
+  };
+
   const loadPendingCount = async () => {
     try {
       const { data } = await adminApi.getHostApplications({ status: 'pending', limit: 1 });
@@ -83,6 +121,34 @@ export const HostApplications = () => {
     load(page, statusFilter, hostTypeFilter, search);
     loadPendingCount();
   }, [page, statusFilter, hostTypeFilter]);
+
+  useEffect(() => {
+    if (activeMainTab === 'bonuses') {
+      loadBonuses(bonusPage, bonusHostTypeFilter, bonusStatusFilter, bonusSearch);
+    }
+  }, [activeMainTab, bonusPage, bonusHostTypeFilter, bonusStatusFilter]);
+
+  const handleBonusSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBonusPage(1);
+    loadBonuses(1, bonusHostTypeFilter, bonusStatusFilter, bonusSearch);
+  };
+
+  const handleForceSettle = async (cycleId: string) => {
+    setSettlingCycleId(cycleId);
+    try {
+      const { data } = await adminApi.settleHostBonus(cycleId);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: 'Cycle evaluated and settled successfully!' });
+        loadBonuses(bonusPage, bonusHostTypeFilter, bonusStatusFilter, bonusSearch);
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.response?.data?.error || 'Failed to settle cycle' });
+    } finally {
+      setSettlingCycleId(null);
+      setTimeout(() => setToastMsg(null), 4000);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,6 +324,176 @@ export const HostApplications = () => {
     },
   ];
 
+  const bonusColumns = [
+    {
+      key: 'host',
+      label: 'Host',
+      render: (c: any) => (
+        <div className="flex items-center gap-3">
+          <img
+            src={
+              getMediaUrl(c.userId?.avatar) ||
+              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'
+            }
+            alt=""
+            className="w-10 h-10 rounded-full object-cover border border-dark-700 bg-dark-800 shrink-0"
+          />
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-bold text-white text-sm">{c.userId?.nickname || 'Unknown'}</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-dark-800 text-dark-300 font-mono">
+                UID: {c.userId?.uid || '—'}
+              </span>
+            </div>
+            <div className="mt-1">
+              {c.hostType === 'alpha' ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-[10px] font-bold">
+                  <Crown className="w-3 h-3" /> Alpha Host (Male ♂️)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-pink-500/20 text-pink-400 text-[10px] font-bold">
+                  <Sparkles className="w-3 h-3" /> Aurora Host (Female ♀️)
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'cycle',
+      label: '7-Day Cycle',
+      render: (c: any) => {
+        const end = new Date(c.endDate);
+        const daysLeft = Math.max(0, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+        return (
+          <div className="space-y-1 text-xs">
+            <div className="font-bold text-white flex items-center gap-1.5">
+              <span>Cycle #{c.cycleNumber}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-extrabold ${
+                  c.status === 'awarded'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : c.status === 'missed'
+                    ? 'bg-dark-800 text-dark-400'
+                    : 'bg-cyan-500/20 text-cyan-400'
+                }`}
+              >
+                {c.status}
+              </span>
+            </div>
+            <p className="text-dark-400 text-[11px]">
+              {new Date(c.startDate).toLocaleDateString()} – {end.toLocaleDateString()}
+            </p>
+            {c.status === 'active' && (
+              <p className="text-cyan-400 text-[10px] font-semibold">
+                ⏳ {daysLeft} days remaining
+              </p>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'liveHours',
+      label: 'Live Hours (7-Day Capped)',
+      render: (c: any) => {
+        const percent = Math.min(
+          100,
+          Math.round(((c.totalEligibleLiveHours || 0) / c.targetLiveHours) * 100)
+        );
+        return (
+          <div className="space-y-1.5 min-w-[150px]">
+            <div className="flex items-center justify-between text-xs">
+              <span
+                className={`font-bold tabular-nums ${
+                  c.meetsLiveHours ? 'text-emerald-400' : 'text-white'
+                }`}
+              >
+                {c.totalEligibleLiveHours || 0} / {c.targetLiveHours} hrs
+              </span>
+              <span className="text-[10px] text-dark-400">{percent}%</span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-dark-800 overflow-hidden">
+              <div
+                className={`h-full ${c.meetsLiveHours ? 'bg-emerald-500' : 'bg-primary-500'}`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-dark-400">
+              Daily cap: {c.minDailyHours}h – {c.maxDailyHours}h/day
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'gifts',
+      label: 'Gift Coins',
+      render: (c: any) => {
+        const percent = Math.min(
+          100,
+          Math.round(((c.currentGiftCoins || 0) / c.targetGiftCoins) * 100)
+        );
+        return (
+          <div className="space-y-1.5 min-w-[140px]">
+            <div className="flex items-center justify-between text-xs">
+              <span
+                className={`font-bold tabular-nums ${
+                  c.meetsGiftCoins ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {(c.currentGiftCoins || 0).toLocaleString()} / {c.targetGiftCoins?.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-dark-400">{percent}%</span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-dark-800 overflow-hidden">
+              <div
+                className={`h-full ${c.meetsGiftCoins ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'bonus',
+      label: 'Weekly Reward',
+      render: (c: any) => (
+        <div className="text-xs">
+          <div className="font-extrabold text-cyan-400 flex items-center gap-1">
+            <span>+{c.bonusDiamonds?.toLocaleString()} 💎</span>
+          </div>
+          {c.bonusAwarded ? (
+            <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-bold mt-0.5">
+              <Check className="w-3 h-3" /> Auto-Credited
+            </span>
+          ) : c.isEligibleForBonus ? (
+            <span className="text-[10px] text-amber-400 flex items-center gap-1 font-bold mt-0.5 animate-pulse">
+              <Sparkles className="w-3 h-3" /> Targets Complete
+            </span>
+          ) : (
+            <span className="text-[10px] text-dark-400 mt-0.5 block">Pending criteria</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Action',
+      render: (c: any) => (
+        <button
+          onClick={() => handleForceSettle(c._id)}
+          disabled={settlingCycleId === c._id}
+          className="px-3 py-1.5 rounded-lg bg-dark-800 hover:bg-dark-700 text-xs font-bold text-white border border-dark-700 transition-all active:scale-95 disabled:opacity-50"
+        >
+          {settlingCycleId === c._id ? 'Settling...' : 'Recalculate / Settle'}
+        </button>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Toast */}
@@ -278,22 +514,26 @@ export const HostApplications = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-white">Host Applications</h1>
+            <h1 className="text-2xl font-bold text-white">Host Portal & Performance Bonuses</h1>
             {pendingCount > 0 && (
               <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-dark-950 text-xs font-black animate-pulse">
-                {pendingCount} Pending
+                {pendingCount} Pending Applications
               </span>
             )}
           </div>
           <p className="text-sm text-dark-400 mt-1">
-            Review applicant qualifications, streaming watch time history, and approve Alpha / Aurora Host badges.
+            Review host applications, verify streaming metrics, and monitor automated 7-day performance bonuses (Alpha: 200k 💎, Aurora: 300k 💎).
           </p>
         </div>
 
         <button
           onClick={() => {
-            load();
-            loadPendingCount();
+            if (activeMainTab === 'applications') {
+              load();
+              loadPendingCount();
+            } else {
+              loadBonuses();
+            }
           }}
           className="px-3.5 py-2 rounded-lg bg-dark-800 hover:bg-dark-700 text-white text-xs font-semibold inline-flex items-center gap-2 border border-dark-700 transition-colors"
         >
@@ -302,77 +542,217 @@ export const HostApplications = () => {
         </button>
       </div>
 
-      {/* Filter Tabs & Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-dark-900/60 p-3 rounded-xl border border-dark-800">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          {[
-            { key: 'all', label: 'All Applications' },
-            { key: 'pending', label: 'Pending' },
-            { key: 'approved', label: 'Approved' },
-            { key: 'rejected', label: 'Rejected' },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => {
-                setStatusFilter(key);
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
-                statusFilter === key
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+      {/* Main Tabs (Applications vs 7-Day Bonuses) */}
+      <div className="flex items-center gap-2 border-b border-dark-800 pb-2">
+        <button
+          onClick={() => setActiveMainTab('applications')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeMainTab === 'applications'
+              ? 'bg-primary-600 text-white shadow-md'
+              : 'bg-dark-900 text-dark-400 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Crown className="w-4 h-4 text-amber-400" />
+          <span>Host Applications</span>
+          {pendingCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-dark-950 text-[10px] font-black">
+              {pendingCount}
+            </span>
+          )}
+        </button>
 
-          <div className="w-px h-6 bg-dark-700 mx-1 shrink-0" />
-
-          {/* Type filter */}
-          <select
-            value={hostTypeFilter}
-            onChange={(e) => {
-              setHostTypeFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-8 px-2.5 rounded-lg bg-dark-800 text-dark-200 border border-dark-700 text-xs font-medium focus:outline-none"
-          >
-            <option value="all">All Host Types</option>
-            <option value="alpha">Alpha Host (Male ♂️)</option>
-            <option value="aurora">Aurora Host (Female ♀️)</option>
-          </select>
-        </div>
-
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search UID, Name, Phone..."
-              className="w-56 h-8 pl-9 pr-3 rounded-lg bg-dark-800 text-white border border-dark-700 text-xs focus:outline-none focus:border-primary-500"
-            />
-          </div>
-          <button
-            type="submit"
-            className="h-8 px-3 rounded-lg bg-dark-800 hover:bg-dark-700 text-white text-xs font-semibold border border-dark-700"
-          >
-            Filter
-          </button>
-        </form>
+        <button
+          onClick={() => setActiveMainTab('bonuses')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeMainTab === 'bonuses'
+              ? 'bg-primary-600 text-white shadow-md'
+              : 'bg-dark-900 text-dark-400 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-cyan-400" />
+          <span>7-Day Host Weekly Bonuses</span>
+        </button>
       </div>
 
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        data={applications}
-        loading={loading}
-        page={page}
-        totalPages={totalPages}
-        onPageChange={setPage}
-      />
+      {/* ────────────────── APPLICATIONS TAB ────────────────── */}
+      {activeMainTab === 'applications' && (
+        <div className="space-y-4">
+          {/* Filter Tabs & Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-dark-900/60 p-3 rounded-xl border border-dark-800">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              {[
+                { key: 'all', label: 'All Applications' },
+                { key: 'pending', label: 'Pending' },
+                { key: 'approved', label: 'Approved' },
+                { key: 'rejected', label: 'Rejected' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setStatusFilter(key);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                    statusFilter === key
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+
+              <div className="w-px h-6 bg-dark-700 mx-1 shrink-0" />
+
+              {/* Type filter */}
+              <select
+                value={hostTypeFilter}
+                onChange={(e) => {
+                  setHostTypeFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="h-8 px-2.5 rounded-lg bg-dark-800 text-dark-200 border border-dark-700 text-xs font-medium focus:outline-none"
+              >
+                <option value="all">All Host Types</option>
+                <option value="alpha">Alpha Host (Male ♂️)</option>
+                <option value="aurora">Aurora Host (Female ♀️)</option>
+              </select>
+            </div>
+
+            <form onSubmit={handleSearch} className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search UID, Name, Phone..."
+                  className="w-56 h-8 pl-9 pr-3 rounded-lg bg-dark-800 text-white border border-dark-700 text-xs focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <button
+                type="submit"
+                className="h-8 px-3 rounded-lg bg-dark-800 hover:bg-dark-700 text-white text-xs font-semibold border border-dark-700"
+              >
+                Filter
+              </button>
+            </form>
+          </div>
+
+          {/* Table */}
+          <DataTable
+            columns={columns}
+            data={applications}
+            loading={loading}
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
+
+      {/* ────────────────── BONUSES TAB ────────────────── */}
+      {activeMainTab === 'bonuses' && (
+        <div className="space-y-4">
+          {/* Rules Banner */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-800/40 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-blue-300">
+                <Crown className="w-4 h-4" /> Alpha Host Bonus Rules (Male ♂️)
+              </div>
+              <p className="text-dark-300">
+                • <strong>7-Day Duration</strong>: Refreshes every 7 days.<br />
+                • <strong>Live Hours</strong>: 15H in 7 days (Daily: Min 2H to count, Max 4H cap).<br />
+                • <strong>Gift Coins</strong>: 400,000 Coins in 7 days.<br />
+                • <strong>Reward</strong>: <span className="text-cyan-300 font-extrabold">200,000 Diamonds</span> automatically credited.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800/40 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-rose-300">
+                <Sparkles className="w-4 h-4" /> Aurora Host Bonus Rules (Female ♀️)
+              </div>
+              <p className="text-dark-300">
+                • <strong>7-Day Duration</strong>: Refreshes every 7 days.<br />
+                • <strong>Live Hours</strong>: 20H in 7 days (Daily: Min 3H to count, Max 5H cap).<br />
+                • <strong>Gift Coins</strong>: 500,000 Coins in 7 days.<br />
+                • <strong>Reward</strong>: <span className="text-cyan-300 font-extrabold">300,000 Diamonds</span> automatically credited.
+              </p>
+            </div>
+          </div>
+
+          {/* Filters & Search for Bonuses */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-dark-900/60 p-3 rounded-xl border border-dark-800">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              {[
+                { key: 'all', label: 'All Statuses' },
+                { key: 'active', label: 'Active Cycles' },
+                { key: 'awarded', label: 'Awarded' },
+                { key: 'missed', label: 'Missed' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setBonusStatusFilter(key);
+                    setBonusPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                    bonusStatusFilter === key
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+
+              <div className="w-px h-6 bg-dark-700 mx-1 shrink-0" />
+
+              <select
+                value={bonusHostTypeFilter}
+                onChange={(e) => {
+                  setBonusHostTypeFilter(e.target.value);
+                  setBonusPage(1);
+                }}
+                className="h-8 px-2.5 rounded-lg bg-dark-800 text-dark-200 border border-dark-700 text-xs font-medium focus:outline-none"
+              >
+                <option value="all">All Host Types</option>
+                <option value="alpha">Alpha Host (Male ♂️)</option>
+                <option value="aurora">Aurora Host (Female ♀️)</option>
+              </select>
+            </div>
+
+            <form onSubmit={handleBonusSearch} className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
+                <input
+                  type="text"
+                  value={bonusSearch}
+                  onChange={(e) => setBonusSearch(e.target.value)}
+                  placeholder="Search Nickname or UID..."
+                  className="w-56 h-8 pl-9 pr-3 rounded-lg bg-dark-800 text-white border border-dark-700 text-xs focus:outline-none focus:border-primary-500"
+                />
+              </div>
+              <button
+                type="submit"
+                className="h-8 px-3 rounded-lg bg-dark-800 hover:bg-dark-700 text-white text-xs font-semibold border border-dark-700"
+              >
+                Filter
+              </button>
+            </form>
+          </div>
+
+          {/* Bonuses Table */}
+          <DataTable
+            columns={bonusColumns}
+            data={bonuses}
+            loading={bonusesLoading}
+            page={bonusPage}
+            totalPages={bonusTotalPages}
+            onPageChange={setBonusPage}
+          />
+        </div>
+      )}
 
       {/* Full History & Details Modal */}
       {selectedAppId && (

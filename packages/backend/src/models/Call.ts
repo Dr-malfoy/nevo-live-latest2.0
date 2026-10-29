@@ -20,9 +20,11 @@ export interface ICallDocument extends Document {
   /** 1:1 Subscription benefit: first minute is free */
   isFreeMinuteApplied?: boolean;
   freeMinuteUsed?: boolean;
-  /** 60% of totalCoins credited to host. */
+  /** 70% of totalDiamonds (1 diamond = 1 coin) credited to host in coins. */
   hostEarning: number;
-  /** 40% of totalCoins credited to company. */
+  /** Agency share credited in coins (4% - 20% level-wise). */
+  agencyCommission?: number;
+  /** Admin share credited to platform in coins (10% - 26%). */
   companyCommission: number;
   /**
    * Set to true once the final settlement has been written so that retries
@@ -56,6 +58,7 @@ const callSchema = new Schema<ICallDocument>(
     isFreeMinuteApplied: { type: Boolean, default: false },
     freeMinuteUsed: { type: Boolean, default: false },
     hostEarning: { type: Number, default: 0 },
+    agencyCommission: { type: Number, default: 0 },
     companyCommission: { type: Number, default: 0 },
     finalized: { type: Boolean, default: false, index: true },
     recordedInChat: { type: Boolean, default: false, index: true },

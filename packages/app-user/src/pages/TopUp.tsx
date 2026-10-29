@@ -1,137 +1,91 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PiCaretLeftBold as ArrowLeft, PiCheckBold as Check, PiCaretDownBold as ChevronDown, PiCaretUpBold as ChevronUp, PiCopyFill as Copy, PiShieldWarningFill as ShieldAlert } from 'react-icons/pi';
-import { paymentApi, type CryptoNetwork, type CryptoOption, type RecentRecharge } from '../api/payment.api';
+import {
+  PiCaretLeftBold as ArrowLeft,
+  PiShieldWarningFill as ShieldAlert,
+  PiCaretRightBold as ChevronRight,
+  PiShieldCheckFill as ShieldCheck,
+  PiSparkleFill as SparkleIcon,
+  PiWalletFill as WalletIcon,
+  PiArrowsClockwiseBold as RefreshIcon,
+} from 'react-icons/pi';
+import { IoDiamond } from 'react-icons/io5';
 import { usersApi } from '../api';
-import { optional } from '../api/pending';
-import { useAuthStore, useUIStore } from '../stores';
+import { useAuthStore } from '../stores';
 import { Loading } from '../components/ui';
 import { DiamondIcon } from '../components/ui/CurrencyIcon';
 import { countryName, flagEmoji } from '../lib/countries';
-import { timeAgo } from '../lib/time';
-
-/**
- * Top-Up Diamonds (Crypto & Agency Recharge).
- *
- * All purchases / recharges buy Diamonds (💎). Diamonds are used to play games and buy items.
- * All earned rewards are counted in Coins (🪙).
- */
+import { SellerBadge } from '../components/user/SellerBadge';
 
 const TABS = [
-  { key: 'recharge', label: 'Recharge' },
-  { key: 'gpay', label: 'Google Pay' },
-  { key: 'c2c', label: 'Agency (c2c)' },
+  { key: 'c2c', label: 'Diamond Sellers (c2c)' },
+  { key: 'seller_apply', label: '💎 Apply Diamond Seller' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
-
-const FALLBACK_OPTIONS: CryptoOption[] = [
-  {
-    currency: 'USDT',
-    ratio: 9900,
-    networks: [
-      { code: 'BEP20', name: 'BNB Smart Chain (BEP20)', walletAddress: '', minAmount: 1 },
-      { code: 'TRC20', name: 'TRON (TRC20)', walletAddress: '', minAmount: 1 },
-      { code: 'ERC20', name: 'Ethereum (ERC20)', walletAddress: '', minAmount: 10 },
-    ],
-  },
-  {
-    currency: 'USDC',
-    ratio: 9900,
-    networks: [
-      { code: 'BEP20', name: 'BNB Smart Chain (BEP20)', walletAddress: '', minAmount: 1 },
-      { code: 'TRC20', name: 'TRON (TRC20)', walletAddress: '', minAmount: 1 },
-    ],
-  },
-];
-
-const NETWORK_TINT: Record<string, string> = {
-  BEP20: 'bg-[#F3BA2F] text-[#181A20]',
-  TRC20: 'bg-[#EB0029] text-white',
-  ERC20: 'bg-[#627EEA] text-white',
-};
 
 export const TopUp = () => {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
-  const showToast = useUIStore((s) => s.showToast);
 
-  const [tab, setTab] = useState<TabKey>('recharge');
-  const [options, setOptions] = useState<CryptoOption[]>([]);
-  const [live, setLive] = useState(false);
+  const [tab, setTab] = useState<TabKey>('c2c');
   const [loading, setLoading] = useState(true);
-  const [ticker, setTicker] = useState<RecentRecharge[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [currency, setCurrency] = useState('USDT');
-  const [networkOpen, setNetworkOpen] = useState(false);
-  const [network, setNetwork] = useState<CryptoNetwork | null>(null);
-  const [amount, setAmount] = useState('');
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    usersApi
-      .getProfile()
-      .then(({ data }) => {
-        if (!cancelled && data.success && data.data) updateUser(data.data);
-      })
-      .catch(() => {});
-
-    Promise.all([
-      optional(paymentApi.getCryptoOptions()).catch(() => null),
-      optional(paymentApi.getRecentRecharges()).catch(() => null),
-    ]).then(([opts, recent]) => {
-      if (cancelled) return;
-      if (opts?.success && opts.data?.length) {
-        setOptions(opts.data);
-        setLive(true);
-      } else {
-        setOptions(FALLBACK_OPTIONS);
-        setLive(false);
-      }
-      setTicker(recent?.data || []);
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const selected = useMemo(
-    () => options.find((o) => o.currency === currency) ?? options[0],
-    [options, currency]
-  );
-
-  useEffect(() => {
-    setNetwork(null);
-    setNetworkOpen(false);
-  }, [currency]);
-
-  const diamonds = selected ? Math.floor((parseFloat(amount) || 0) * selected.ratio) : 0;
-
-  const copyAddress = async () => {
-    if (!network?.walletAddress) return;
+  const fetchProfile = async () => {
     try {
-      await navigator.clipboard.writeText(network.walletAddress);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard unavailable */
-    }
+      const { data } = await usersApi.getProfile();
+      if (data.success && data.data) {
+        updateUser(data.data);
+      }
+    } catch {}
   };
 
+  useEffect(() => {
+    fetchProfile().finally(() => setLoading(false));
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchProfile();
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
+  const currentDiamonds = user?.diamonds ?? 0;
+  const REQUIRED_DIAMONDS = 5000000;
+  const isEligible = currentDiamonds >= REQUIRED_DIAMONDS;
+  const isDiamondSeller =
+    user?.sellerType === 'diamond_seller' ||
+    (user as any)?.isDiamondSeller ||
+    user?.role === 'diamond_seller';
+  const progressPercent = Math.min(100, Math.round((currentDiamonds / REQUIRED_DIAMONDS) * 100));
+
   return (
-    <div className="min-h-screen bg-surface-soft pb-10">
-      <header className="sticky top-0 z-20 bg-white border-b border-line">
+    <div className="min-h-screen bg-[#F8FAFC] pb-12 font-sans select-none">
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200">
         <div className="flex items-center gap-3 px-4 h-14">
-          <button onClick={() => navigate(-1)} aria-label="Back" className="p-1 -ml-1 text-ink">
-            <ArrowLeft className="w-6 h-6" />
+          <button
+            onClick={() => navigate(-1)}
+            aria-label="Back"
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-base font-bold text-ink flex-1">Top-Up Diamonds</h1>
-          <span className="h-8 px-3 rounded-full bg-surface-sunken text-sm text-ink-soft flex items-center gap-1">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-extrabold text-slate-900 leading-tight">Top-Up Diamonds</h1>
+            <p className="text-[11px] font-medium text-slate-500">Official Merchant & Seller Gateway</p>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all active:scale-95"
+            title="Refresh balance"
+          >
+            <RefreshIcon className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <span className="h-8 px-3 rounded-full bg-slate-100 text-xs font-semibold text-slate-700 flex items-center gap-1 shrink-0">
             {flagEmoji(user?.country || 'BD')} {countryName(user?.country || 'BD')}
           </span>
         </div>
@@ -140,240 +94,182 @@ export const TopUp = () => {
       {loading ? (
         <Loading className="pt-24" size="lg" />
       ) : (
-        <>
-          {/* Balance card */}
-          <div className="m-3 rounded-card p-4 bg-[#E8F4FF] border border-cyan-200/50 shadow-sm">
+        <div className="max-w-md mx-auto p-4 space-y-4">
+          {/* ── Balance Card ─────────────────────────────────────────── */}
+          <div className="relative overflow-hidden rounded-3xl p-5 bg-gradient-to-br from-cyan-50 via-sky-50 to-indigo-50 border border-cyan-200/80 shadow-xs">
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <DiamondIcon className="w-6 h-6 text-cyan-500" />
-                  <p className="text-[30px] leading-tight font-extrabold text-ink tabular-nums">
-                    {(user?.diamonds ?? 0).toLocaleString()}
+                  <div className="w-9 h-9 rounded-xl bg-white border border-cyan-200 flex items-center justify-center shadow-2xs">
+                    <DiamondIcon className="w-5 h-5 text-cyan-500" />
+                  </div>
+                  <p className="text-[28px] leading-tight font-black text-slate-900 tabular-nums">
+                    {currentDiamonds.toLocaleString()}
                   </p>
                 </div>
-                <p className="text-xs text-ink-muted mt-1 font-medium">Remaining Diamonds</p>
+                <p className="text-xs text-slate-500 mt-1 font-semibold">Current Diamonds Balance</p>
               </div>
               <button
                 onClick={() => navigate('/wallet')}
-                className="h-8 px-3.5 rounded-full bg-white text-sm font-semibold text-ink shadow-card active:scale-95 transition-transform"
+                className="h-8 px-3.5 rounded-full bg-white hover:bg-slate-50 text-xs font-bold text-slate-800 shadow-sm border border-slate-200 active:scale-95 transition-all"
               >
-                Diamond Details
+                Wallet →
               </button>
             </div>
-
-            {ticker.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-black/5 overflow-hidden">
-                <p className="text-xs text-cyan-800 truncate">
-                  {ticker[0].maskedUid} · {timeAgo(ticker[0].at)} · ${ticker[0].amountUsd.toFixed(2)} recharged
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Official safety notice */}
-          <div className="mx-3 rounded-card bg-[#1B2B5B] px-4 py-3 flex items-start gap-2.5 shadow-sm">
-            <ShieldAlert className="w-5 h-5 text-[#F5C518] shrink-0 mt-0.5" />
-            <p className="text-[13px] text-white leading-snug">
-              <span className="text-[#F5C518] font-semibold">Official Notice</span> — Beware of scams. Only send funds to the official wallet address displayed on this page or through certified agents in the c2c section.
+          {/* ── Official Safety Notice ───────────────────────────────── */}
+          <div className="rounded-2xl bg-slate-900 px-4 py-3 flex items-start gap-2.5 shadow-sm text-white">
+            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-200 leading-snug">
+              <span className="text-amber-400 font-bold">Official Security Notice</span> — Only buy diamonds through verified Diamond Sellers displayed on the platform. All certified sellers hold official badges.
             </p>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-6 px-4 pt-4">
+          {/* ── Tabs / Shortcuts Selector ────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-2 bg-slate-200/70 p-1 rounded-2xl">
             {TABS.map(({ key, label }) => {
               const active = tab === key;
               return (
                 <button
                   key={key}
-                  onClick={() => (key === 'c2c' ? navigate('/recharge') : setTab(key))}
-                  className={`relative pb-2 text-[15px] transition-colors ${
-                    active ? 'text-ink font-bold' : 'text-ink-faint font-medium'
+                  onClick={() => {
+                    setTab(key);
+                    if (key === 'c2c') {
+                      navigate('/recharge');
+                    } else if (key === 'seller_apply') {
+                      navigate('/diamond-seller-apply');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    active
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {label}
-                  {active && (
-                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-full bg-cyan-600" />
-                  )}
+                  <span>{label}</span>
                 </button>
               );
             })}
           </div>
 
-          {tab === 'gpay' ? (
-            <p className="text-center text-sm text-ink-muted py-16 px-8">
-              Google Pay diamond top-up is being enabled for your region soon. Please use Crypto or Agency (c2c) recharge.
-            </p>
-          ) : (
-            <div className="px-3 pt-3 space-y-3">
-              {/* Payment method */}
-              <div className="bg-white rounded-card p-4 shadow-sm">
-                <h2 className="font-bold text-ink mb-3">Payment method</h2>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {options.map((option) => {
-                    const active = option.currency === currency;
-                    return (
-                      <button
-                        key={option.currency}
-                        onClick={() => setCurrency(option.currency)}
-                        className={`h-14 rounded-xl border-2 flex items-center gap-2.5 px-3 transition-colors ${
-                          active ? 'border-cyan-500 bg-cyan-50/50' : 'border-line bg-white'
-                        }`}
-                      >
-                        <span
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                            option.currency === 'USDT'
-                              ? 'bg-[#26A17B] text-white'
-                              : 'bg-[#2775CA] text-white'
-                          }`}
-                        >
-                          {option.currency === 'USDT' ? 'T' : '$'}
+          {/* ── Shortcut Card 1: Diamond Seller Apply Page (Highlighted) ── */}
+          <div
+            onClick={() => navigate('/diamond-seller-apply')}
+            className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-cyan-950 to-slate-900 p-5 text-white border border-cyan-500/40 shadow-lg cursor-pointer hover:border-cyan-400 active:scale-[0.99] transition-all group"
+          >
+            <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-cyan-500/20 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform" />
+
+            <div className="relative z-10 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-inner shrink-0">
+                    <IoDiamond className="w-6 h-6 text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h2 className="text-base font-black text-white">Diamond Seller Application</h2>
+                      {isDiamondSeller ? (
+                        <SellerBadge sellerType="diamond_seller" showLabel={true} />
+                      ) : isEligible ? (
+                        <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-1.5 py-0.5 rounded-full uppercase">
+                          Eligible
                         </span>
-                        <span className="font-semibold text-ink">{option.currency}</span>
-                        {active && <Check className="w-4 h-4 text-cyan-600 ml-auto" />}
-                      </button>
-                    );
-                  })}
+                      ) : (
+                        <span className="text-[9px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 px-1.5 py-0.5 rounded-full uppercase">
+                          5M 💎 Req.
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-cyan-200/80 font-medium">Official Certified Seller Program</p>
+                  </div>
+                </div>
+
+                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-cyan-300 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors shrink-0">
+                  <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
 
-              {/* Ratio + network */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white rounded-card p-4 shadow-sm">
-                  <p className="text-xs text-ink-muted">Recharge ratio</p>
-                  <p className="font-bold text-ink mt-1">
-                    1 {selected?.currency} = {(selected?.ratio ?? 0).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-cyan-600 font-semibold flex items-center gap-1 mt-0.5">
-                    <DiamondIcon className="w-3.5 h-3.5 text-cyan-500" /> Diamonds
-                  </p>
-                </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {isDiamondSeller
+                  ? 'You are an approved Diamond Seller. Tap here to view your seller dashboard, accounts, and application details.'
+                  : 'Hold 5,000,000+ diamonds? Apply now to receive the official Diamond Seller badge and list your accounts directly on the platform wallet recharge gateway.'}
+              </p>
 
+              {/* Progress Meter */}
+              <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/10">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-cyan-200 mb-1">
+                  <span>Eligibility Requirement</span>
+                  <span className="font-extrabold text-white">
+                    {currentDiamonds.toLocaleString()} / {REQUIRED_DIAMONDS.toLocaleString()} 💎
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-400 to-sky-300 rounded-full transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-cyan-300/80 mt-1">
+                  <span>{progressPercent}% Complete</span>
+                  <span>{isEligible ? 'Target achieved! Ready to apply' : `${(REQUIRED_DIAMONDS - currentDiamonds).toLocaleString()} diamonds remaining`}</span>
+                </div>
+              </div>
+
+              <div className="pt-1">
                 <button
-                  onClick={() => setNetworkOpen((v) => !v)}
-                  className="bg-white rounded-card p-4 text-left shadow-sm active:bg-surface-sunken transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate('/diamond-seller-apply');
+                  }}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                 >
-                  <p className="text-xs text-ink-muted">Network</p>
-                  <p className="font-bold text-ink mt-1 flex items-center justify-between gap-1">
-                    <span className="truncate">{network ? network.code : 'Select'}</span>
-                    {networkOpen ? (
-                      <ChevronUp className="w-4 h-4 text-ink-ghost shrink-0" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-ink-ghost shrink-0" />
-                    )}
-                  </p>
+                  <SparkleIcon className="w-3.5 h-3.5" />
+                  <span>{isDiamondSeller ? 'Manage Diamond Seller Status →' : 'Open Diamond Seller Application →'}</span>
                 </button>
               </div>
-
-              {networkOpen && selected && (
-                <div className="bg-white rounded-card divide-y divide-line overflow-hidden shadow-sm">
-                  {selected.networks.map((net) => (
-                    <div key={net.code} className="flex items-center gap-3 px-4 py-3.5">
-                      <span
-                        className={`w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                          NETWORK_TINT[net.code] || 'bg-surface-sunken text-ink-muted'
-                        }`}
-                      >
-                        {net.code.slice(0, 3)}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-ink text-sm truncate">{net.name}</p>
-                        {net.minAmount && (
-                          <p className="text-[11px] text-ink-muted">
-                            Min {net.minAmount} {selected.currency}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => {
-                          setNetwork(net);
-                          setNetworkOpen(false);
-                        }}
-                        className="h-8 px-4 rounded-full bg-cyan-500 text-white text-xs font-bold shrink-0 active:scale-95 transition-transform"
-                      >
-                        Choose
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Amount + address, once a chain is picked */}
-              {network && (
-                <div className="bg-white rounded-card p-4 space-y-4 shadow-sm">
-                  <div>
-                    <label className="text-sm font-semibold text-ink block mb-1.5">
-                      Amount ({selected?.currency})
-                    </label>
-                    <input
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-                      inputMode="decimal"
-                      placeholder={`Min ${network.minAmount ?? 1}`}
-                      className="w-full h-12 px-4 rounded-xl bg-surface-sunken text-ink placeholder:text-ink-faint
-                        border border-transparent focus:bg-white focus:border-cyan-500 focus:outline-none transition-colors tabular-nums"
-                    />
-                    {diamonds > 0 && (
-                      <p className="text-sm text-ink-muted mt-2 flex items-center gap-1.5">
-                        You receive
-                        <DiamondIcon className="w-4 h-4 text-cyan-500" />
-                        <span className="font-bold text-ink tabular-nums">{diamonds.toLocaleString()}</span>
-                        <span className="text-xs font-semibold text-cyan-600">Diamonds</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-semibold text-ink block mb-1.5">
-                      {network.code} deposit address
-                    </label>
-                    {network.walletAddress ? (
-                      <>
-                        <div className="flex items-center gap-2 p-3 rounded-xl bg-surface-sunken">
-                          <span className="flex-1 text-xs text-ink break-all font-mono">
-                            {network.walletAddress}
-                          </span>
-                          <button
-                            onClick={copyAddress}
-                            aria-label="Copy address"
-                            className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0 shadow-sm active:scale-95"
-                          >
-                            {copied ? (
-                              <Check className="w-4 h-4 text-status-online" />
-                            ) : (
-                              <Copy className="w-4 h-4 text-ink-muted" />
-                            )}
-                          </button>
-                        </div>
-                        {network.qrCode && (
-                          <img
-                            src={network.qrCode}
-                            alt={`${network.code} deposit QR`}
-                            className="w-40 h-40 object-contain mx-auto mt-3 rounded-xl bg-white shadow-sm"
-                          />
-                        )}
-                        <p className="text-[11px] text-role-host mt-2 leading-relaxed">
-                          Send only {selected?.currency} over {network.code} to this address. Diamonds are
-                          credited after the network confirms.
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-ink-muted p-3 rounded-xl bg-surface-sunken leading-relaxed">
-                        The deposit address will appear here once the crypto top-up API is connected. Use the <strong className="text-cyan-600 cursor-pointer" onClick={() => navigate('/recharge')}>Agency (c2c) tab</strong> to recharge diamonds through your agent in the meantime.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={() => showToast('Opening customer service…', 'info')}
-                className="w-full text-center text-sm font-semibold text-cyan-600 py-3 active:opacity-70 transition-opacity"
-              >
-                &gt;&gt; Top up customer service &lt;&lt;
-              </button>
             </div>
-          )}
-        </>
+          </div>
+
+          {/* ── Shortcut Card 2: Buy from Certified Diamond Sellers (c2c) ── */}
+          <div
+            onClick={() => navigate('/recharge')}
+            className="rounded-3xl bg-white border border-slate-200 p-5 shadow-xs cursor-pointer hover:border-slate-300 active:scale-[0.99] transition-all space-y-3 group"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-600 shrink-0">
+                  <WalletIcon className="w-6 h-6 text-cyan-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Buy Diamonds (c2c)</h3>
+                  <p className="text-xs text-slate-500 font-medium">Trade with Certified Diamond Sellers</p>
+                </div>
+              </div>
+
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-colors shrink-0">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Purchase diamonds safely through our network of verified Diamond Sellers via bKash, Nagad, Rocket, Binance BEP20, and Bybit TRC20.
+            </p>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/recharge');
+              }}
+              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+            >
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              <span>Go to Diamond Sellers Gateway →</span>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

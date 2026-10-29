@@ -11,7 +11,7 @@ import { transferApi } from '../api/transfer.api';
 import { optional } from '../api/pending';
 import { Loading } from '../components/ui';
 import { Avatar } from '../components/user';
-import { CoinIcon } from '../components/ui/CurrencyIcon';
+import { CoinIcon, DiamondIcon } from '../components/ui/CurrencyIcon';
 import type { TransferRecord } from '../api/transfer.api';
 
 export const TransferHistory = () => {
@@ -78,13 +78,13 @@ export const TransferHistory = () => {
           </div>
           <div>
             <h2 className="text-base font-bold text-ink">No transfers yet</h2>
-            <p className="text-xs text-ink-muted mt-1">You have not transferred coins to any agent or user yet.</p>
+            <p className="text-xs text-ink-muted mt-1">You have not transferred diamonds or coins to any agent or user yet.</p>
           </div>
           <button
             onClick={() => navigate('/transfer')}
-            className="px-6 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs shadow-sm transition-all"
+            className="px-6 py-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-sm transition-all"
           >
-            Transfer Coins
+            Transfer Diamonds
           </button>
         </div>
       ) : (
@@ -162,7 +162,11 @@ export const TransferHistory = () => {
                   <div className="text-right shrink-0">
                     <p className="text-base font-extrabold text-ink tabular-nums flex items-center justify-end gap-1">
                       <span>-{r.points.toLocaleString()}</span>
-                      <CoinIcon className="w-4 h-4 text-amber-500" />
+                      {r.currency === 'coin' ? (
+                        <CoinIcon className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <DiamondIcon className="w-4 h-4 text-sky-500" />
+                      )}
                     </p>
                     <p className="text-[11px] text-ink-muted">
                       {new Date(r.createdAt).toLocaleDateString()} {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -172,8 +176,8 @@ export const TransferHistory = () => {
 
                 {/* Footer details link */}
                 <div className="flex items-center justify-between pt-2 border-t border-line/60 text-[11px] text-ink-muted">
-                  <span className="truncate max-w-[240px]">{r.description || 'Coin transfer'}</span>
-                  <span className="text-amber-600 font-bold flex items-center gap-0.5">
+                  <span className="truncate max-w-[240px]">{r.description || 'Diamond transfer'}</span>
+                  <span className="text-sky-600 font-bold flex items-center gap-0.5">
                     View Details <ChevronRight className="w-3.5 h-3.5" />
                   </span>
                 </div>

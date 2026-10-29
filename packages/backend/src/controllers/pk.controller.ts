@@ -59,4 +59,68 @@ export const pkController = {
       sendSuccess(res, await pkService.endPk(req.params.battleId));
     } catch (error) { next(error); }
   },
+
+  async getDailyPkRank(req: Request, res: Response, next: NextFunction) {
+    try {
+      sendSuccess(res, await pkService.getDailyPkRank(req.user?.userId));
+    } catch (error) { next(error); }
+  },
+
+  async getLiveOpponents(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.userId;
+      sendSuccess(res, await pkService.getLiveOpponents(userId));
+    } catch (error) { next(error); }
+  },
+
+  async searchHostByUid(req: Request, res: Response, next: NextFunction) {
+    try {
+      const uid = req.query.uid as string;
+      sendSuccess(res, await pkService.searchHostByUid(uid));
+    } catch (error) { next(error); }
+  },
+
+  async inviteLivePk(req: Request, res: Response, next: NextFunction) {
+    try {
+      const inviterId = req.user!.userId;
+      const { inviterStreamId, targetHostId, targetStreamId, durationMinutes } = req.body;
+      const result = await pkService.inviteLivePk({
+        inviterId,
+        inviterStreamId,
+        targetHostId,
+        targetStreamId,
+        durationMinutes: Number(durationMinutes) || 3,
+      });
+      sendSuccess(res, result, 'Live PK invitation sent', 201);
+    } catch (error) { next(error); }
+  },
+
+  async respondLivePk(req: Request, res: Response, next: NextFunction) {
+    try {
+      const responderId = req.user!.userId;
+      const { battleId, accept } = req.body;
+      const result = await pkService.respondLivePk({
+        battleId,
+        responderId,
+        accept: Boolean(accept),
+      });
+      sendSuccess(res, result);
+    } catch (error) { next(error); }
+  },
+
+  async addLivePkScore(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { battleId, targetSide, amount, senderName, senderAvatar, giftName, giftIcon } = req.body;
+      const result = await pkService.addLivePkScore({
+        battleId,
+        targetSide,
+        amount: Number(amount) || 0,
+        senderName,
+        senderAvatar,
+        giftName,
+        giftIcon,
+      });
+      sendSuccess(res, result);
+    } catch (error) { next(error); }
+  },
 };

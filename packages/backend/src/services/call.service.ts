@@ -1,11 +1,14 @@
 import mongoose from 'mongoose';
-import { Call, User, Transaction, Chat, ChatMessage } from '../models';
+import { Call, User, Transaction, Chat, ChatMessage, Agency, PlatformWallet } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { generateAgoraToken } from '../config/agora';
 import { getIO } from '../socket';
 import { chatService } from './chat.service';
 import { pushNotificationService } from './pushNotification.service';
 import { referralService } from './referral.service';
+import { calculateGiftCoinDistribution, getAgencyCommissionByLevel } from '../utils/agencyTiers';
+import { calculateAgencyLevel } from './agency.service';
+import { calculateWealthLevel } from '../utils/userLevels';
 import crypto from 'crypto';
 
 /** Hard cap on group call participants (user requirement). */
@@ -50,9 +53,10 @@ export const callService = {
     const host = await User.findById(hostId).select('callPricePerMinute nickname avatar');
     if (!host) throw new AppError('User not found', 404);
 
-    const caller = await User.findById(callerId).select('coins matchSubscription');
+    const caller = await User.findById(callerId).select('coins diamonds matchSubscription');
     const coinsPerMinute = typeof host.callPricePerMinute === 'number' ? host.callPricePerMinute : 1000;
-    const balance = caller?.coins || 0;
+    // Caller spends diamonds
+    const balance = caller?.diamonds || 0;
 
     const isSubActive = Boolean(
       caller?.matchSubscription?.active &&
@@ -66,11 +70,12 @@ export const callService = {
 
     let reason: string | undefined;
     if (!hasMinuteBalance) {
-      reason = `You need at least ${coinsPerMinute.toLocaleString()} Coins for 1 minute`;
+      reason = `You need at least ${coinsPerMinute.toLocaleString()} Diamonds for 1 minute`;
     }
 
     return {
       coinsPerMinute,
+      diamondsPerMinute: coinsPerMinute,
       balance,
       canCall,
       reason,
@@ -84,7 +89,7 @@ export const callService = {
 
   /**
    * Create a ringing call invitation.
-   * For 1:1 calls, lock in the dynamic per-minute coin price.
+   * For 1:1 calls, lock in the dynamic per-minute diamond price.
    * source: 'profile' | 'messenger' — tracked for analytics.
    */
   async createCall(
@@ -110,7 +115,7 @@ export const callService = {
 
     if (recipients.length === 1) {
       const recipient = found[0] as any;
-      const initiator = (await User.findById(initiatorId).select('role coins matchSubscription').lean()) as any;
+      const initiator = (await User.findById(initiatorId).select('role coins diamonds matchSubscription').lean()) as any;
 
       const rate = typeof recipient.callPricePerMinute === 'number' ? recipient.callPricePerMinute : 1000;
       if (rate > 0) {
@@ -133,9 +138,9 @@ export const callService = {
             { $inc: { 'matchSubscription.freeCallsRemaining': -1 } }
           );
         } else {
-          const audienceCoins = initiator?.coins || 0;
-          if (audienceCoins < coinsPerMinute) {
-            throw new AppError(`Insufficient Coins for 1 minute at ${coinsPerMinute.toLocaleString()} Coins/min`, 402);
+          const audienceDiamonds = initiator?.diamonds || 0;
+          if (audienceDiamonds < coinsPerMinute) {
+            throw new AppError(`Insufficient Diamonds for 1 minute at ${coinsPerMinute.toLocaleString()} Diamonds/min`, 402);
           }
         }
       }
@@ -245,14 +250,16 @@ export const callService = {
     }
 
     // Prepaid System: Deduct Minute 1 upfront immediately as the call connects
+    let audienceDiamonds: number | undefined;
     let audienceCoins: number | undefined;
     let isLowBalance = false;
     let minutesRemaining = 0;
 
     if (call.audienceId && call.coinsPerMinute > 0 && call.minutesBilled === 0) {
+      // Deduct DIAMONDS from caller (1 diamond = 1 coin)
       const audience = await User.findOneAndUpdate(
-        { _id: call.audienceId, coins: { $gte: call.coinsPerMinute } },
-        { $inc: { coins: -call.coinsPerMinute } },
+        { _id: call.audienceId, diamonds: { $gte: call.coinsPerMinute } },
+        { $inc: { diamonds: -call.coinsPerMinute } },
         { new: true }
       );
 
@@ -262,7 +269,8 @@ export const callService = {
         call.endReason = 'INSUFFICIENT_COINS';
         await call.save();
         emitSafe('call:coins-finished', `user:${call.audienceId.toString()}`, { callId });
-        throw new AppError('Caller has insufficient coins for the first minute', 402);
+        emitSafe('call:diamonds-finished', `user:${call.audienceId.toString()}`, { callId });
+        throw new AppError('Caller has insufficient diamonds for the first minute', 402);
       }
 
       call.minutesBilled = 1;
@@ -272,7 +280,7 @@ export const callService = {
         userId: call.audienceId,
         type: 'call_payment' as const,
         amount: call.coinsPerMinute,
-        currency: 'coin' as const,
+        currency: 'diamond' as const,
         sourceType: 'call',
         targetId: call.hostId,
         targetModel: 'User',
@@ -280,11 +288,13 @@ export const callService = {
         description: `1:1 call billing (prepaid) — minute 1`,
       });
 
+      audienceDiamonds = audience.diamonds;
       audienceCoins = audience.coins;
-      minutesRemaining = Math.floor(audience.coins / call.coinsPerMinute);
+      minutesRemaining = Math.floor(audience.diamonds / call.coinsPerMinute);
       isLowBalance = minutesRemaining <= 1;
 
       emitSafe('balance:update', `user:${call.audienceId.toString()}`, {
+        diamonds: audience.diamonds,
         coins: audience.coins,
         minutesBilled: 1,
         totalCoins: call.coinsPerMinute,
@@ -304,6 +314,8 @@ export const callService = {
       type: call.type,
       token,
       coinsPerMinute: call.coinsPerMinute,
+      diamondsPerMinute: call.coinsPerMinute,
+      audienceDiamonds,
       audienceCoins,
       minutesBilled: call.minutesBilled,
       isLowBalance,
@@ -322,6 +334,8 @@ export const callService = {
       type: call.type,
       token,
       coinsPerMinute: call.coinsPerMinute,
+      diamondsPerMinute: call.coinsPerMinute,
+      audienceDiamonds,
       audienceCoins,
       minutesBilled: call.minutesBilled,
       isLowBalance,
@@ -388,15 +402,16 @@ export const callService = {
       if (call.isFreeMinuteApplied && !call.freeMinuteUsed) {
         call.freeMinuteUsed = true;
         call.minutesBilled += 1;
-        // 0 coins charged for minute 1!
+        // 0 diamonds charged for minute 1!
         await call.save();
 
-        const audience = await User.findById(audienceId).select('coins');
-        const audienceCoins = audience?.coins || 0;
-        const minutesRemaining = Math.floor(audienceCoins / call.coinsPerMinute);
+        const audience = await User.findById(audienceId).select('coins diamonds');
+        const audienceDiamonds = audience?.diamonds || 0;
+        const minutesRemaining = Math.floor(audienceDiamonds / call.coinsPerMinute);
 
         emitSafe('balance:update', `user:${audienceId}`, {
-          coins: audienceCoins,
+          diamonds: audienceDiamonds,
+          coins: audience?.coins || 0,
           minutesBilled: call.minutesBilled,
           totalCoins: call.totalCoins,
           isLowBalance: minutesRemaining <= 1,
@@ -406,7 +421,9 @@ export const callService = {
 
         return {
           coinsFinished: false,
-          audienceCoins,
+          diamondsFinished: false,
+          audienceDiamonds,
+          audienceCoins: audience?.coins || 0,
           minutesBilled: call.minutesBilled,
           totalCoins: call.totalCoins,
           isLowBalance: minutesRemaining <= 1,
@@ -415,20 +432,20 @@ export const callService = {
         };
       }
 
-      // Atomic deduction — only deduct if the audience has enough coins
+      // Atomic deduction in DIAMONDS — only deduct if caller has enough diamonds
       const audience = await User.findOneAndUpdate(
         {
           _id: audienceId,
-          coins: { $gte: call.coinsPerMinute },
+          diamonds: { $gte: call.coinsPerMinute },
         },
-        { $inc: { coins: -call.coinsPerMinute } },
+        { $inc: { diamonds: -call.coinsPerMinute } },
         { new: true }
       );
 
       if (!audience) {
-        // Audience has run out of coins → end the call
+        // Audience has run out of diamonds → end the call
         await this._endCallInsufficientCoins(callId, audienceId);
-        return { coinsFinished: true };
+        return { coinsFinished: true, diamondsFinished: true };
       }
 
       // Update billing tallies on the call record
@@ -436,12 +453,12 @@ export const callService = {
       call.totalCoins += call.coinsPerMinute;
       await call.save();
 
-      // Record audience payment transaction
+      // Record audience payment transaction in diamonds
       await Transaction.create({
         userId: audienceId,
         type: 'call_payment' as const,
         amount: call.coinsPerMinute,
-        currency: 'coin' as const,
+        currency: 'diamond' as const,
         sourceType: 'call',
         targetId: call.hostId,
         targetModel: 'User',
@@ -449,11 +466,12 @@ export const callService = {
         description: `1:1 call billing — minute ${call.minutesBilled}`,
       });
 
-      const minutesRemaining = Math.floor(audience.coins / call.coinsPerMinute);
+      const minutesRemaining = Math.floor(audience.diamonds / call.coinsPerMinute);
       const isLowBalance = minutesRemaining <= 1;
 
       // Emit live balance update to the audience
       emitSafe('balance:update', `user:${audienceId}`, {
+        diamonds: audience.diamonds,
         coins: audience.coins,
         minutesBilled: call.minutesBilled,
         totalCoins: call.totalCoins,
@@ -463,6 +481,8 @@ export const callService = {
 
       return {
         coinsFinished: false,
+        diamondsFinished: false,
+        audienceDiamonds: audience.diamonds,
         audienceCoins: audience.coins,
         minutesBilled: call.minutesBilled,
         totalCoins: call.totalCoins,
@@ -475,7 +495,7 @@ export const callService = {
     }
   },
 
-  /** Internal helper — force-end a call due to insufficient coins. */
+  /** Internal helper — force-end a call due to insufficient diamonds/coins. */
   async _endCallInsufficientCoins(callId: string, audienceId: string) {
     const call = await Call.findOne({ _id: callId });
     if (!call || call.status === 'ended') return;
@@ -502,13 +522,17 @@ export const callService = {
       emitSafe('call:end', `user:${p.toString()}`, endPayload);
     }
     emitSafe('call:coins-finished', `user:${audienceId}`, { callId: callIdStr });
+    emitSafe('call:diamonds-finished', `user:${audienceId}`, { callId: callIdStr });
   },
 
   /**
    * Finalize call billing — idempotent (guarded by `finalized` flag).
    *
-   * Calculates total coins charged, distributes to host and records
-   * the earning. Safe to call multiple times; only the first call does any work.
+   * User call payment in diamonds (1 diamond = 1 coin).
+   * Commission is distributed just like live gifts:
+   * - Host receives 70% in coins
+   * - Agency agent receives 4% to 20% level-wise in coins
+   * - Admin / Platform receives remaining 10% to 26% (or 30% if no agency) in coins
    */
   async finalizeCallBilling(callId: string) {
     try {
@@ -528,90 +552,180 @@ export const callService = {
         // Nothing was charged — check if free minute was applied
         if (call.startedAt && call.audienceId) {
           if (call.isFreeMinuteApplied) {
-            // Free 1st minute under 1:1 subscription! No coins deducted
+            // Free 1st minute under 1:1 subscription! No diamonds deducted
             call.minutesBilled = 1;
             call.totalCoins = 0;
             await call.save();
             return { totalCoins: 0, hostEarning: 0, isFree: true };
           }
 
-          const chargedCoins = call.coinsPerMinute;
+          const chargedDiamonds = call.coinsPerMinute;
 
-          // Deduct from audience
-          await User.findOneAndUpdate(
-            { _id: call.audienceId, coins: { $gte: chargedCoins } },
-            { $inc: { coins: -chargedCoins } }
+          // Deduct from audience diamonds
+          const chargedAudience = await User.findOneAndUpdate(
+            { _id: call.audienceId, diamonds: { $gte: chargedDiamonds } },
+            { $inc: { diamonds: -chargedDiamonds } }
           );
 
-          call.minutesBilled = 1;
-          call.totalCoins = chargedCoins;
-          await call.save();
+          if (chargedAudience) {
+            call.minutesBilled = 1;
+            call.totalCoins = chargedDiamonds;
+            await call.save();
 
-          await Transaction.create({
-            userId: call.audienceId,
-            type: 'call_payment' as const,
-            amount: chargedCoins,
-            currency: 'coin' as const,
-            sourceType: 'call',
-            targetId: call.hostId,
-            targetModel: 'User',
-            status: 'completed' as const,
-            description: `1:1 call — minimum 1 minute charge`,
-          });
+            await Transaction.create({
+              userId: call.audienceId,
+              type: 'call_payment' as const,
+              amount: chargedDiamonds,
+              currency: 'diamond' as const,
+              sourceType: 'call',
+              targetId: call.hostId,
+              targetModel: 'User',
+              status: 'completed' as const,
+              description: `1:1 call — minimum 1 minute charge`,
+            });
+          }
         } else {
           return null;
         }
       }
 
-      const totalCoins = call.totalCoins;
-      const hostEarning = totalCoins; // Host receives 100% of coins configured for their call
+      const totalDiamonds = call.totalCoins; // 1 diamond = 1 coin
+      if (totalDiamonds <= 0) return null;
 
-      // Credit host
+      const host = await User.findById(call.hostId);
+      if (!host) return null;
+
+      // Resolve agency & agent if host is associated with an agency
+      let agency: any = null;
+      let agentUser: any = null;
+
+      if (host.agencyId) {
+        agency = await Agency.findOne({ _id: host.agencyId, isBanned: { $ne: true } });
+      }
+      if (!agency) {
+        agency = await Agency.findOne({ hosts: host._id, isBanned: { $ne: true } });
+      }
+      if (!agency) {
+        agency = await Agency.findOne({ agentId: host._id, isBanned: { $ne: true } });
+      }
+
+      if (agency && agency.agentId) {
+        agentUser = await User.findById(agency.agentId);
+        if (!host.agencyId) {
+          await User.updateOne({ _id: host._id }, { $set: { agencyId: agency._id } });
+          host.agencyId = agency._id;
+        }
+        if (agency.hosts && !agency.hosts.some((h: any) => h.toString() === host._id.toString())) {
+          await Agency.updateOne({ _id: agency._id }, { $addToSet: { hosts: host._id } });
+        }
+        if (agentUser && !agentUser.isAgent) {
+          await User.updateOne({ _id: agentUser._id }, { $set: { isAgent: true, role: 'agent' } });
+          agentUser.isAgent = true;
+        }
+      }
+
+      // Calculate coin distribution based on agency tier (1 diamond = 1 coin):
+      // Host: 70% in coins
+      // Agency (Agent): 4% to 20% tier-wise directly to agent account
+      // Admin: Remainder (10% to 26% tier-wise, or 30% if no agency)
+      const distribution = calculateGiftCoinDistribution(totalDiamonds, agency);
+      const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
+
+      // 1. Host receives coins (1 diamond = 1 coin, 70% share)
+      const hostNewWealthExp = (host.wealthExp || 0) + hostCoins;
+      const hostWealthInfo = calculateWealthLevel(hostNewWealthExp, host.wealthLevel);
       await User.findOneAndUpdate(
         { _id: call.hostId },
-        { $inc: { coins: hostEarning } }
+        {
+          $inc: { coins: hostCoins, wealthExp: hostCoins },
+          $set: { wealthLevel: Math.max(host.wealthLevel || 1, hostWealthInfo.level) },
+        }
       );
 
-      // Record host earning transaction
-      await Transaction.create([
-        {
-          userId: call.hostId,
-          type: 'call_earning' as const,
-          amount: hostEarning,
+      // Record host earning transaction in coins
+      await Transaction.create({
+        userId: call.hostId,
+        type: 'call_earning' as const,
+        amount: hostCoins,
+        currency: 'coin' as const,
+        sourceType: 'call',
+        targetId: call.audienceId,
+        targetModel: 'User',
+        status: 'completed' as const,
+        description: `1:1 call earning — ${call.minutesBilled} min (${hostCoins} coins, 70% share)`,
+      });
+
+      // 2. Agency's coin share flows directly into the Agent's account
+      if (agentUser && agencyCoins > 0) {
+        await User.findOneAndUpdate(
+          { _id: agentUser._id },
+          { $inc: { coins: agencyCoins } }
+        );
+
+        await Transaction.create({
+          userId: agentUser._id,
+          type: 'commission' as const,
+          amount: agencyCoins,
           currency: 'coin' as const,
           sourceType: 'call',
-          targetId: call.audienceId,
+          targetId: call.hostId,
           targetModel: 'User',
           status: 'completed' as const,
-          description: `1:1 call earning — ${call.minutesBilled} min (${call.coinsPerMinute} coins/min)`,
-        },
-      ]);
+          description: `1:1 call agency commission — ${call.minutesBilled} min from host ${host.nickname || host._id} (${Math.round(agencyShareRate * 100)}%)`,
+        });
+
+        emitSafe('balance:update', `user:${agentUser._id.toString()}`, {
+          coins: (agentUser.coins || 0) + agencyCoins,
+        });
+      }
+
+      // Increment agency total contribution and sync dynamic level & commission
+      if (agency) {
+        const newContrib = (agency.totalContribution || 0) + totalDiamonds;
+        const levelInfo = calculateAgencyLevel(newContrib, agency.totalLiveHours || 0);
+        const newLevel = Math.max(agency.level || 1, levelInfo.level);
+        const newCommission = getAgencyCommissionByLevel(newLevel);
+        await Agency.updateOne(
+          { _id: agency._id },
+          {
+            $inc: { totalContribution: totalDiamonds },
+            $set: { level: newLevel, commission: newCommission }
+          }
+        );
+      }
+
+      // 3. Platform wallet receives admin cut in coins
+      if (adminCoins > 0) {
+        const platform = await PlatformWallet.getWallet();
+        await PlatformWallet.updateOne({ _id: platform._id }, { $inc: { coins: adminCoins } });
+      }
 
       // Record finalized amounts on the call
-      call.hostEarning = hostEarning;
-      call.companyCommission = 0;
+      call.hostEarning = hostCoins;
+      call.agencyCommission = agencyCoins;
+      call.companyCommission = adminCoins;
       await call.save();
 
       // Distribute 10% Lifetime Referral Commission to inviter if qualified (25+ invites)
-      if (call.hostId && hostEarning > 0) {
+      if (call.hostId && hostCoins > 0) {
         referralService.distributeInviterLifetimeCommission(
           call.hostId.toString(),
-          hostEarning,
+          hostCoins,
           `1:1 Call (${call.minutesBilled} min)`
         ).catch((err) => console.error('[Referral] Call commission error:', err));
       }
 
       // Emit updated balance to host & audience
-      const [host, audience] = await Promise.all([
+      const [updatedHost, audience] = await Promise.all([
         User.findById(call.hostId).select('coins diamonds wealthExp wealthLevel').lean(),
         call.audienceId ? User.findById(call.audienceId).select('coins diamonds wealthExp wealthLevel').lean() : null,
       ]);
-      if (host) {
+      if (updatedHost) {
         emitSafe('balance:update', `user:${call.hostId!.toString()}`, {
-          coins: host.coins,
-          diamonds: host.diamonds,
-          wealthExp: host.wealthExp,
-          wealthLevel: host.wealthLevel,
+          coins: updatedHost.coins,
+          diamonds: updatedHost.diamonds,
+          wealthExp: updatedHost.wealthExp,
+          wealthLevel: updatedHost.wealthLevel,
         });
       }
       if (audience) {
@@ -624,9 +738,10 @@ export const callService = {
       }
 
       return {
-        totalCoins,
-        hostEarning,
-        companyCommission: 0,
+        totalDiamonds,
+        hostEarning: hostCoins,
+        agencyCommission: agencyCoins,
+        companyCommission: adminCoins,
         minutesBilled: call.minutesBilled,
       };
     } catch (err) {

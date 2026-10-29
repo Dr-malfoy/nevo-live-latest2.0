@@ -6,14 +6,28 @@ import type { RoomMessage } from './types';
 interface CommentOverlayProps {
   messages: RoomMessage[];
   currentUserId?: string;
+  onUserClick?: (user: { _id: string; nickname: string; avatar?: string }) => void;
 }
 
 const isGiftMsg = (m: RoomMessage) => m.isGift || !!m.gift;
 
-const CommentBubble = ({ msg }: { msg: RoomMessage }) => {
+const CommentBubble = ({
+  msg,
+  onUserClick,
+}: {
+  msg: RoomMessage;
+  onUserClick?: (user: { _id: string; nickname: string; avatar?: string }) => void;
+}) => {
   const nickname = msg.nickname || 'Guest';
   const message = msg.message || '';
   const isJoined = msg.kind === 'join';
+
+  const handleUserClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (msg.userId && onUserClick) {
+      onUserClick({ _id: msg.userId, nickname: msg.nickname, avatar: msg.avatar });
+    }
+  };
 
   if (isJoined) {
     return (
@@ -25,7 +39,11 @@ const CommentBubble = ({ msg }: { msg: RoomMessage }) => {
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500/85 to-amber-500/85 shadow-sm mb-1 max-w-[90%] self-start text-left"
       >
         <Star className="w-3 h-3 text-white/90 shrink-0" />
-        <span className="text-[11px] font-bold text-white leading-snug truncate">
+        <span
+          role={msg.userId ? 'button' : undefined}
+          onClick={handleUserClick}
+          className={`text-[11px] font-bold text-white leading-snug truncate ${msg.userId ? 'cursor-pointer hover:underline' : ''}`}
+        >
           {nickname} joined
         </span>
       </motion.div>
@@ -54,7 +72,13 @@ const CommentBubble = ({ msg }: { msg: RoomMessage }) => {
               Lv.{msg.level || 1}
             </span>
           )}
-          <span className="font-bold text-[#5EE7F0] mr-1 inline">{nickname}:</span>
+          <span
+            role={msg.userId ? 'button' : undefined}
+            onClick={handleUserClick}
+            className={`font-bold text-[#5EE7F0] mr-1 inline ${msg.userId ? 'cursor-pointer hover:underline active:opacity-80' : ''}`}
+          >
+            {nickname}:
+          </span>
           <span className="text-white/95 font-medium">{message}</span>
           {isGiftMsg(msg) && (
             <span className="inline-flex items-center gap-0.5 ml-1 text-[11px] font-bold text-pink-300">
@@ -68,7 +92,7 @@ const CommentBubble = ({ msg }: { msg: RoomMessage }) => {
   );
 };
 
-export const CommentOverlay = ({ messages }: CommentOverlayProps) => {
+export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) => {
   const listRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'room' | 'chat'>('all');
 
@@ -136,7 +160,11 @@ export const CommentOverlay = ({ messages }: CommentOverlayProps) => {
         >
           <AnimatePresence initial={false}>
             {filteredMessages.map((msg, i) => (
-              <CommentBubble key={`${msg.userId}-${msg.message}-${i}`} msg={msg} />
+              <CommentBubble
+                key={`${msg.userId}-${msg.message}-${i}`}
+                msg={msg}
+                onUserClick={onUserClick}
+              />
             ))}
           </AnimatePresence>
         </div>

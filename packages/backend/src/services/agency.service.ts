@@ -885,122 +885,10 @@ export const agencyService = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 6. AGENT WALLET TRANSACTIONS (COINS, DIAMONDS, CONVERSION)
+  // 6. AGENT WALLET TRANSACTIONS (DIAMONDS, CONVERSION)
   // ─────────────────────────────────────────────────────────────────────────────
-  async agentSendCoins(agentId: string, targetIdentifier: string, amount: number, note?: string) {
-    if (!amount || isNaN(amount) || amount <= 0) {
-      throw new AppError('Amount must be a positive number', 400);
-    }
-    const cleanAmount = Math.floor(amount);
-
-    const agent = await User.findById(agentId);
-    const ownsAgency = await Agency.exists({ agentId });
-    if (!agent || (agent.role !== 'agent' && !agent.isAgent && !agent.isAdmin && !ownsAgency)) {
-      throw new AppError('Only agency owners / agents can perform this transfer', 403);
-    }
-
-    if ((agent.coins || 0) < cleanAmount) {
-      throw new AppError(`Insufficient coin balance. Available: ${(agent.coins || 0).toLocaleString()} coins`, 400);
-    }
-
-    // Lookup recipient
-    const cleanTarget = targetIdentifier.trim();
-    let target: any = await User.findOne({ uid: cleanTarget });
-    if (!target && mongoose.isValidObjectId(cleanTarget)) {
-      target = await User.findById(cleanTarget);
-    }
-    if (!target) {
-      target = await User.findOne({ phone: cleanTarget });
-    }
-    if (!target) {
-      throw new AppError('Recipient not found with given ID/UID/Phone', 404);
-    }
-    if (target._id.toString() === agentId) {
-      throw new AppError('Cannot send coins to yourself', 400);
-    }
-
-    // Atomic debit agent & credit target
-    const updatedAgent = await User.findOneAndUpdate(
-      { _id: agentId, coins: { $gte: cleanAmount } },
-      { $inc: { coins: -cleanAmount } },
-      { new: true }
-    );
-    if (!updatedAgent) {
-      throw new AppError('Insufficient coin balance', 400);
-    }
-
-    const newWealthExp = (target.wealthExp || 0) + cleanAmount;
-    const wealthInfo = calculateWealthLevel(newWealthExp, target.wealthLevel);
-
-    const updatedTarget = await User.findByIdAndUpdate(
-      target._id,
-      {
-        $inc: { coins: cleanAmount, wealthExp: cleanAmount },
-        $set: { wealthLevel: Math.max(target.wealthLevel || 1, wealthInfo.level) },
-      },
-      { new: true }
-    );
-
-    // Ledger records
-    await Transaction.create([
-      {
-        userId: agentId,
-        type: 'transfer',
-        amount: cleanAmount,
-        currency: 'coin',
-        targetId: target._id,
-        targetModel: 'User',
-        status: 'completed',
-        description: `Agent sent ${cleanAmount.toLocaleString()} coins to ${target.nickname} (${target.uid})${note ? ` - Note: ${note}` : ''}`,
-      },
-      {
-        userId: target._id,
-        type: 'transfer_in',
-        amount: cleanAmount,
-        currency: 'coin',
-        targetId: agentId,
-        targetModel: 'User',
-        status: 'completed',
-        description: `Received ${cleanAmount.toLocaleString()} coins from Agent ${agent.nickname} (${agent.uid})${note ? ` - Note: ${note}` : ''}`,
-      },
-    ]);
-
-    // Socket real-time balance updates
-    emitSafe('balance:update', `user:${agentId}`, {
-      coins: updatedAgent.coins,
-      diamonds: updatedAgent.diamonds,
-      wealthExp: updatedAgent.wealthExp,
-      wealthLevel: updatedAgent.wealthLevel,
-    });
-    if (updatedTarget) {
-      emitSafe('balance:update', `user:${target._id}`, {
-        coins: updatedTarget.coins,
-        diamonds: updatedTarget.diamonds,
-        wealthExp: updatedTarget.wealthExp,
-        wealthLevel: updatedTarget.wealthLevel,
-      });
-    }
-
-    await notificationService.createNotification(
-      target._id.toString(),
-      'recharge',
-      'Coins Received',
-      `Agent ${agent.nickname} sent you ${cleanAmount.toLocaleString()} coins.`,
-      { amount: cleanAmount, currency: 'coin' }
-    );
-
-    return {
-      success: true,
-      amount: cleanAmount,
-      balance: updatedAgent.coins,
-      recipient: {
-        _id: target._id,
-        uid: target.uid,
-        nickname: target.nickname,
-        avatar: target.avatar,
-        role: target.role,
-      },
-    };
+  async agentSendCoins(_agentId: string, _targetIdentifier: string, _amount: number, _note?: string) {
+    throw new AppError('Sending coins to users is not allowed. Agency can only transfer diamonds. Please convert your coins to diamonds first.', 400);
   },
 
   async agentSendDiamonds(agentId: string, targetIdentifier: string, amount: number, note?: string) {
@@ -1122,6 +1010,9 @@ export const agencyService = {
   },
 
   async agentConvertCurrency(agentId: string, from: 'coin' | 'diamond', amount: number) {
+    if (from !== 'coin') {
+      throw new AppError('Only Coin to Diamond conversion is allowed. Diamond to Coin conversion is disabled.', 400);
+    }
     if (!amount || isNaN(amount) || amount <= 0) {
       throw new AppError('Amount must be a positive number', 400);
     }

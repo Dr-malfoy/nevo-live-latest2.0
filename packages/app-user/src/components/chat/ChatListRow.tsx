@@ -312,9 +312,12 @@ export const ChatListRow = ({
             } else if (other.hasStory && other._id && onOpenStory) {
               e.stopPropagation();
               onOpenStory(other._id);
+            } else if (other._id && !isGroup && !isOfficial) {
+              e.stopPropagation();
+              navigate(other._id === currentUserId ? '/profile' : `/user/${other._id}`);
             }
           }}
-          title={other.isLive ? '🔴 LIVE NOW! Tap to join live stream' : undefined}
+          title={other.isLive ? '🔴 LIVE NOW! Tap to join live stream' : !isGroup && !isOfficial ? 'View Profile' : undefined}
         >
           {isGroup ? (
             groupAvatar ? (

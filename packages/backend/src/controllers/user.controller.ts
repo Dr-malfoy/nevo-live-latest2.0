@@ -200,11 +200,11 @@ export const userController = {
   /** PUT /api/users/me/call-price */
   async setCallPrice(req: Request, res: Response, next: NextFunction) {
     try {
-      const { coinsPerMinute, priceCoins, callPricePerMinute } = req.body;
-      const raw = coinsPerMinute ?? priceCoins ?? callPricePerMinute;
+      const { diamondsPerMinute, priceDiamonds, coinsPerMinute, priceCoins, callPricePerMinute } = req.body;
+      const raw = diamondsPerMinute ?? priceDiamonds ?? coinsPerMinute ?? priceCoins ?? callPricePerMinute;
       const rate = typeof raw === 'number' ? Math.floor(raw) : parseInt(raw, 10);
       if (isNaN(rate) || rate < 0) {
-        sendError(res, 'Call price must be a valid non-negative number of coins', 400);
+        sendError(res, 'Call price must be a valid non-negative number of diamonds', 400);
         return;
       }
       const user = await User.findByIdAndUpdate(
@@ -212,7 +212,10 @@ export const userController = {
         { callPricePerMinute: rate },
         { new: true }
       );
-      sendSuccess(res, { coinsPerMinute: user?.callPricePerMinute ?? rate }, 'Call price updated');
+      sendSuccess(res, {
+        diamondsPerMinute: user?.callPricePerMinute ?? rate,
+        coinsPerMinute: user?.callPricePerMinute ?? rate,
+      }, 'Call price updated');
     } catch (error) {
       next(error);
     }

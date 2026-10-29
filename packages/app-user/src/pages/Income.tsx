@@ -1,51 +1,82 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PiCaretLeftBold as ArrowLeft, PiCaretDownBold as ChevronDown, PiCaretRightBold as ChevronRight, PiQuestionFill as HelpCircle, PiArrowsLeftRightFill as TransferIcon, PiCoinsFill as CoinBag, PiShieldCheckFill as ShieldCheck } from 'react-icons/pi';
+import {
+  PiCaretLeftBold as ArrowLeft,
+  PiCaretDownBold as ChevronDown,
+  PiCaretRightBold as ChevronRight,
+  PiQuestionFill as HelpCircle,
+  PiArrowsLeftRightFill as TransferIcon,
+  PiCoinsFill as CoinBag,
+  PiShieldCheckFill as ShieldCheck,
+  PiVideoCameraFill as VideoIcon,
+  PiConfettiFill as PartyIcon,
+  PiPercentBold as CommissionIcon,
+  PiGiftFill as RewardIcon,
+  PiClockCounterClockwiseBold as HistoryIcon,
+} from 'react-icons/pi';
 import { incomeApi, usersApi } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { Loading } from '../components/ui';
-import { CoinIcon } from '../components/ui/CurrencyIcon';
-import type { IncomeRange, IncomeSource, IncomeSummary } from '../api/income.api';
+import { CoinIcon, DiamondIcon } from '../components/ui/CurrencyIcon';
+import type { IncomeRange, IncomeSource, IncomeSummary, IncomeSourceKey } from '../api/income.api';
 
 /**
  * Income Dashboard — displays user earned Coins.
  *
- * All earned funds (live gifts, party income, game winnings, commissions) are counted in Coins.
- * Coins cannot be directly withdrawn via automated bank payouts; instead, users trade/sell coins via certified agencies/agents.
+ * All earned funds (live stream earning, party earning, commission, transfer point, platform rewards) are counted in Coins.
+ * Clicking any earning stream opens its past 1-year history.
  */
 
 const RANGES: { key: IncomeRange; label: string }[] = [
   { key: '24h', label: 'Last 24 hours' },
   { key: '7d', label: 'Last 7 days' },
   { key: '30d', label: 'Last 30 days' },
+  { key: '1y', label: 'Last 1 year' },
 ];
 
-const SOURCE_LABELS: Record<string, string> = {
-  livestream: 'Livestream Gifts',
-  party: 'Party Income',
+const SOURCE_LABELS: Record<IncomeSourceKey, string> = {
+  livestream: 'Live Stream Earning',
+  party: 'Party Earning',
   commission: 'Commission',
-  transfer: 'Transfer Coins',
-  platform_rewards: 'Game Winnings & Rewards',
+  transfer: 'Transfer Point',
+  platform_rewards: 'Platform Rewards',
 };
 
-const EMPTY_SOURCES: IncomeSource[] = Object.entries(SOURCE_LABELS).map(([key, label]) => ({
-  key: key as IncomeSource['key'],
-  label,
+const SOURCE_ICONS: Record<IncomeSourceKey, { icon: typeof VideoIcon; bg: string; text: string }> = {
+  livestream: { icon: VideoIcon, bg: 'bg-rose-50 text-rose-600', text: 'rose' },
+  party: { icon: PartyIcon, bg: 'bg-orange-50 text-orange-600', text: 'orange' },
+  commission: { icon: CommissionIcon, bg: 'bg-emerald-50 text-emerald-600', text: 'emerald' },
+  transfer: { icon: TransferIcon, bg: 'bg-sky-50 text-sky-600', text: 'sky' },
+  platform_rewards: { icon: RewardIcon, bg: 'bg-amber-50 text-amber-600', text: 'amber' },
+};
+
+const EMPTY_SOURCES: IncomeSource[] = (Object.keys(SOURCE_LABELS) as IncomeSourceKey[]).map((key) => ({
+  key,
+  label: SOURCE_LABELS[key],
   points: 0,
 }));
 
 /** Ledger `type` → buckets */
 const TYPE_TO_SOURCE: Record<string, IncomeSource['key']> = {
   gift_receive: 'livestream',
+  call_earning: 'livestream',
   commission: 'commission',
   transfer: 'transfer',
+  transfer_in: 'transfer',
   daily_reward: 'platform_rewards',
   game_win: 'platform_rewards',
+  task_reward: 'platform_rewards',
+  signin_reward: 'platform_rewards',
+  activity_reward: 'platform_rewards',
+  spin_reward: 'platform_rewards',
+  creator_reward: 'platform_rewards',
+  ranking_prize: 'platform_rewards',
+  referral_bonus: 'platform_rewards',
 };
 
 const rangeStart = (range: IncomeRange): number => {
-  const days = range === '24h' ? 1 : range === '7d' ? 7 : 30;
+  const days = range === '24h' ? 1 : range === '7d' ? 7 : range === '1y' ? 365 : 30;
   return Date.now() - days * 24 * 60 * 60 * 1000;
 };
 
@@ -217,16 +248,19 @@ export const Income = () => {
           </div>
 
           {/* ── Income by source ────────────────────────────── */}
-          <div className="mx-3 mt-3 bg-white rounded-card shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 h-14 border-b border-line">
-              <h2 className="font-bold text-ink">Income Streams</h2>
+          <div className="mx-3 mt-3 bg-white rounded-card shadow-sm overflow-hidden border border-line">
+            <div className="flex items-center justify-between px-4 h-14 border-b border-line bg-slate-50/50">
+              <div>
+                <h2 className="font-bold text-ink text-sm">Income Streams</h2>
+                <p className="text-[11px] text-ink-muted">Click any stream to view past 1 year history</p>
+              </div>
               <div className="relative">
                 <button
                   onClick={() => setRangeOpen((v) => !v)}
-                  className="h-8 px-3 rounded-full bg-surface-sunken text-sm text-ink-soft flex items-center gap-1 active:scale-95 transition-transform"
+                  className="h-8 px-3 rounded-full bg-surface-sunken text-xs font-semibold text-ink-soft flex items-center gap-1 active:scale-95 transition-transform border border-line"
                 >
                   {rangeLabel}
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </button>
                 {rangeOpen && (
                   <>
@@ -252,19 +286,52 @@ export const Income = () => {
               </div>
             </div>
 
-            {(summary?.sources ?? EMPTY_SOURCES).map((source) => (
-              <div
-                key={source.key}
-                className="w-full flex items-center gap-2.5 px-4 h-14 border-b border-line last:border-0"
-              >
-                <span className="flex-1 text-left text-sm font-medium text-ink">{source.label}</span>
-                <CoinIcon className="w-4 h-4 text-amber-500 shrink-0" />
-                <span className="font-bold text-ink tabular-nums text-sm">
-                  {source.points.toLocaleString()}
-                </span>
-                <span className="text-xs text-ink-muted">Coins</span>
-              </div>
-            ))}
+            {(summary?.sources ?? EMPTY_SOURCES).map((source) => {
+              const iconCfg = SOURCE_ICONS[source.key as IncomeSourceKey] || {
+                icon: CoinBag,
+                bg: 'bg-amber-50 text-amber-600',
+              };
+              const StreamIcon = iconCfg.icon;
+
+              return (
+                <button
+                  key={source.key}
+                  type="button"
+                  onClick={() => navigate(`/income/${source.key}`)}
+                  className="w-full flex items-center gap-3 px-4 py-3 border-b border-line last:border-0 hover:bg-slate-50 active:bg-slate-100 transition-colors text-left group"
+                >
+                  <div
+                    className={`w-10 h-10 rounded-xl ${iconCfg.bg} flex items-center justify-center shrink-0 shadow-xs`}
+                  >
+                    <StreamIcon className="w-5 h-5" />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-ink group-hover:text-accent-500 transition-colors truncate">
+                      {source.label}
+                    </p>
+                    <p className="text-[11px] text-ink-muted flex items-center gap-1">
+                      <HistoryIcon className="w-3 h-3 text-amber-500" />
+                      <span>Past 1 Year History</span>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <div className="flex items-center gap-1">
+                        <CoinIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="font-extrabold text-ink tabular-nums text-sm">
+                          {source.points.toLocaleString()}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-ink-muted">Coins</span>
+                    </div>
+
+                    <ChevronRight className="w-4 h-4 text-ink-muted group-hover:text-accent-500 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {/* ── Action Buttons for Coin Trading & Transfer ─────────────────────────────────────── */}
@@ -272,10 +339,10 @@ export const Income = () => {
 
             <button
               onClick={() => navigate('/transfer')}
-              className="w-full h-12 rounded-full bg-white border-2 border-amber-500 text-amber-700 font-extrabold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-sm"
+              className="w-full h-12 rounded-full bg-white border-2 border-cyan-500 text-cyan-700 font-extrabold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-sm"
             >
-              <TransferIcon className="w-5 h-5" />
-              Transfer Coins to Agent / User
+              <DiamondIcon className="w-5 h-5 text-cyan-500" />
+              Transfer Diamonds to Agent / User
             </button>
 
             <button

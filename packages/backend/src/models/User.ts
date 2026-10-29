@@ -120,11 +120,13 @@ export interface IUserDocument extends Document {
   noble?: INoble;
   isVip?: boolean;
   hasPurchasedDiamonds?: boolean;
-  role: 'admin' | 'agent' | 'host' | 'user';
+  role: 'admin' | 'agent' | 'host' | 'user' | 'diamond_seller';
   isAgent: boolean;
   isAdmin: boolean;
+  isDiamondSeller?: boolean;
+  diamondSellerBadge?: boolean;
   agencyId?: Schema.Types.ObjectId;
-  sellerType: 'none' | 'official' | 'paylor';
+  sellerType: 'none' | 'official' | 'paylor' | 'diamond_seller';
   hostBadge: 'alpha' | 'aurora' | 'none';
   hostBadgeType: 'manual' | 'auto' | 'none';
   hostBadgeAssignedAt?: Date;
@@ -257,18 +259,20 @@ const userSchema = new Schema<IUserDocument>(
     },
     role: {
       type: String,
-      enum: ['admin', 'agent', 'host', 'user'],
+      enum: ['admin', 'agent', 'host', 'user', 'diamond_seller'],
       default: 'user',
       index: true,
     },
     isAgent: { type: Boolean, default: false },
     isAdmin: { type: Boolean, default: false },
+    isDiamondSeller: { type: Boolean, default: false },
+    diamondSellerBadge: { type: Boolean, default: false },
     isVip: { type: Boolean, default: false },
     hasPurchasedDiamonds: { type: Boolean, default: false },
     agencyId: { type: Schema.Types.ObjectId, ref: 'Agency', index: true },
     sellerType: {
       type: String,
-      enum: ['none', 'official', 'paylor'],
+      enum: ['none', 'official', 'paylor', 'diamond_seller'],
       default: 'none',
     },
     hostBadge: {
@@ -357,7 +361,11 @@ const userSchema = new Schema<IUserDocument>(
 // Derive boolean flags from role and diamond holdings/purchases
 userSchema.pre('save', function (next) {
   this.isAdmin = this.role === 'admin';
-  this.isAgent = this.role === 'agent';
+  this.isAgent = this.role === 'agent' || this.role === 'diamond_seller';
+  if (this.role === 'diamond_seller' || this.sellerType === 'diamond_seller') {
+    this.isDiamondSeller = true;
+    this.diamondSellerBadge = true;
+  }
   if ((this.diamonds && this.diamonds > 0) || this.hasPurchasedDiamonds || this.noble) {
     this.isVip = true;
   }

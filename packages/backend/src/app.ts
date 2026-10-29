@@ -49,6 +49,7 @@ import {
   videoRoutes,
   historyRoutes,
   achievementRoutes,
+  diamondSellerRoutes,
 } from './routes';
 
 const app = express();
@@ -174,6 +175,7 @@ app.use('/api/notes', noteRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/achievements', achievementRoutes);
+app.use('/api/diamond-seller', diamondSellerRoutes);
 
 
 

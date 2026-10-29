@@ -1,8 +1,9 @@
 import { PiSealCheckFill as BadgeCheck, PiCoinsFill as Coins, PiMicrophoneFill as Mic, PiUsersFill as Users } from 'react-icons/pi';
+import { IoDiamond } from 'react-icons/io5';
 import type { UserPublic, User } from '../../types';
 
 type RoleSource = Pick<UserPublic, 'role' | 'isAgent' | 'sellerType' | 'verification'> &
-  Partial<Pick<User, 'isAdmin'>>;
+  Partial<Pick<User, 'isAdmin' | 'isDiamondSeller'>>;
 
 interface RoleTagsProps {
   user?: RoleSource | null;
@@ -53,7 +54,14 @@ export function resolveRoleTags(user?: RoleSource | null): TagSpec[] {
     });
   }
 
-  if (user.role === 'agent' || user.isAgent) {
+  if (user.role === 'diamond_seller' || user.sellerType === 'diamond_seller' || (user as any).isDiamondSeller) {
+    tags.push({
+      key: 'diamond_seller',
+      label: 'DIAMOND SELLER',
+      className: 'relative overflow-hidden bg-gradient-to-r from-cyan-950 via-slate-900 to-cyan-950 text-cyan-300 border border-cyan-400/60 shadow-[0_0_8px_rgba(6,182,212,0.4)] animate-diamond-glow font-black tracking-wide',
+      Icon: IoDiamond as any,
+    });
+  } else if (user.role === 'agent' || user.isAgent) {
     tags.push({
       key: 'agent',
       label: 'AGENT',

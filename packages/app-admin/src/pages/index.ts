@@ -22,5 +22,6 @@ export { Hosts } from './Hosts';
 export { Badges } from './Badges';
 export { AssetPasswords } from './AssetPasswords';
 export { HostApplications } from './HostApplications';
+export { DiamondSellerApplications } from './DiamondSellerApplications';
 export { Orders } from './Orders';
 

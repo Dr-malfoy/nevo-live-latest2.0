@@ -47,10 +47,11 @@ export const streamerService = {
     }
 
     const hostObjectId = new mongoose.Types.ObjectId(userId);
+    const hostFilter = { $in: [hostObjectId, userId] };
 
     // Fetch streams in current range
     const streams = await LiveStream.find({
-      hostId: hostObjectId,
+      hostId: hostFilter,
       startedAt: { $gte: start, $lte: end },
     }).lean();
 
@@ -68,6 +69,23 @@ export const streamerService = {
         liveDurationSec += Math.max(0, Math.floor((new Date(stream.endedAt).getTime() - new Date(stream.startedAt).getTime()) / 1000));
       } else if (stream.status === 'live' && stream.startedAt) {
         liveDurationSec += Math.max(0, Math.floor((Date.now() - new Date(stream.startedAt).getTime()) / 1000));
+      } else if (stream.startedAt) {
+        const endFallback = (stream as any).heartbeatAt || (stream as any).updatedAt || stream.startedAt;
+        liveDurationSec += Math.max(0, Math.floor((new Date(endFallback).getTime() - new Date(stream.startedAt).getTime()) / 1000));
+      }
+    }
+
+    // Calculate total all-time live duration across all sessions
+    const allUserStreams = await LiveStream.find({ hostId: hostFilter }).select('startedAt endedAt status heartbeatAt updatedAt').lean();
+    let totalAllTimeLiveDurationSec = 0;
+    for (const s of allUserStreams) {
+      if (s.endedAt && s.startedAt) {
+        totalAllTimeLiveDurationSec += Math.max(0, Math.floor((new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000));
+      } else if (s.status === 'live' && s.startedAt) {
+        totalAllTimeLiveDurationSec += Math.max(0, Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000));
+      } else if (s.startedAt) {
+        const endFallback = (s as any).heartbeatAt || (s as any).updatedAt || s.startedAt;
+        totalAllTimeLiveDurationSec += Math.max(0, Math.floor((new Date(endFallback).getTime() - new Date(s.startedAt).getTime()) / 1000));
       }
     }
 
@@ -76,10 +94,11 @@ export const streamerService = {
 
     // Fetch transactions (earnings from live streams or gifts)
     const liveFilter: any = {
-      userId: hostObjectId,
+      userId: hostFilter,
       $or: [
         { type: 'gift_receive', sourceType: { $ne: 'party' } },
         { type: 'gift_receive', sourceType: 'live' },
+        { type: 'gift_receive' },
         { type: 'credit', sourceType: { $ne: 'party' } },
         { type: 'call_earning' },
       ],
@@ -99,10 +118,11 @@ export const streamerService = {
     const totalEarningsAgg = await Transaction.aggregate([
       {
         $match: {
-          userId: hostObjectId,
+          userId: hostFilter,
           $or: [
             { type: 'gift_receive', sourceType: { $ne: 'party' } },
             { type: 'gift_receive', sourceType: 'live' },
+            { type: 'gift_receive' },
             { type: 'credit', sourceType: { $ne: 'party' } },
             { type: 'call_earning' },
           ],
@@ -114,7 +134,7 @@ export const streamerService = {
     const txTotalEarnings = totalEarningsAgg[0]?.total || 0;
 
     const allStreamsAgg = await LiveStream.aggregate([
-      { $match: { hostId: hostObjectId } },
+      { $match: { hostId: hostFilter } },
       { $group: { _id: null, total: { $sum: '$earningsCoins' } } },
     ]);
     const streamsAllTimeEarnings = allStreamsAgg[0]?.total || 0;
@@ -123,6 +143,12 @@ export const streamerService = {
     // Fetch user for follower count, wallet balance, and agency details
     const user = await User.findById(userId).populate('agencyId', 'name code logo').lean();
     const totalFollowers = user?.followers?.length || 0;
+    if (user?.liveStreamSeconds && user.liveStreamSeconds > totalAllTimeLiveDurationSec) {
+      totalAllTimeLiveDurationSec = user.liveStreamSeconds;
+    }
+    if (range === 'all') {
+      liveDurationSec = Math.max(liveDurationSec, totalAllTimeLiveDurationSec);
+    }
 
     // Previous period stats for trend calculation
     const prevStreams = await LiveStream.find({
@@ -166,6 +192,7 @@ export const streamerService = {
 
     return {
       liveDurationSec,
+      totalLiveDurationSec: totalAllTimeLiveDurationSec,
       pointsEarned,
       diamondsEarned: pointsEarned,
       coinsEarned: pointsEarned,
@@ -191,7 +218,8 @@ export const streamerService = {
    */
   async getLastReport(userId: string) {
     const hostObjectId = new mongoose.Types.ObjectId(userId);
-    const lastStream = await LiveStream.findOne({ hostId: hostObjectId })
+    const hostFilter = { $in: [hostObjectId, userId] };
+    const lastStream = await LiveStream.findOne({ hostId: hostFilter })
       .sort({ startedAt: -1 })
       .lean();
 
@@ -199,29 +227,44 @@ export const streamerService = {
       return null;
     }
 
-    // Check duration
+    // Check duration with fallbacks
     let liveDurationSec = 0;
     if (lastStream.endedAt && lastStream.startedAt) {
       liveDurationSec = Math.max(0, Math.floor((new Date(lastStream.endedAt).getTime() - new Date(lastStream.startedAt).getTime()) / 1000));
-    } else if (lastStream.startedAt) {
+    } else if (lastStream.status === 'live' && lastStream.startedAt) {
       liveDurationSec = Math.max(0, Math.floor((Date.now() - new Date(lastStream.startedAt).getTime()) / 1000));
+    } else if (lastStream.startedAt) {
+      const endFallback = (lastStream as any).heartbeatAt || (lastStream as any).updatedAt || lastStream.startedAt;
+      liveDurationSec = Math.max(0, Math.floor((new Date(endFallback).getTime() - new Date(lastStream.startedAt).getTime()) / 1000));
     }
 
-    // Get stream earnings
+    // Get stream earnings with buffer window for delayed transactions
+    const streamStart = new Date(lastStream.startedAt);
+    const streamEnd = lastStream.endedAt
+      ? new Date(lastStream.endedAt)
+      : lastStream.status === 'live'
+      ? new Date()
+      : (lastStream as any).heartbeatAt
+      ? new Date((lastStream as any).heartbeatAt)
+      : (lastStream as any).updatedAt
+      ? new Date((lastStream as any).updatedAt)
+      : new Date(streamStart.getTime() + 3600000);
+
     const streamEarnings = await Transaction.aggregate([
       {
         $match: {
-          userId: hostObjectId,
+          userId: hostFilter,
           $or: [
             { type: 'gift_receive', sourceType: { $ne: 'party' } },
             { type: 'gift_receive', sourceType: 'live' },
+            { type: 'gift_receive' },
             { type: 'credit', sourceType: { $ne: 'party' } },
             { type: 'call_earning' },
           ],
           status: { $ne: 'failed' },
           createdAt: {
-            $gte: lastStream.startedAt,
-            $lte: lastStream.endedAt || new Date(),
+            $gte: new Date(streamStart.getTime() - 5000),
+            $lte: new Date(streamEnd.getTime() + 60000),
           },
         },
       },
@@ -907,8 +950,9 @@ export const streamerService = {
    */
   async getStreamHistory(hostId: string, page: number, limit: number) {
     const hostObjectId = new mongoose.Types.ObjectId(hostId);
-    const total = await LiveStream.countDocuments({ hostId: hostObjectId });
-    const streams = await LiveStream.find({ hostId: hostObjectId })
+    const hostFilter = { $in: [hostObjectId, hostId] };
+    const total = await LiveStream.countDocuments({ hostId: hostFilter });
+    const streams = await LiveStream.find({ hostId: hostFilter })
       .sort({ startedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -918,10 +962,11 @@ export const streamerService = {
     const totalEarningsAgg = await Transaction.aggregate([
       {
         $match: {
-          userId: hostObjectId,
+          userId: hostFilter,
           $or: [
             { type: 'gift_receive', sourceType: { $ne: 'party' } },
             { type: 'gift_receive', sourceType: 'live' },
+            { type: 'gift_receive' },
             { type: 'credit', sourceType: { $ne: 'party' } },
             { type: 'call_earning' },
           ],
@@ -933,7 +978,7 @@ export const streamerService = {
     const txTotalEarnings = totalEarningsAgg[0]?.total || 0;
 
     const allStreamsAgg = await LiveStream.aggregate([
-      { $match: { hostId: hostObjectId } },
+      { $match: { hostId: hostFilter } },
       { $group: { _id: null, total: { $sum: '$earningsCoins' } } },
     ]);
     const streamsAllTimeEarnings = allStreamsAgg[0]?.total || 0;
@@ -948,14 +993,15 @@ export const streamerService = {
       const maxDate = new Date(Math.max(...endDates));
 
       txMap = await Transaction.find({
-        userId: hostObjectId,
+        userId: hostFilter,
         $or: [
           { type: 'gift_receive', sourceType: { $ne: 'party' } },
           { type: 'gift_receive', sourceType: 'live' },
+          { type: 'gift_receive' },
           { type: 'credit', sourceType: { $ne: 'party' } },
         ],
         status: { $ne: 'failed' },
-        createdAt: { $gte: minDate, $lte: maxDate },
+        createdAt: { $gte: new Date(minDate.getTime() - 5000), $lte: new Date(maxDate.getTime() + 60000) },
       })
         .select('createdAt amount')
         .lean();
@@ -968,19 +1014,26 @@ export const streamerService = {
         ? new Date(s.endedAt)
         : s.status === 'live'
         ? new Date()
-        : new Date(sStart.getTime() + 3600000);
+        : (s as any).heartbeatAt
+        ? new Date((s as any).heartbeatAt)
+        : (s as any).updatedAt
+        ? new Date((s as any).updatedAt)
+        : new Date(sStart.getTime());
 
       if (s.endedAt && s.startedAt) {
         durationSec = Math.max(0, Math.floor((new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000));
-      } else if (s.startedAt) {
+      } else if (s.status === 'live' && s.startedAt) {
         durationSec = Math.max(0, Math.floor((Date.now() - new Date(s.startedAt).getTime()) / 1000));
+      } else if (s.startedAt) {
+        const endFallback = (s as any).heartbeatAt || (s as any).updatedAt || s.startedAt;
+        durationSec = Math.max(0, Math.floor((new Date(endFallback).getTime() - new Date(s.startedAt).getTime()) / 1000));
       }
 
       // Calculate live-wise earned coins from transactions in stream window
       let sessionEarned = 0;
       for (const tx of txMap) {
         const txTime = new Date(tx.createdAt).getTime();
-        if (txTime >= sStart.getTime() && txTime <= sEnd.getTime()) {
+        if (txTime >= (sStart.getTime() - 5000) && txTime <= (sEnd.getTime() + 60000)) {
           sessionEarned += tx.amount || 0;
         }
       }

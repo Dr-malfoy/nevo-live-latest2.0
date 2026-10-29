@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiXBold as X,
@@ -7,6 +8,7 @@ import {
   PiCheckBold as CheckIcon,
   PiIdentificationCardFill as IdCardIcon,
   PiSparkleFill as SparkleIcon,
+  PiUserFill as UserIcon,
 } from 'react-icons/pi';
 import { usersApi } from '../../api';
 import { initial } from '../../lib/time';
@@ -27,6 +29,7 @@ export const UserProfileModal = ({
   onOpenGiftToUser,
   currentUserId,
 }: UserProfileModalProps) => {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -62,11 +65,11 @@ export const UserProfileModal = ({
       if (isFollowing) {
         await usersApi.unfollow(profile._id);
         setIsFollowing(false);
-        setProfile((prev) => (prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : prev));
+        setProfile((prev: any) => (prev ? { ...prev, followerCount: Math.max(0, (prev.followerCount || prev.followersCount || 1) - 1) } : prev));
       } else {
         await usersApi.follow(profile._id);
         setIsFollowing(true);
-        setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : prev));
+        setProfile((prev: any) => (prev ? { ...prev, followerCount: ((prev.followerCount || prev.followersCount || 0) + 1) } : prev));
       }
     } catch (e) {
       console.warn('[UserProfileModal] follow toggle error:', e);
@@ -76,6 +79,12 @@ export const UserProfileModal = ({
   };
 
   const isSelf = Boolean(currentUserId && profile && profile._id === currentUserId);
+
+  const handleOpenFullProfile = () => {
+    if (!profile?._id) return;
+    onClose();
+    navigate(isSelf ? '/profile' : `/user/${profile._id}`);
+  };
 
   return (
     <AnimatePresence>
@@ -115,9 +124,15 @@ export const UserProfileModal = ({
               </div>
             ) : profile ? (
               <>
-                {/* Avatar with Ring */}
-                <div className="relative mt-2">
-                  <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-pink-500/50 bg-black/50 flex items-center justify-center shadow-lg">
+                {/* Avatar with Ring (Click to view full profile) */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleOpenFullProfile}
+                  className="relative mt-2 cursor-pointer group hover:scale-105 active:scale-95 transition-transform"
+                  title="Click to view full profile"
+                >
+                  <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-pink-500/50 bg-black/50 flex items-center justify-center shadow-lg group-hover:ring-pink-400 transition-all">
                     {profile.avatar ? (
                       <img src={profile.avatar} alt="" className="w-full h-full object-cover" />
                     ) : (
@@ -133,9 +148,18 @@ export const UserProfileModal = ({
                   )}
                 </div>
 
-                {/* Nickname & UID */}
-                <div className="text-center w-full px-2">
-                  <h3 className="text-base font-bold text-white truncate">{profile.nickname}</h3>
+                {/* Nickname & UID (Click to view full profile) */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleOpenFullProfile}
+                  className="text-center w-full px-2 cursor-pointer group"
+                  title="Click to view full profile"
+                >
+                  <h3 className="text-base font-bold text-white truncate group-hover:text-pink-400 transition-colors inline-flex items-center justify-center gap-1">
+                    <span>{profile.nickname}</span>
+                    <span className="text-xs text-pink-400 opacity-60 group-hover:opacity-100">›</span>
+                  </h3>
                   <div className="flex items-center justify-center gap-1.5 mt-1 text-[11px] text-white/60 font-mono">
                     <IdCardIcon className="w-3.5 h-3.5 text-pink-400 shrink-0" />
                     <span>ID: {profile.uid}</span>
@@ -170,48 +194,60 @@ export const UserProfileModal = ({
                 <div className="w-full grid grid-cols-2 gap-2 p-2.5 rounded-2xl bg-white/5 border border-white/10 text-center text-xs">
                   <div>
                     <p className="font-extrabold text-white text-sm">
-                      {(profile.followersCount || 0).toLocaleString()}
+                      {((profile as any).followerCount || (profile as any).followersCount || 0).toLocaleString()}
                     </p>
                     <p className="text-[10px] text-white/50">Followers</p>
                   </div>
                   <div>
                     <p className="font-extrabold text-white text-sm">
-                      {(profile.followingCount || 0).toLocaleString()}
+                      {((profile as any).followingCount || 0).toLocaleString()}
                     </p>
                     <p className="text-[10px] text-white/50">Following</p>
                   </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="w-full flex gap-2 mt-1">
-                  {!isSelf && (
-                    <button
-                      onClick={handleToggleFollow}
-                      disabled={followLoading}
-                      className={`flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all shadow flex items-center justify-center gap-1.5 active:scale-95 ${
-                        isFollowing
-                          ? 'bg-white/15 text-white/80 hover:bg-white/20'
-                          : 'bg-white/20 hover:bg-white/25 text-white'
-                      }`}
-                    >
-                      {isFollowing ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <FollowIcon className="w-3.5 h-3.5" />}
-                      {isFollowing ? 'Following' : 'Follow'}
-                    </button>
-                  )}
+                <div className="w-full flex flex-col gap-2 mt-1">
+                  <div className="w-full flex gap-2">
+                    {!isSelf && (
+                      <button
+                        onClick={handleToggleFollow}
+                        disabled={followLoading}
+                        className={`flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all shadow flex items-center justify-center gap-1.5 active:scale-95 ${
+                          isFollowing
+                            ? 'bg-white/15 text-white/80 hover:bg-white/20'
+                            : 'bg-white/20 hover:bg-white/25 text-white'
+                        }`}
+                      >
+                        {isFollowing ? <CheckIcon className="w-3.5 h-3.5 text-emerald-400" /> : <FollowIcon className="w-3.5 h-3.5" />}
+                        {isFollowing ? 'Following' : 'Follow'}
+                      </button>
+                    )}
 
-                  {!isSelf && onOpenGiftToUser && (
-                    <button
-                      onClick={() => {
-                        const targetId = profile._id;
-                        onClose();
-                        onOpenGiftToUser(targetId);
-                      }}
-                      className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:to-rose-600 transition-all text-xs font-bold text-white shadow-lg shadow-pink-500/30 flex items-center justify-center gap-1.5 active:scale-95"
-                    >
-                      <GiftIcon className="w-3.5 h-3.5" />
-                      Send Gift
-                    </button>
-                  )}
+                    {!isSelf && onOpenGiftToUser && (
+                      <button
+                        onClick={() => {
+                          const targetId = profile._id;
+                          onClose();
+                          onOpenGiftToUser(targetId);
+                        }}
+                        className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:from-pink-600 hover:to-rose-600 transition-all text-xs font-bold text-white shadow-lg shadow-pink-500/30 flex items-center justify-center gap-1.5 active:scale-95"
+                      >
+                        <GiftIcon className="w-3.5 h-3.5" />
+                        Send Gift
+                      </button>
+                    )}
+                  </div>
+
+                  {/* View Full Profile Button */}
+                  <button
+                    type="button"
+                    onClick={handleOpenFullProfile}
+                    className="w-full py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 active:bg-white/25 transition-all text-xs font-bold text-white shadow flex items-center justify-center gap-1.5 active:scale-95 border border-white/10"
+                  >
+                    <UserIcon className="w-3.5 h-3.5 text-pink-400" />
+                    <span>View Profile Page</span>
+                  </button>
                 </div>
               </>
             ) : (

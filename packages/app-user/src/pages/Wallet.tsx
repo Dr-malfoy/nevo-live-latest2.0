@@ -21,6 +21,7 @@ import {
   PiXCircleFill as XCircle,
 } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
+import { IoDiamond } from 'react-icons/io5';
 import { useAuthStore } from '../stores';
 import client from '../api/client';
 import { paymentApi } from '../api/payment.api';
@@ -129,6 +130,15 @@ export const Wallet = () => {
     BUY_WITHDRAW_TYPES.includes(tx.type)
   );
 
+  const isUsdOrder = (o: any) => {
+    if (o.currencyMode === 'USD') return true;
+    if (o.currencyMode === 'BDT') return false;
+    const method = (o.paymentMethod || o.method || '').toLowerCase();
+    if (['bkash', 'nagad', 'rocket', 'bank_bdt'].includes(method)) return false;
+    if (['binance', 'bybit', 'usdt', 'crypto'].some((m) => method.includes(m))) return true;
+    return Boolean(o.amountUsd && !o.amountBdt);
+  };
+
   const getMethodLogo = (methodKey: string) => {
     const m = (methodKey || '').toLowerCase();
     if (m.includes('bkash')) return <BkashLogo className="w-8 h-8 rounded-xl shrink-0" />;
@@ -196,7 +206,7 @@ export const Wallet = () => {
           <div
             onClick={() => navigate('/coin-valuation')}
             className="relative overflow-hidden bg-white border border-amber-200/80 hover:border-amber-400 rounded-2xl p-4 shadow-sm cursor-pointer active:scale-[0.98] transition-all group"
-            title="Click to view Coins Valuation (130 Coins = 1 BDT)"
+            title="Click to view Coins Valuation"
           >
             <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-amber-100/40 rounded-full blur-xl pointer-events-none group-hover:scale-110 transition-transform" />
             <div className="flex items-center justify-between mb-2">
@@ -255,6 +265,37 @@ export const Wallet = () => {
           </div>
           <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
             Manage →
+          </span>
+        </div>
+
+        {/* ── Diamond Seller Banner (5M+ Diamonds program) ────────── */}
+        <div
+          onClick={() => navigate('/diamond-seller-apply')}
+          className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 border border-cyan-500/40 rounded-2xl p-3.5 flex items-center justify-between shadow-sm cursor-pointer hover:border-cyan-400 transition-all text-white group"
+        >
+          <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-cyan-500/20 rounded-full blur-xl pointer-events-none group-hover:scale-110 transition-transform" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shrink-0">
+              <IoDiamond className="w-5 h-5 text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-bold text-white">Diamond Seller Program</p>
+                {(user?.sellerType === 'diamond_seller' || (user as any)?.isDiamondSeller || user?.role === 'diamond_seller') && (
+                  <span className="text-[9px] font-black text-cyan-300 bg-cyan-500/30 px-1.5 py-0.5 rounded-full border border-cyan-400/40">
+                    APPROVED
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-cyan-200/80 font-medium">
+                {(user?.sellerType === 'diamond_seller' || (user as any)?.isDiamondSeller || user?.role === 'diamond_seller')
+                  ? 'Your Diamond Seller badge is active'
+                  : '5,000,000+ Diamonds required to apply'}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-400/30 px-2.5 py-1 rounded-full shrink-0 group-hover:bg-cyan-500/30 transition-colors relative z-10">
+            {(user?.sellerType === 'diamond_seller' || (user as any)?.isDiamondSeller || user?.role === 'diamond_seller') ? 'View Status →' : 'Apply →'}
           </span>
         </div>
 
@@ -560,7 +601,15 @@ export const Wallet = () => {
                         {isRecharge ? 'Amount Paid' : 'Cashout Value'}
                       </span>
                       <span className="font-black text-slate-900 tabular-nums">
-                        ৳{o.amountBdt?.toLocaleString()} BDT
+                        {isRecharge ? (
+                          isUsdOrder(o) ? (
+                            <span>${(o.amountUsd || o.amount)?.toLocaleString()} USD</span>
+                          ) : (
+                            <span>৳{(o.amountBdt || o.amount)?.toLocaleString()} BDT</span>
+                          )
+                        ) : (
+                          <span>৳{o.amountBdt?.toLocaleString()} BDT</span>
+                        )}
                       </span>
                     </div>
 
@@ -696,9 +745,23 @@ export const Wallet = () => {
                 </div>
 
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">BDT Amount</span>
+                  <span className="text-slate-500 font-medium">
+                    {selectedOrder.orderType === 'recharge'
+                      ? isUsdOrder(selectedOrder)
+                        ? 'Amount Paid (USD)'
+                        : 'Amount Paid (BDT)'
+                      : 'Cashout Amount'}
+                  </span>
                   <span className="font-black text-slate-900 text-sm tabular-nums">
-                    ৳{selectedOrder.amountBdt?.toLocaleString()} BDT
+                    {selectedOrder.orderType === 'recharge' ? (
+                      isUsdOrder(selectedOrder) ? (
+                        <span>${(selectedOrder.amountUsd || selectedOrder.amount)?.toLocaleString()} USD</span>
+                      ) : (
+                        <span>৳{(selectedOrder.amountBdt || selectedOrder.amount)?.toLocaleString()} BDT</span>
+                      )
+                    ) : (
+                      <span>৳{selectedOrder.amountBdt?.toLocaleString()} BDT</span>
+                    )}
                   </span>
                 </div>
 

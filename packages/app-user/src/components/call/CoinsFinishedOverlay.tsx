@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  PiCoinFill as CoinIcon,
   PiLightningFill as Lightning,
 } from 'react-icons/pi';
+import { DiamondIcon } from '../ui/CurrencyIcon';
 
 interface CoinsFinishedOverlayProps {
   visible: boolean;
@@ -11,7 +11,7 @@ interface CoinsFinishedOverlayProps {
 }
 
 /**
- * Full-screen overlay shown when the audience runs out of coins mid-call.
+ * Full-screen overlay shown when the caller runs out of diamonds mid-call.
  * The call has already been ended by the server; this is purely informational.
  */
 export const CoinsFinishedOverlay = ({ visible, onClose }: CoinsFinishedOverlayProps) => {
@@ -19,7 +19,7 @@ export const CoinsFinishedOverlay = ({ visible, onClose }: CoinsFinishedOverlayP
 
   const handleRecharge = () => {
     onClose?.();
-    navigate('/recharge');
+    navigate('/store');
   };
 
   return (
@@ -29,7 +29,7 @@ export const CoinsFinishedOverlay = ({ visible, onClose }: CoinsFinishedOverlayP
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md px-8"
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xl px-8"
         >
           <motion.div
             initial={{ scale: 0.85, opacity: 0 }}
@@ -38,29 +38,29 @@ export const CoinsFinishedOverlay = ({ visible, onClose }: CoinsFinishedOverlayP
             transition={{ type: 'spring', damping: 20 }}
             className="flex flex-col items-center gap-5 text-center"
           >
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-2xl">
-              <CoinIcon className="w-10 h-10 text-white" />
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(6,182,212,0.6)] border border-cyan-300/40">
+              <DiamondIcon className="w-10 h-10 text-white" />
             </div>
 
             <div>
-              <h2 className="text-2xl font-bold text-white mb-2">Coins Finished</h2>
+              <h2 className="text-2xl font-black text-white mb-2">Diamonds Finished</h2>
               <p className="text-white/70 text-sm leading-relaxed max-w-xs">
-                Your coins have run out. The call has ended automatically.
-                Recharge to continue calling.
+                Your diamonds have run out. The call has ended automatically.
+                Recharge diamonds to continue calling.
               </p>
             </div>
 
             <button
               onClick={handleRecharge}
-              className="w-full max-w-xs h-12 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-bold flex items-center justify-center gap-2 shadow-lg active:opacity-90 transition-opacity"
+              className="w-full max-w-xs h-12 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 font-black flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(6,182,212,0.4)] active:scale-95 transition-all"
             >
-              <Lightning className="w-5 h-5" />
-              Recharge Coins
+              <Lightning className="w-5 h-5 text-slate-950" />
+              Recharge Diamonds
             </button>
 
             <button
               onClick={onClose}
-              className="text-sm text-white/50 underline"
+              className="text-sm text-white/50 hover:text-white underline transition-colors"
             >
               Close
             </button>

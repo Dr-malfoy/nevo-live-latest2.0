@@ -262,16 +262,18 @@ export const securityApi = {
     newPassword: string;
   }) => client.post<ApiResponse>('/security/asset-password/reset', payload),
 
-  /** #72 — host sets their own per-minute call price. */
-  setCallPrice: (coinsPerMinute: number) =>
-    client.put<ApiResponse<{ coinsPerMinute: number }>>('/users/me/call-price', {
-      coinsPerMinute,
-      priceCoins: coinsPerMinute,
-      callPricePerMinute: coinsPerMinute,
+  /** #72 — host sets their own per-minute call price in diamonds (1 diamond = 1 coin). */
+  setCallPrice: (diamondsPerMinute: number) =>
+    client.put<ApiResponse<{ diamondsPerMinute: number; coinsPerMinute: number }>>('/users/me/call-price', {
+      diamondsPerMinute,
+      priceDiamonds: diamondsPerMinute,
+      coinsPerMinute: diamondsPerMinute,
+      priceCoins: diamondsPerMinute,
+      callPricePerMinute: diamondsPerMinute,
     }),
 
   getCallQuote: (hostId: string) =>
-    client.get<ApiResponse<{ coinsPerMinute: number; balance: number; canCall: boolean; reason?: string }>>(
+    client.get<ApiResponse<{ diamondsPerMinute?: number; coinsPerMinute: number; balance: number; canCall: boolean; reason?: string }>>(
       `/calls/quote/${hostId}`
     ),
 };

@@ -254,6 +254,33 @@ export const registerStreamHandlers = (socket: Socket): void => {
       streamId,
       topGifters: getTopGifters(streamId),
     });
+
+    // If stream is participating in an active PK battle, credit score to corresponding side!
+    try {
+      const { PkBattle } = await import('../models/PkBattle');
+      const activeBattle = await PkBattle.findOne({
+        $or: [{ streamIdA: streamId }, { streamIdB: streamId }],
+        status: 'active',
+      });
+      if (activeBattle) {
+        const giftPoints = (Number(gift?.priceDiamonds) || Number(gift?.priceCoins) || 1) * (Number(count) || 1);
+        const isTargetHostB = receiverId && activeBattle.teamB.some((t: any) => t.toString() === receiverId);
+        const targetSide = isTargetHostB || activeBattle.streamIdB?.toString() === streamId ? 'B' : 'A';
+
+        const { pkService } = await import('../services/pk.service');
+        await pkService.addLivePkScore({
+          battleId: activeBattle._id.toString(),
+          targetSide,
+          amount: giftPoints,
+          senderName: nickname,
+          senderAvatar: avatar,
+          giftName: gift?.name || 'Gift',
+          giftIcon: gift?.icon || '🎁',
+        });
+      }
+    } catch (e) {
+      console.warn('[streamHandlers] pk score auto-update error:', e);
+    }
   });
 
   // Viewer requests microphone access from the host
@@ -538,5 +565,48 @@ export const registerStreamHandlers = (socket: Socket): void => {
       isCounted: isFirstLike,
       totalLikes: likesSet.size,
     });
+  });
+
+  // ── LIVE PK BATTLE SOCKET EVENTS ──────────────────────────────────
+  socket.on('pk:live:invite:send', async (data: any) => {
+    try {
+      const inviterId = socket.data.user?.userId;
+      if (!inviterId || !data?.inviterStreamId || !data?.targetHostId) return;
+      const { pkService } = await import('../services/pk.service');
+      await pkService.inviteLivePk({
+        inviterId,
+        inviterStreamId: data.inviterStreamId,
+        targetHostId: data.targetHostId,
+        targetStreamId: data.targetStreamId,
+        durationMinutes: Number(data.durationMinutes) || 3,
+      });
+    } catch (e: any) {
+      socket.emit('pk:live:error', { message: e?.message || 'Failed to send PK invitation' });
+    }
+  });
+
+  socket.on('pk:live:invite:respond', async (data: any) => {
+    try {
+      const responderId = socket.data.user?.userId;
+      if (!responderId || !data?.battleId) return;
+      const { pkService } = await import('../services/pk.service');
+      await pkService.respondLivePk({
+        battleId: data.battleId,
+        responderId,
+        accept: Boolean(data.accept),
+      });
+    } catch (e: any) {
+      socket.emit('pk:live:error', { message: e?.message || 'Failed to respond to PK invitation' });
+    }
+  });
+
+  socket.on('pk:live:battle:end', async (data: any) => {
+    try {
+      if (!data?.battleId) return;
+      const { pkService } = await import('../services/pk.service');
+      await pkService.endLivePk(data.battleId);
+    } catch (e: any) {
+      console.warn('[streamHandlers] pk end error:', e);
+    }
   });
 };

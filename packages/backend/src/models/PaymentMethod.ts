@@ -12,6 +12,9 @@ export interface IPaymentMethodDocument extends Document {
   feeTiers: number[];
   arrival: string;
   fields: string[]; // e.g. ['phone'], ['walletAddress']
+  isBD?: boolean;
+  country?: string;
+  currency?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +32,9 @@ const paymentMethodSchema = new Schema<IPaymentMethodDocument>(
     feeTiers: { type: [Number], default: [] },
     arrival: { type: String, default: '24 hours' },
     fields: { type: [String], default: ['phone'] },
+    isBD: { type: Boolean, default: false },
+    country: { type: String, default: 'GLOBAL' },
+    currency: { type: String, default: 'USD' },
   },
   { timestamps: true }
 );

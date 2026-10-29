@@ -113,9 +113,19 @@ export const adminApi = {
   resetUserAssetPassword: (data: { userId: string; newPassword: string }) => client.post('/admin/asset-password/reset', data),
   unlockUserAssetPassword: (data: { userId: string }) => client.post('/admin/asset-password/unlock', data),
 
-  // Alpha & Aurora Host Applications
+  // Alpha & Aurora Host Applications & Weekly Bonuses
   getHostApplications: (params?: Record<string, any>) => client.get('/admin/host-applications', { params }),
   getHostApplicationDetail: (id: string) => client.get(`/admin/host-applications/${id}`),
   reviewHostApplication: (id: string, action: 'approve' | 'reject', reason?: string) =>
     client.post(`/admin/host-applications/${id}/review`, { action, reason }),
+  getHostBonuses: (params?: Record<string, any>) => client.get('/admin/host-bonuses', { params }),
+  settleHostBonus: (cycleId: string) => client.post(`/admin/host-bonuses/${cycleId}/settle`),
+
+  // Diamond Seller Applications (5M+ Diamonds required)
+  getDiamondSellerApplications: (params?: Record<string, any>) =>
+    client.get('/admin/diamond-seller/applications', { params }),
+  getDiamondSellerApplicationDetail: (id: string) =>
+    client.get(`/admin/diamond-seller/applications/${id}`),
+  reviewDiamondSellerApplication: (id: string, action: 'approve' | 'reject', reason?: string) =>
+    client.post(`/admin/diamond-seller/applications/${id}/review`, { action, reason }),
 };

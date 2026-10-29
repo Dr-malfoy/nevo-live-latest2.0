@@ -4,6 +4,7 @@ import { usersApi, uploadApi } from '../../api';
 import { useAuthStore, useUIStore } from '../../stores';
 import { allCountries, flagEmoji } from '../../lib/countries';
 import { getMediaUrl } from '../../lib/media';
+import { CountrySelect } from '../ui/CountrySelect';
 import { Avatar } from './Avatar';
 import type { Gender } from '../../types';
 
@@ -201,24 +202,16 @@ export const EditProfileSheet = ({ isOpen, onClose }: EditProfileSheetProps) => 
             />
           </Field>
 
-          <Field label="Country">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg leading-none pointer-events-none">
-                {flagEmoji(country)}
-              </span>
-              <select
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                className={`${inputClass} pl-10 appearance-none`}
-              >
-                <option value="">Not set</option>
-                {allCountries().map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <Field 
+            label="Country" 
+            hint={user?.country ? "Permanent: Account country cannot be changed." : undefined}
+          >
+            <CountrySelect
+              value={country}
+              onChange={setCountry}
+              disabled={Boolean(user?.country)}
+              placeholder="Select Country"
+            />
           </Field>
 
           <Field label="Date of birth" hint="Your age is shown on your profile — your birth date is not.">

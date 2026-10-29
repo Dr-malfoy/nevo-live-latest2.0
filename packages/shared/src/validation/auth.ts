@@ -32,11 +32,15 @@ export const passwordLoginSchema = z
 
 export const googleLoginSchema = z.object({
   idToken: z.string().min(1, 'Google ID token required'),
+  country: z.string().optional(),
+  deviceId: z.string().optional(),
 });
 
 export const facebookLoginSchema = z.object({
   idToken: z.string().optional(),
   accessToken: z.string().optional(),
+  country: z.string().optional(),
+  deviceId: z.string().optional(),
 }).refine((data) => !!(data.idToken || data.accessToken), {
   message: 'idToken or accessToken is required for Facebook login',
 });
@@ -51,6 +55,7 @@ export const registerSchema = z
     username: z.string().min(2).max(30).optional(),
     phone: z.string().optional().or(z.literal('')),
     email: z.string().email('Invalid email address').optional().or(z.literal('')),
+    country: z.string().min(2, 'Please select your country').max(2).optional(),
     password: z.string().min(6, 'Password must be at least 6 characters'),
     confirmPassword: z.string().min(6).optional(),
     dob: z.string().optional(),
@@ -63,6 +68,7 @@ export const registerSchema = z
     code: z.string().optional(),
     verificationToken: z.string().optional(),
     idToken: z.string().optional(),
+    deviceId: z.string().optional(),
   })
   .refine((data) => !!((data.phone && data.phone.trim()) || (data.email && data.email.trim())), {
     message: 'Phone number or Gmail is required',

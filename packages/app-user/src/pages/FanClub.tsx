@@ -145,10 +145,20 @@ export const FanClub = () => {
           <div className="px-3 pt-3 space-y-2.5">
             {clubs.map((club) => (
               <div key={club._id} className="flex items-center gap-3 bg-white rounded-card p-3">
-                <Avatar src={club.host?.avatar} nickname={club.host?.nickname || '?'} size="md" />
-                <div className="flex-1 min-w-0">
+                <Avatar
+                  src={club.host?.avatar}
+                  nickname={club.host?.nickname || '?'}
+                  size="md"
+                  userId={club.host?._id}
+                />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => club.host?._id && navigate(`/user/${club.host._id}`)}
+                  className="flex-1 min-w-0 cursor-pointer"
+                >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="font-semibold text-ink truncate">{club.host?.nickname}</span>
+                    <span className="font-semibold text-ink truncate hover:underline">{club.host?.nickname}</span>
                     {club.clubName && (
                       <span className="h-[18px] px-1.5 rounded bg-surface-sunken text-[10px] font-bold text-ink-muted flex items-center shrink-0">
                         {club.tier ?? 1} {club.clubName}

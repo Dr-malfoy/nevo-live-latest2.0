@@ -26,3 +26,5 @@ export { partyApi } from './party.api';
 export { streamerApi } from './streamer.api';
 export { storyApi } from './story.api';
 export { noteApi } from './note.api';
+export { diamondSellerApi } from './diamondSeller.api';
+export { pkApi } from './pk.api';

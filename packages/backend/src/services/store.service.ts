@@ -21,7 +21,7 @@ export const storeService = {
       filter.category = params.category;
     }
 
-    // Ensure 1:1 Subscription Card exists in catalogue with 50,000 coins price (Coins only, no diamonds)
+    // Ensure 1:1 Subscription Card exists in catalogue with 50,000 diamonds price (Diamonds only, no coins)
     try {
       const existingSub = await StoreItem.findOne({ category: 'subscription' });
       if (!existingSub) {
@@ -31,8 +31,8 @@ export const storeService = {
           description: '1 Week Validity • 100 Filter Matches • 5 Free 1-Min Calls',
           image: '🎴',
           preview: '',
-          priceCoins: 50000,
-          priceDiamonds: 0,
+          priceCoins: 0,
+          priceDiamonds: 50000,
           durationDays: 7,
           badge: 'VIP',
           isActive: true,
@@ -40,12 +40,12 @@ export const storeService = {
         });
       } else {
         let changed = false;
-        if (existingSub.priceCoins !== 50000) {
-          existingSub.priceCoins = 50000;
+        if (existingSub.priceCoins !== 0) {
+          existingSub.priceCoins = 0;
           changed = true;
         }
-        if (existingSub.priceDiamonds !== 0) {
-          existingSub.priceDiamonds = 0;
+        if (existingSub.priceDiamonds !== 50000) {
+          existingSub.priceDiamonds = 50000;
           changed = true;
         }
         if (changed) {

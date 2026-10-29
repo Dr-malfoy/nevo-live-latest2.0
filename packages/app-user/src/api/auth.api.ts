@@ -52,15 +52,17 @@ export const authApi = {
       password,
     }),
 
-  googleLogin: (idToken: string) =>
+  googleLogin: (idToken: string, country?: string) =>
     client.post<ApiResponse<{ token: string; user: any }>>('/auth/google', {
       idToken,
+      country,
     }),
 
-  facebookLogin: (idToken?: string, accessToken?: string) =>
+  facebookLogin: (idToken?: string, accessToken?: string, country?: string) =>
     client.post<ApiResponse<{ token: string; user: any }>>('/auth/facebook', {
       idToken,
       accessToken,
+      country,
     }),
 
   register: (payload: {
@@ -68,6 +70,7 @@ export const authApi = {
     username?: string;
     phone?: string;
     email?: string;
+    country?: string;
     nickname?: string;
     password?: string;
     confirmPassword?: string;
@@ -79,6 +82,7 @@ export const authApi = {
     verificationToken?: string;
     idToken?: string;
     code?: string;
+    deviceId?: string;
   }) =>
     client.post<ApiResponse<{ token: string; user: any }>>('/auth/register', payload),
 

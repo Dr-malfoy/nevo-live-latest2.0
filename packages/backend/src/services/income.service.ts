@@ -4,26 +4,33 @@ import { AppError } from '../middleware/errorHandler';
 
 export type IncomeSourceKey = 'livestream' | 'party' | 'commission' | 'transfer' | 'platform_rewards';
 
-const getRangeStartDate = (range: string = '30d'): Date => {
+const getRangeStartDate = (range: string = '1y'): Date | null => {
   const now = Date.now();
   if (range === '24h') return new Date(now - 24 * 60 * 60 * 1000);
   if (range === '7d') return new Date(now - 7 * 24 * 60 * 60 * 1000);
-  return new Date(now - 30 * 24 * 60 * 60 * 1000);
+  if (range === '30d') return new Date(now - 30 * 24 * 60 * 60 * 1000);
+  if (range === '1y' || range === '365d') return new Date(now - 365 * 24 * 60 * 60 * 1000);
+  if (range === 'all') return null;
+  return new Date(now - 365 * 24 * 60 * 60 * 1000);
 };
 
 export const incomeService = {
-  async getIncomeSummary(userId: string, range: '24h' | '7d' | '30d' = '30d') {
+  async getIncomeSummary(userId: string, range: '24h' | '7d' | '30d' | '1y' | 'all' = '30d') {
     const user = await User.findById(userId).select('diamonds coins');
     if (!user) throw new AppError('User not found', 404);
 
     const startDate = getRangeStartDate(range);
 
-    // Aggregate transactions for this user within the range
-    const transactions = await Transaction.find({
+    const query: any = {
       userId,
-      createdAt: { $gte: startDate },
       status: { $in: ['completed', 'pending'] },
-    });
+    };
+    if (startDate) {
+      query.createdAt = { $gte: startDate };
+    }
+
+    // Aggregate transactions for this user within the range
+    const transactions = await Transaction.find(query);
 
     let livestreamPoints = 0;
     let partyPoints = 0;
@@ -45,16 +52,34 @@ export const incomeService = {
         } else {
           livestreamPoints += amount;
         }
+      } else if (tx.type === 'call_earning') {
+        livestreamPoints += amount;
       } else if (tx.type === 'commission') {
         commissionPoints += amount;
-      } else if (tx.type === 'transfer' && tx.currency === 'diamond') {
+      } else if (
+        tx.type === 'transfer_in' ||
+        (tx.type === 'transfer' && (!tx.description || !/^Transferred /i.test(tx.description)))
+      ) {
         transferPoints += amount;
-      } else if (tx.type === 'daily_reward' || tx.type === 'game_win') {
+      } else if (
+        [
+          'daily_reward',
+          'game_win',
+          'task_reward',
+          'signin_reward',
+          'activity_reward',
+          'spin_reward',
+          'creator_reward',
+          'ranking_prize',
+          'referral_bonus',
+          'platform_rewards',
+        ].includes(tx.type)
+      ) {
         platformRewardPoints += amount;
       }
     }
 
-    const available = user.diamonds || 0;
+    const available = user.coins || 0;
     const total = available + unconfirmedPoints;
 
     return {
@@ -63,10 +88,10 @@ export const incomeService = {
       unconfirmed: unconfirmedPoints,
       range,
       sources: [
-        { key: 'livestream', label: 'Livestream', points: livestreamPoints },
-        { key: 'party', label: 'Party', points: partyPoints },
+        { key: 'livestream', label: 'Live Stream Earning', points: livestreamPoints },
+        { key: 'party', label: 'Party Earning', points: partyPoints },
         { key: 'commission', label: 'Commission', points: commissionPoints },
-        { key: 'transfer', label: 'Transfer Points', points: transferPoints },
+        { key: 'transfer', label: 'Transfer Point', points: transferPoints },
         { key: 'platform_rewards', label: 'Platform Rewards', points: platformRewardPoints },
       ],
     };
@@ -75,42 +100,71 @@ export const incomeService = {
   async getIncomeSourceDrilldown(
     userId: string,
     key: IncomeSourceKey,
-    range: '24h' | '7d' | '30d' = '30d',
+    range: string = '1y',
     page: number = 1,
     limit: number = 20
   ) {
     const startDate = getRangeStartDate(range);
     const filter: any = {
       userId,
-      createdAt: { $gte: startDate },
       status: 'completed',
     };
+    if (startDate) {
+      filter.createdAt = { $gte: startDate };
+    }
 
     if (key === 'livestream') {
-      filter.type = 'gift_receive';
-      filter.sourceType = { $ne: 'party' };
+      filter.$or = [
+        { type: 'gift_receive', sourceType: { $ne: 'party' } },
+        { type: 'call_earning' },
+      ];
     } else if (key === 'party') {
       filter.type = 'gift_receive';
       filter.sourceType = 'party';
     } else if (key === 'commission') {
       filter.type = 'commission';
     } else if (key === 'transfer') {
-      filter.type = 'transfer';
+      filter.$or = [
+        { type: 'transfer_in' },
+        { type: 'transfer', description: { $not: /^Transferred /i } },
+      ];
     } else if (key === 'platform_rewards') {
-      filter.type = { $in: ['daily_reward', 'game_win'] };
+      filter.type = {
+        $in: [
+          'daily_reward',
+          'game_win',
+          'task_reward',
+          'signin_reward',
+          'activity_reward',
+          'spin_reward',
+          'creator_reward',
+          'ranking_prize',
+          'referral_bonus',
+          'platform_rewards',
+        ],
+      };
     }
 
     const total = await Transaction.countDocuments(filter);
     const rows = await Transaction.find(filter)
       .populate('targetId', '_id nickname avatar uid')
+      .populate('giftId', 'name icon priceDiamonds')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
+    const totalAgg = await Transaction.aggregate([
+      { $match: filter },
+      { $group: { _id: null, totalPoints: { $sum: '$amount' } } },
+    ]);
+    const totalPoints = totalAgg[0]?.totalPoints || 0;
+
     const data = rows.map((r) => {
       const fromUser = r.targetId as any;
+      const gift = r.giftId as any;
       return {
         _id: r._id.toString(),
+        txId: getFormattedTxId(r),
         from: fromUser
           ? {
               _id: fromUser._id,
@@ -120,17 +174,25 @@ export const incomeService = {
             }
           : undefined,
         points: r.amount,
-        giftName: r.description,
-        createdAt: r.createdAt.toISOString(),
+        currency: r.currency || 'coin',
+        type: r.type,
+        sourceType: r.sourceType,
+        giftName: gift?.name || r.description,
+        giftIcon: gift?.icon,
+        description: r.description,
+        status: r.status,
+        createdAt: r.createdAt ? r.createdAt.toISOString() : new Date().toISOString(),
       };
     });
 
     return {
       data,
       total,
+      totalPoints,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      range,
     };
   },
 
@@ -220,10 +282,10 @@ export const incomeService = {
     };
   },
 
-  async transferPoints(senderId: string, receiverUid: string, points: number) {
+  async transferPoints(senderId: string, receiverUid: string, points: number, currency: 'diamond' | 'coin' = 'diamond') {
     const amount = Math.floor(Number(points));
     if (!amount || isNaN(amount) || amount < 1) {
-      throw new AppError('Enter a valid transfer amount (minimum 1 Coin)', 400);
+      throw new AppError(`Enter a valid transfer amount (minimum 1 ${currency === 'diamond' ? 'Diamond' : 'Coin'})`, 400);
     }
 
     // Sender check
@@ -246,32 +308,34 @@ export const incomeService = {
     }
 
     if (receiver._id.toString() === senderId) {
-      throw new AppError('Cannot transfer coins to yourself', 400);
+      throw new AppError(`Cannot transfer ${currency === 'diamond' ? 'diamonds' : 'coins'} to yourself`, 400);
     }
 
     // 0% fee: recipient receives exact amount sent (e.g. 1,000 sent = 1,000 received)
     const charge = 0;
     const finalAmount = amount;
+    const balanceField = currency === 'diamond' ? 'diamonds' : 'coins';
+    const senderBalance = Number(sender[balanceField] || 0);
 
-    if ((sender.coins || 0) < amount) {
-      throw new AppError(`Insufficient coin balance (Balance: ${(sender.coins || 0).toLocaleString()})`, 400);
+    if (senderBalance < amount) {
+      throw new AppError(`Insufficient ${currency} balance (Balance: ${senderBalance.toLocaleString()})`, 400);
     }
 
-    // Atomic debit sender of full transfer amount in coins
+    // Atomic debit sender of full transfer amount in diamond/coin
     const updatedSender = await User.findOneAndUpdate(
-      { _id: senderId, coins: { $gte: amount } },
-      { $inc: { coins: -amount } },
+      { _id: senderId, [balanceField]: { $gte: amount } },
+      { $inc: { [balanceField]: -amount } },
       { new: true }
     );
 
     if (!updatedSender) {
-      throw new AppError('Insufficient coin balance', 400);
+      throw new AppError(`Insufficient ${currency} balance`, 400);
     }
 
-    // Atomic credit receiver of full transfer amount in coins
+    // Atomic credit receiver of full transfer amount in diamond/coin
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiver._id },
-      { $inc: { coins: finalAmount } },
+      { $inc: { [balanceField]: finalAmount } },
       { new: true }
     );
 
@@ -284,26 +348,27 @@ export const incomeService = {
     }
 
     // Write ledger entries
+    const currencyName = currency === 'diamond' ? 'diamonds' : 'coins';
     await Transaction.create([
       {
         userId: senderId,
         type: 'transfer',
         amount: amount,
-        currency: 'coin',
+        currency,
         targetId: receiver._id,
         targetModel: 'User',
         status: 'completed',
-        description: `Transferred ${amount.toLocaleString()} coins to ${receiver.nickname} (${receiver.uid}) [Fee: Free, Net: ${finalAmount.toLocaleString()}]`,
+        description: `Transferred ${amount.toLocaleString()} ${currencyName} to ${receiver.nickname} (${receiver.uid}) [Fee: Free, Net: ${finalAmount.toLocaleString()}]`,
       },
       {
         userId: receiver._id,
         type: 'transfer',
         amount: finalAmount,
-        currency: 'coin',
+        currency,
         targetId: senderId,
         targetModel: 'User',
         status: 'completed',
-        description: `Received ${finalAmount.toLocaleString()} coins from ${updatedSender.nickname} (${updatedSender.uid}) [Gross: ${amount.toLocaleString()}, Fee: Free]`,
+        description: `Received ${finalAmount.toLocaleString()} ${currencyName} from ${updatedSender.nickname} (${updatedSender.uid}) [Gross: ${amount.toLocaleString()}, Fee: Free]`,
       },
     ]);
 
@@ -328,12 +393,14 @@ export const incomeService = {
     // Send push + in-app notification to receiver
     try {
       const { notificationService } = await import('./notification.service');
+      const icon = currency === 'diamond' ? '💎' : '💰';
+      const capName = currency === 'diamond' ? 'Diamond' : 'Coin';
       notificationService
         .createNotification({
           userId: receiver._id.toString(),
-          type: 'coin_transfer',
-          title: 'Coin Transfer Received 💰',
-          message: `You received ${finalAmount.toLocaleString()} coins from ${updatedSender.nickname} (${updatedSender.uid})`,
+          type: (`${currency}_transfer` as any),
+          title: `${capName} Transfer Received ${icon}`,
+          message: `You received ${finalAmount.toLocaleString()} ${currencyName} from ${updatedSender.nickname} (${updatedSender.uid})`,
           senderId: senderId,
           senderInfo: {
             nickname: updatedSender.nickname,
@@ -341,7 +408,7 @@ export const incomeService = {
             uid: updatedSender.uid,
           },
           targetUrl: '/wallet',
-          data: { amount: finalAmount, senderId, senderUid: updatedSender.uid },
+          data: { amount: finalAmount, senderId, senderUid: updatedSender.uid, currency },
         })
         .catch(() => {});
     } catch {}
@@ -352,8 +419,8 @@ export const incomeService = {
       charge: 0,
       chargePercent: 0,
       finalAmount: amount,
-      balance: updatedSender.coins,
-      currency: 'coin',
+      balance: updatedSender[balanceField],
+      currency,
     };
   },
 

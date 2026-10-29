@@ -5,6 +5,7 @@ export type StreamerRange = 'today' | 'week' | 'month' | 'all';
 
 export interface StreamerStats {
   liveDurationSec: number;
+  totalLiveDurationSec?: number;
   pointsEarned: number;
   diamondsEarned?: number;
   coinsEarned?: number;

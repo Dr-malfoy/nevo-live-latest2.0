@@ -18,12 +18,15 @@ export const incomeController = {
   async getSource(req: Request, res: Response, next: NextFunction) {
     try {
       const key = req.params.key as IncomeSourceKey;
-      const range = (req.query.range as '24h' | '7d' | '30d') || '30d';
+      const range = (req.query.range as any) || '1y';
       const page = parseInt(req.query.page as string, 10) || 1;
       const limit = parseInt(req.query.limit as string, 10) || 20;
 
       const result = await incomeService.getIncomeSourceDrilldown(req.user!.userId, key, range, page, limit);
-      sendPaginated(res, result.data, result.total, result.page, result.limit);
+      sendPaginated(res, result.data, result.total, result.page, result.limit, {
+        totalPoints: result.totalPoints,
+        range: result.range,
+      });
     } catch (error) {
       next(error);
     }
@@ -54,12 +57,17 @@ export const incomeController = {
   /** POST /api/transfer */
   async transfer(req: Request, res: Response, next: NextFunction) {
     try {
-      const { receiverUid, points } = req.body;
+      const { receiverUid, points, currency } = req.body;
       if (!receiverUid || !points) {
         sendError(res, 'Receiver UID and points are required', 400);
         return;
       }
-      const result = await incomeService.transferPoints(req.user!.userId, receiverUid, Number(points));
+      const result = await incomeService.transferPoints(
+        req.user!.userId,
+        receiverUid,
+        Number(points),
+        currency === 'coin' ? 'coin' : 'diamond'
+      );
       sendSuccess(res, result, 'Points transferred successfully');
     } catch (error) {
       next(error);

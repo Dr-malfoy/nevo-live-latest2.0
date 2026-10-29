@@ -13,15 +13,17 @@ import {
   PiSparkleFill as Sparkles,
   PiPaperPlaneRightFill as SendIcon,
   PiXBold as X,
-  PiCoinFill as CoinIcon,
   PiSpeakerHighFill as SpeakerIcon,
   PiSpeakerSlashFill as SpeakerSlashIcon,
+  PiFlipHorizontalFill as MirrorIcon,
   PiWifiHighBold as WifiIcon,
+  PiWifiSlashBold as WifiSlashIcon,
   PiFastForwardFill as FastForwardIcon,
   PiShieldCheckFill as ShieldCheck,
   PiSmileyFill as SmileyIcon,
 } from 'react-icons/pi';
 import { Avatar } from '../user';
+import { DiamondIcon } from '../ui/CurrencyIcon';
 import { useCall, type CallChatMessage } from '../../hooks/useCall';
 import { useVideoFilters, FILTERS } from '../../hooks/useVideoFilters';
 import { callApi, type CallParticipant } from '../../api/call.api';
@@ -89,11 +91,15 @@ export const CallScreen = ({
     micOn,
     cameraOn,
     speakerOn,
+    mirrorOn,
+    facingMode,
+    connectionState,
     error,
     startCall,
     toggleMic,
     toggleCamera,
     toggleSpeaker,
+    toggleMirror,
     switchCamera,
     playLocalPreview,
     playRemoteVideo,
@@ -155,13 +161,84 @@ export const CallScreen = ({
   const callIdRef = useRef<string>('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // Network grace: 30-second reconnect countdown
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectCountdown, setReconnectCountdown] = useState(30);
+  const [reconnectNotice, setReconnectNotice] = useState<string>('');
+  const [connectionRestoredNotice, setConnectionRestoredNotice] = useState(false);
+
+  const networkTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const isReconnectingRef = useRef(false);
+
+  const handleNetworkLost = useCallback((reason: string = 'Internet connection lost') => {
+    // If already in 30s grace reconnecting mode, don't restart timer
+    if (networkTimerRef.current || isReconnectingRef.current) return;
+
+    // Only start 30s grace if the call was already connected or joined
+    if (!joined && !callConnected) return;
+
+    isReconnectingRef.current = true;
+    setIsReconnecting(true);
+    setReconnectCountdown(30);
+    setReconnectNotice(reason);
+
+    let remaining = 30;
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    countdownIntervalRef.current = setInterval(() => {
+      remaining -= 1;
+      setReconnectCountdown(Math.max(0, remaining));
+      if (remaining <= 0) {
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      }
+    }, 1000);
+
+    networkTimerRef.current = setTimeout(() => {
+      // 30 seconds expired without reconnection
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      networkTimerRef.current = undefined;
+      isReconnectingRef.current = false;
+      setIsReconnecting(false);
+
+      if (!endedRef.current) {
+        endedRef.current = true;
+        ringtone.stop();
+        endCall().finally(() => onClose('ended'));
+      }
+    }, 30_000);
+  }, [joined, callConnected, endCall, onClose]);
+
+  const handleNetworkRecovered = useCallback(() => {
+    if (networkTimerRef.current) {
+      clearTimeout(networkTimerRef.current);
+      networkTimerRef.current = undefined;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = undefined;
+    }
+
+    if (isReconnectingRef.current) {
+      isReconnectingRef.current = false;
+      setIsReconnecting(false);
+      setReconnectCountdown(30);
+      setConnectionRestoredNotice(true);
+      setTimeout(() => setConnectionRestoredNotice(false), 3000);
+
+      // Re-verify and rejoin socket call room
+      if (session?.callId) {
+        joinCallRoom(session.callId);
+      }
+    }
+  }, [session?.callId, joinCallRoom]);
+
   const freeMinuteActive = Boolean(
     isFreeMinuteApplied ?? (incoming?.isFreeMinuteApplied || outgoing?.isFreeMinuteApplied)
   );
 
   const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && !(freeMinuteActive && elapsed < 60) && (
     isLowBalance ||
-    (currentUser?.coins != null && currentUser.coins < coinsPerMinute * 2)
+    (currentUser?.diamonds != null && currentUser.diamonds < coinsPerMinute * 2)
   );
 
   const session = incoming
@@ -243,6 +320,9 @@ export const CallScreen = ({
       setRinging(false);
       setCallConnected(true);
       setAnswering(true);
+      if (payload?.audienceDiamonds != null) {
+        updateUser({ diamonds: payload.audienceDiamonds });
+      }
       if (payload?.audienceCoins != null) {
         updateUser({ coins: payload.audienceCoins });
       }
@@ -292,10 +372,14 @@ export const CallScreen = ({
       }
     };
     socket.on('call:coins-finished', onCoinsFinished);
+    socket.on('call:diamonds-finished', onCoinsFinished);
 
     const onBalanceUpdate = (payload: any) => {
-      if (payload?.coins != null) {
-        updateUser({ coins: payload.coins });
+      if (payload?.diamonds != null || payload?.coins != null) {
+        updateUser({
+          ...(payload.diamonds != null && { diamonds: payload.diamonds }),
+          ...(payload.coins != null && { coins: payload.coins }),
+        });
       }
       if (payload?.minutesBilled != null) {
         setMinutesBilled(payload.minutesBilled);
@@ -309,6 +393,18 @@ export const CallScreen = ({
     };
     socket.on('balance:update', onBalanceUpdate);
 
+    const onSocketDisconnect = (reason: string) => {
+      if (reason !== 'io client disconnect') {
+        handleNetworkLost('Server connection interrupted');
+      }
+    };
+    const onSocketConnect = () => {
+      handleNetworkRecovered();
+    };
+
+    socket.on('disconnect', onSocketDisconnect);
+    socket.on('connect', onSocketConnect);
+
     return () => {
       socket.off('call:ringing', onCallRinging);
       socket.off('call:calling', onCallCalling);
@@ -318,9 +414,60 @@ export const CallScreen = ({
       socket.off('call:end', onCallEnded);
       socket.off('call:message', onCallMessage);
       socket.off('call:coins-finished', onCoinsFinished);
+      socket.off('call:diamonds-finished', onCoinsFinished);
       socket.off('balance:update', onBalanceUpdate);
+      socket.off('disconnect', onSocketDisconnect);
+      socket.off('connect', onSocketConnect);
     };
-  }, [socket, session?.callId, chatOpen, currentUser?._id, endCall, onClose, updateUser]);
+  }, [socket, session?.callId, chatOpen, currentUser?._id, endCall, onClose, updateUser, handleNetworkLost, handleNetworkRecovered]);
+
+  // Window online/offline network detection
+  useEffect(() => {
+    const onOnline = () => {
+      handleNetworkRecovered();
+    };
+    const onOffline = () => {
+      handleNetworkLost('Internet connection lost');
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [handleNetworkLost, handleNetworkRecovered]);
+
+  // Agora RTC connection state monitor
+  useEffect(() => {
+    if (connectionState === 'RECONNECTING' || connectionState === 'DISCONNECTED') {
+      if (joined || callConnected) {
+        handleNetworkLost('Call connection interrupted');
+      }
+    } else if (connectionState === 'CONNECTED') {
+      handleNetworkRecovered();
+    }
+  }, [connectionState, joined, callConnected, handleNetworkLost, handleNetworkRecovered]);
+
+  // Monitor remote user presence in active connected 1:1 call
+  useEffect(() => {
+    if (callConnected && joined && !ringing && !incoming) {
+      if (remoteUsers.length === 0) {
+        handleNetworkLost('Other user is reconnecting…');
+      } else {
+        handleNetworkRecovered();
+      }
+    }
+  }, [remoteUsers.length, callConnected, joined, ringing, incoming, handleNetworkLost, handleNetworkRecovered]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (networkTimerRef.current) clearTimeout(networkTimerRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    };
+  }, []);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -392,11 +539,14 @@ export const CallScreen = ({
     billingIntervalRef.current = setInterval(() => {
       if (!session?.callId || endedRef.current) return;
       socket?.emit('call:billing-tick', { callId: session.callId }, (res: any) => {
-        if (res?.result?.coinsFinished) {
+        if (res?.result?.coinsFinished || res?.result?.diamondsFinished) {
           setCoinsFinished(true);
         }
         if (res?.result?.minutesBilled != null) {
           setMinutesBilled(res.result.minutesBilled);
+        }
+        if (res?.result?.audienceDiamonds != null) {
+          updateUser({ diamonds: res.result.audienceDiamonds });
         }
         if (res?.result?.audienceCoins != null) {
           updateUser({ coins: res.result.audienceCoins });
@@ -671,10 +821,10 @@ export const CallScreen = ({
                   <motion.div
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-500/15 border border-amber-400/40 rounded-full text-xs font-black text-amber-300 shadow-md"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-cyan-500/15 border border-cyan-400/40 rounded-full text-xs font-black text-cyan-300 shadow-md"
                   >
-                    <CoinIcon className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{coinsPerMinute.toLocaleString()} Coins / min</span>
+                    <DiamondIcon className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{coinsPerMinute.toLocaleString()} Diamonds / min</span>
                   </motion.div>
                 )}
               </div>
@@ -801,21 +951,37 @@ export const CallScreen = ({
               </div>
             )}
 
-            {/* PiP Header Tags & Flip camera shortcut */}
+            {/* PiP Header Tags, Mirror toggle & Flip camera shortcut */}
             <div className="absolute top-2 inset-x-2 flex items-center justify-between pointer-events-auto">
               <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[9px] font-black text-white/90 border border-white/10">
                 You {activeFilter.id !== 'natural' && `· ${activeFilter.label}`}
               </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  switchCamera();
-                }}
-                className="p-1.5 rounded-full bg-black/70 backdrop-blur-md text-white/90 hover:text-white border border-white/10 shadow active:scale-95 transition-all"
-                title="Flip Camera"
-              >
-                <CameraRotate className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMirror();
+                  }}
+                  className={`p-1.5 rounded-full backdrop-blur-md border shadow active:scale-95 transition-all ${
+                    mirrorOn
+                      ? 'bg-purple-600/80 text-white border-purple-400/50 shadow-[0_0_10px_rgba(168,85,247,0.5)]'
+                      : 'bg-black/70 text-white/70 border-white/10'
+                  }`}
+                  title={mirrorOn ? 'Mirroring: ON (tap to turn off)' : 'Mirroring: OFF (tap to turn on)'}
+                >
+                  <MirrorIcon className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    switchCamera();
+                  }}
+                  className="p-1.5 rounded-full bg-black/70 backdrop-blur-md text-white/90 hover:text-white border border-white/10 shadow active:scale-95 transition-all"
+                  title={`Flip Camera (${facingMode === 'user' ? 'Front -> Back' : 'Back -> Front'})`}
+                >
+                  <CameraRotate className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -827,9 +993,23 @@ export const CallScreen = ({
           {/* Left: Call Timer Capsule & HD Badge */}
           <div className="flex items-center gap-2 pointer-events-auto">
             <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-2xl border border-white/15 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
-              <span className={`w-2.5 h-2.5 rounded-full ${callConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400 animate-pulse'}`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                isReconnecting
+                  ? 'bg-amber-400 animate-ping'
+                  : callConnected
+                    ? 'bg-emerald-400 animate-ping'
+                    : 'bg-amber-400 animate-pulse'
+              }`} />
               <span className="text-xs font-black text-white tracking-widest font-mono">
-                {callConnected ? fmt(elapsed) : incoming ? 'INCOMING' : isTargetOnline ? 'RINGING' : 'CALLING'}
+                {isReconnecting
+                  ? `RECONNECTING (${reconnectCountdown}s)`
+                  : callConnected
+                    ? fmt(elapsed)
+                    : incoming
+                      ? 'INCOMING'
+                      : isTargetOnline
+                        ? 'RINGING'
+                        : 'CALLING'}
               </span>
             </div>
 
@@ -856,9 +1036,9 @@ export const CallScreen = ({
                 <motion.div
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/25 backdrop-blur-2xl border border-amber-400/50 text-xs font-black text-amber-300 shadow-lg"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/25 backdrop-blur-2xl border border-cyan-400/50 text-xs font-black text-cyan-300 shadow-lg"
                 >
-                  <CoinIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <DiamondIcon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                   <span className="tabular-nums font-mono">{isAudience ? '-' : '+'}{coinsPerMinute.toLocaleString()}/min</span>
                 </motion.div>
               )
@@ -874,7 +1054,7 @@ export const CallScreen = ({
         </header>
       )}
 
-      {/* Low Coins Warning Banner */}
+      {/* Low Diamonds Warning Banner */}
       <AnimatePresence>
         {joined && callConnected && isAudience && coinsPerMinute > 0 && isCoinLow && (
           <motion.div
@@ -883,21 +1063,21 @@ export const CallScreen = ({
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             className="absolute top-16 inset-x-4 z-40 mx-auto max-w-sm pointer-events-auto"
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-amber-500/95 text-slate-950 backdrop-blur-xl border border-amber-300 shadow-[0_8px_30px_rgba(245,158,11,0.5)] animate-pulse">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-cyan-500/95 text-slate-950 backdrop-blur-xl border border-cyan-300 shadow-[0_8px_30px_rgba(6,182,212,0.5)] animate-pulse">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xl shrink-0">⚠️</span>
+                <span className="text-xl shrink-0">💎</span>
                 <div className="text-left leading-tight min-w-0">
-                  <p className="text-xs font-black tracking-tight">Low Coins Warning!</p>
+                  <p className="text-xs font-black tracking-tight">Low Diamonds Warning!</p>
                   <p className="text-[11px] font-bold text-slate-900 truncate">
-                    {currentUser?.coins != null && currentUser.coins < coinsPerMinute
+                    {currentUser?.diamonds != null && currentUser.diamonds < coinsPerMinute
                       ? 'Last prepaid minute running!'
-                      : `~${Math.floor((currentUser?.coins || 0) / coinsPerMinute)} min left`} ({currentUser?.coins ?? 0} coins remaining)
+                      : `~${Math.floor((currentUser?.diamonds || 0) / coinsPerMinute)} min left`} ({currentUser?.diamonds ?? 0} diamonds remaining)
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => window.open('/recharge', '_blank')}
-                className="shrink-0 px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-amber-400 text-xs font-black shadow-md active:scale-95 transition-all"
+                onClick={() => window.open('/store', '_blank')}
+                className="shrink-0 px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-cyan-400 text-xs font-black shadow-md active:scale-95 transition-all"
               >
                 Recharge
               </button>
@@ -1097,8 +1277,55 @@ export const CallScreen = ({
         }}
       />
 
+      {/* 9.5. 30-Second Network Reconnecting Banner / Overlay */}
+      <AnimatePresence>
+        {isReconnecting && (
+          <motion.div
+            initial={{ opacity: 0, y: -40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -30, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute top-16 sm:top-20 inset-x-4 z-40 flex justify-center pointer-events-none"
+          >
+            <div className="pointer-events-auto flex items-center gap-3.5 px-5 py-3.5 rounded-2xl bg-amber-950/90 backdrop-blur-2xl border-2 border-amber-400/60 shadow-[0_12px_45px_rgba(245,158,11,0.5)] text-white max-w-md w-full">
+              <div className="relative flex items-center justify-center w-11 h-11 rounded-full bg-amber-500/20 border border-amber-400/40 shrink-0">
+                <WifiSlashIcon className="w-5 h-5 text-amber-300 animate-pulse" />
+                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 animate-ping" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black text-amber-300 tracking-wider uppercase">
+                    Reconnecting…
+                  </span>
+                  <span className="text-xs font-mono font-black text-amber-200 bg-amber-500/30 px-2.5 py-0.5 rounded-full border border-amber-400/50 tabular-nums">
+                    {reconnectCountdown}s
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-100/90 truncate mt-0.5 font-medium">
+                  {reconnectNotice || 'Internet connection lost. Trying to reconnect...'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {connectionRestoredNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="absolute top-16 sm:top-20 inset-x-4 z-40 flex justify-center pointer-events-none"
+          >
+            <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-emerald-950/90 backdrop-blur-2xl border border-emerald-400/60 shadow-[0_8px_30px_rgba(16,185,129,0.4)] text-emerald-300 text-xs font-black">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>Connection restored!</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 10. Error notice bar */}
-      {error && (
+      {error && !isReconnecting && (
         <div className="absolute bottom-24 inset-x-0 z-30 flex justify-center px-6 pointer-events-none">
           <div className="text-xs text-rose-300 bg-rose-950/80 border border-rose-500/40 rounded-full px-4 py-2 backdrop-blur-xl shadow-lg">
             {error}
@@ -1175,15 +1402,31 @@ export const CallScreen = ({
                   )}
                 </button>
 
-                {/* 2. Flip Camera (Video Calls) */}
+                {/* 2. Flip Camera (Direct Front <-> Back) */}
                 {isVideo && (
                   <button
                     onClick={switchCamera}
-                    aria-label="Flip camera"
+                    aria-label={`Switch camera to ${facingMode === 'user' ? 'rear' : 'front'}`}
                     className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
-                    title="Flip camera"
+                    title={`Flip Camera (${facingMode === 'user' ? 'Front -> Back' : 'Back -> Front'})`}
                   >
                     <CameraRotate className="w-5 h-5" />
+                  </button>
+                )}
+
+                {/* 2.5. Mirror Mode Toggle */}
+                {isVideo && (
+                  <button
+                    onClick={toggleMirror}
+                    aria-label={mirrorOn ? 'Disable mirror mode' : 'Enable mirror mode'}
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                      mirrorOn
+                        ? 'bg-purple-600/25 text-purple-300 border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.4)]'
+                        : 'bg-white/10 text-white/70 border-white/10 hover:bg-white/20'
+                    }`}
+                    title={mirrorOn ? 'Mirroring: ON (natural movement)' : 'Mirroring: OFF'}
+                  >
+                    <MirrorIcon className="w-5 h-5" />
                   </button>
                 )}
 

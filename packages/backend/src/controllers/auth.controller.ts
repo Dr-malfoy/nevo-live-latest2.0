@@ -53,9 +53,9 @@ export const authController = {
 
   async googleLogin(req: Request, res: Response, next: NextFunction) {
     try {
-      const { idToken } = req.body;
+      const { idToken, country } = req.body;
       const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
-      const result = await authService.loginWithGoogle(idToken, deviceId);
+      const result = await authService.loginWithGoogle(idToken, country, deviceId);
       sendSuccess(res, result, 'Login successful');
     } catch (error) {
       next(error);
@@ -64,9 +64,9 @@ export const authController = {
 
   async facebookLogin(req: Request, res: Response, next: NextFunction) {
     try {
-      const { idToken, accessToken } = req.body;
+      const { idToken, accessToken, country } = req.body;
       const deviceId = (req.body.deviceId || req.headers['x-device-id'] || '') as string;
-      const result = await authService.loginWithFacebook(idToken, accessToken, deviceId);
+      const result = await authService.loginWithFacebook(idToken, accessToken, country, deviceId);
       sendSuccess(res, result, 'Facebook login successful');
     } catch (error) {
       next(error);

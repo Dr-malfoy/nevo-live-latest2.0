@@ -350,15 +350,28 @@ export const AgentRequests = () => {
                 >
                   {/* Top user info row */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        const targetId = (req.userId as any)?._id || (typeof req.userId === 'string' ? req.userId : '');
+                        if (targetId) {
+                          navigate(`/user/${targetId}`);
+                        }
+                      }}
+                      className="flex items-center gap-2.5 min-w-0 cursor-pointer group active:opacity-80 transition-all"
+                      title="View User Profile"
+                    >
                       <Avatar
                         src={req.userId?.avatar}
                         nickname={req.userId?.nickname || 'User'}
                         size="md"
+                        userId={(req.userId as any)?._id}
                       />
                       <div className="min-w-0">
-                        <p className="font-extrabold text-ink text-sm truncate">
-                          {req.userId?.nickname || 'User'}
+                        <p className="font-extrabold text-ink text-sm truncate group-hover:text-amber-600 transition-colors flex items-center gap-1">
+                          <span>{req.userId?.nickname || 'User'}</span>
+                          <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">›</span>
                         </p>
                         <p className="text-[11px] text-gray-400 flex items-center gap-1.5 font-mono">
                           <span>ID: {req.userId?.uid || '—'}</span>
@@ -522,15 +535,28 @@ export const AgentRequests = () => {
                 >
                   {/* Top user info row */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        const targetId = (req.userId as any)?._id || (typeof req.userId === 'string' ? req.userId : '');
+                        if (targetId) {
+                          navigate(`/user/${targetId}`);
+                        }
+                      }}
+                      className="flex items-center gap-2.5 min-w-0 cursor-pointer group active:opacity-80 transition-all"
+                      title="View User Profile"
+                    >
                       <Avatar
                         src={req.userId?.avatar}
                         nickname={req.userId?.nickname || 'User'}
                         size="md"
+                        userId={(req.userId as any)?._id}
                       />
                       <div className="min-w-0">
-                        <p className="font-extrabold text-ink text-sm truncate">
-                          {req.userId?.nickname || 'User'}
+                        <p className="font-extrabold text-ink text-sm truncate group-hover:text-amber-600 transition-colors flex items-center gap-1">
+                          <span>{req.userId?.nickname || 'User'}</span>
+                          <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">›</span>
                         </p>
                         <p className="text-[11px] text-gray-400 flex items-center gap-1.5 font-mono">
                           <span>ID: {req.userId?.uid || '—'}</span>
@@ -695,12 +721,34 @@ export const AgentRequests = () => {
             <p className="text-xs text-gray-600 leading-relaxed">
               {actionItem.type === 'approve' && actionItem.requestType === 'recharge' && (
                 <>
-                  Approving this order will credit <strong>৳{(actionItem.item as AgentRechargeRequest).amountBdt}</strong> worth of units to <strong>{actionItem.item.userId?.nickname || 'the user'}</strong> and award you agent commission.
+                  Approving this order will credit <strong>৳{(actionItem.item as AgentRechargeRequest).amountBdt}</strong> worth of units to{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const uId = (actionItem.item.userId as any)?._id;
+                      if (uId) navigate(`/user/${uId}`);
+                    }}
+                    className="font-bold underline text-amber-600 hover:text-amber-700 inline"
+                  >
+                    {actionItem.item.userId?.nickname || 'the user'}
+                  </button>{' '}
+                  and award you agent commission.
                 </>
               )}
               {actionItem.type === 'approve' && actionItem.requestType === 'withdraw' && (
                 <>
-                  Approving this request confirms the user's withdrawal of <strong>৳{(actionItem.item as AgentWithdrawalRequest).amountBdt}</strong>. You will be able to mark it as paid after sending funds.
+                  Approving this request confirms withdrawal of <strong>৳{(actionItem.item as AgentWithdrawalRequest).amountBdt}</strong> for{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const uId = (actionItem.item.userId as any)?._id;
+                      if (uId) navigate(`/user/${uId}`);
+                    }}
+                    className="font-bold underline text-amber-600 hover:text-amber-700 inline"
+                  >
+                    {actionItem.item.userId?.nickname || 'the user'}
+                  </button>
+                  . You will be able to mark it as paid after sending funds.
                 </>
               )}
               {actionItem.type === 'mark_paid' && (

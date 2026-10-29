@@ -151,6 +151,141 @@ export const referralService = {
   },
 
   /**
+   * Bind an inviter's referral code from the /invite page.
+   */
+  async bindReferralCode(userId: string, code: string, deviceId?: string) {
+    const cleanCode = (code || '').trim();
+    if (!cleanCode) {
+      throw new AppError('Please enter a referral code', 400);
+    }
+
+    const user = await User.findById(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    // Check if user is already bound to an inviter
+    if (user.invitedBy) {
+      throw new AppError('You have already bound a referral code', 400);
+    }
+
+    const existingRecord = await ReferralRecord.findOne({ inviteeId: user._id });
+    if (existingRecord) {
+      throw new AppError('You have already bound a referral code', 400);
+    }
+
+    // Find the inviter
+    const inviter = await User.findOne({
+      $or: [
+        { uid: cleanCode },
+        { username: new RegExp(`^${cleanCode}$`, 'i') },
+        { phone: cleanCode },
+        ...(mongoose.isValidObjectId(cleanCode) ? [{ _id: cleanCode }] : []),
+      ],
+    });
+
+    if (!inviter) {
+      throw new AppError('Invalid referral code. No user found with this code.', 404);
+    }
+
+    // Prevent self-referral
+    if (inviter._id.toString() === user._id.toString() || inviter.uid === user.uid) {
+      throw new AppError('You cannot enter your own referral code', 400);
+    }
+
+    const cleanDeviceId = (deviceId || user.deviceId || '').trim();
+
+    // Check Duplicate DeviceID
+    let isDuplicateDevice = false;
+    let invalidReason: string | undefined = undefined;
+
+    if (cleanDeviceId) {
+      const existingDeviceUser = await User.findOne({
+        deviceId: cleanDeviceId,
+        _id: { $ne: user._id },
+      });
+      const existingDeviceRecord = await ReferralRecord.findOne({
+        inviteeDeviceId: cleanDeviceId,
+        inviteeId: { $ne: user._id },
+      });
+
+      if (existingDeviceUser || existingDeviceRecord) {
+        isDuplicateDevice = true;
+        invalidReason = 'duplicate_device';
+        console.warn(`[Referral] Duplicate DeviceID detected (${cleanDeviceId}) when binding invitee ${user.uid}. Marked invalid.`);
+      }
+    }
+
+    const { dateKey } = getBangladeshDayBounds();
+    const isOtpVerified = Boolean(user.phone && !user.phone.startsWith('email_') && !user.phone.startsWith('google_') && !user.phone.startsWith('fb_'));
+    const canPayStep1 = !isDuplicateDevice && isOtpVerified;
+
+    const record = await ReferralRecord.create({
+      inviterId: inviter._id,
+      inviteeId: user._id,
+      inviteCode: cleanCode,
+      inviteeDeviceId: cleanDeviceId || undefined,
+      isDuplicateDevice,
+      invalidReason,
+      otpVerified: isOtpVerified,
+      watchTimeMinutes: user.totalWatchMinutes || 0,
+      signupDateKey: user.lastLoginDateKey || dateKey,
+      loginDates: user.loginDates && user.loginDates.length > 0 ? user.loginDates : [dateKey],
+      hasDay2Login: Boolean(user.loginDates && user.loginDates.length > 1),
+      status: isDuplicateDevice ? 'invalid' : 'pending',
+      step1Coins: 6500,
+      step1Paid: canPayStep1,
+      step1PaidAt: canPayStep1 ? new Date() : undefined,
+      step2Coins: 6500,
+      step2Paid: false,
+      inviteeRewardPaid: false,
+    });
+
+    user.invitedBy = inviter._id as any;
+    if (cleanDeviceId && !user.deviceId) {
+      user.deviceId = cleanDeviceId;
+    }
+    await user.save();
+
+    // Check if invitee watch time already reached 10 mins
+    if ((user.totalWatchMinutes || 0) >= 10 && !isDuplicateDevice && isOtpVerified) {
+      record.inviteeRewardPaid = true;
+      record.inviteeRewardPaidAt = new Date();
+      await User.updateOne({ _id: user._id }, { $inc: { coins: 13000 } });
+      await Transaction.create({
+        userId: user._id,
+        type: 'referral_bonus',
+        amount: 13000,
+        currency: 'coin',
+        status: 'completed',
+        description: 'New User Referral Welcome Bonus: 13,000 Coins (100 TK) for registration + 10 min watch time',
+      });
+      await record.save();
+    }
+
+    // Check if Day 2 login and 30m watch time already achieved
+    if (record.hasDay2Login && (user.totalWatchMinutes || 0) >= 30 && !isDuplicateDevice && isOtpVerified) {
+      record.status = 'valid';
+      record.step2Paid = true;
+      record.step2PaidAt = new Date();
+      await record.save();
+      await this.checkAndAwardMilestones(inviter._id.toString());
+    }
+
+    console.log(`[Referral] Referral code ${cleanCode} confirmed for user ${user.uid}! Bound to inviter ${inviter.uid}.`);
+
+    return {
+      success: true,
+      message: 'Referral code confirmed successfully',
+      inviter: {
+        _id: inviter._id,
+        uid: inviter.uid,
+        nickname: inviter.nickname,
+        avatar: inviter.avatar,
+      },
+      status: record.status,
+    };
+  },
+
+  /**
    * Called on user login or authenticated active request.
    * Tracks distinct login dates and checks for Day 2 login fulfillment.
    */
@@ -484,6 +619,31 @@ export const referralService = {
       };
     });
 
+    // Check if current user is invited by someone
+    let inviterInfo: { _id: string; uid: string; nickname: string; avatar?: string } | null = null;
+    if (user.invitedBy) {
+      const inv = await User.findById(user.invitedBy).select('uid nickname avatar');
+      if (inv) {
+        inviterInfo = {
+          _id: inv._id.toString(),
+          uid: inv.uid,
+          nickname: inv.nickname,
+          avatar: inv.avatar,
+        };
+      }
+    } else {
+      const existingBound = await ReferralRecord.findOne({ inviteeId: user._id }).populate('inviterId', 'uid nickname avatar');
+      if (existingBound && existingBound.inviterId) {
+        const inv = existingBound.inviterId as any;
+        inviterInfo = {
+          _id: inv._id ? inv._id.toString() : '',
+          uid: inv.uid || '',
+          nickname: inv.nickname || '',
+          avatar: inv.avatar || '',
+        };
+      }
+    }
+
     return {
       myId: user.uid,
       maxReward,
@@ -500,6 +660,7 @@ export const referralService = {
       lifetimeCommissionPercent: user.lifetimeReferralCommissionPercent || 10,
       milestones,
       invitees,
+      inviter: inviterInfo,
     };
   },
 

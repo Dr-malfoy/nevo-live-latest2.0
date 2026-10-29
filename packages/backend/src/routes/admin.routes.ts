@@ -8,6 +8,7 @@ import { walletController } from '../controllers/wallet.controller';
 import { rewardController } from '../controllers/reward.controller';
 import { officialNotificationController } from '../controllers/officialNotification.controller';
 import { hostApplicationController } from '../controllers/hostApplication.controller';
+import { diamondSellerController } from '../controllers/diamondSeller.controller';
 import { authenticate } from '../middleware/auth';
 import { requireAdmin } from '../middleware/roleGuard';
 
@@ -27,6 +28,13 @@ router.post('/hosts/recalculate-badges', authenticate, requireAdmin, adminContro
 router.get('/host-applications', authenticate, requireAdmin, hostApplicationController.getApplications);
 router.get('/host-applications/:id', authenticate, requireAdmin, hostApplicationController.getApplicationDetail);
 router.post('/host-applications/:id/review', authenticate, requireAdmin, hostApplicationController.reviewApplication);
+router.get('/host-bonuses', authenticate, requireAdmin, hostApplicationController.getAdminHostBonuses);
+router.post('/host-bonuses/:id/settle', authenticate, requireAdmin, hostApplicationController.adminForceSettleBonus);
+
+// Diamond Seller Applications
+router.get('/diamond-seller/applications', authenticate, requireAdmin, diamondSellerController.getApplications);
+router.get('/diamond-seller/applications/:id', authenticate, requireAdmin, diamondSellerController.getApplicationDetail);
+router.post('/diamond-seller/applications/:id/review', authenticate, requireAdmin, diamondSellerController.reviewApplication);
 
 router.get('/streams', authenticate, requireAdmin, adminController.getStreams);
 router.get('/transactions', authenticate, requireAdmin, adminController.getTransactions);

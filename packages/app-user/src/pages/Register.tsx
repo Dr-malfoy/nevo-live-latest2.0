@@ -16,8 +16,9 @@ import {
   PiArrowClockwiseFill as RefreshIcon,
   PiPencilSimpleFill as EditIcon,
 } from 'react-icons/pi';
-import { Button, Input, PhoneInputWithCountry, formatFullPhoneNumber } from '../components/ui';
+import { Button, Input, PhoneInputWithCountry, CountrySelect, formatFullPhoneNumber } from '../components/ui';
 import { TermsModal } from '../components/TermsModal';
+import { allCountries, flagEmoji } from '../lib/countries';
 import { useAuthStore, useUIStore } from '../stores';
 import { authApi } from '../api';
 import { getDeviceId } from '../api/client';
@@ -65,6 +66,7 @@ export const Register = () => {
   // Form Fields
   const [fullName, setFullName] = useState('');
   const [countryCode, setCountryCode] = useState('BD');
+  const [selectedCountry, setSelectedCountry] = useState('BD');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -109,7 +111,7 @@ export const Register = () => {
 
   // Cooldown countdown effect
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: any;
     if (cooldown > 0) {
       timer = setInterval(() => {
         setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
@@ -193,6 +195,11 @@ export const Register = () => {
       return false;
     }
 
+    if (!selectedCountry || selectedCountry.trim().length !== 2) {
+      setLocalError('Please select your country to create an account');
+      return false;
+    }
+
     if (!agreedToTerms) {
       setLocalError('Please agree to the Terms & Conditions and Privacy Policy to create an account.');
       return false;
@@ -220,7 +227,9 @@ export const Register = () => {
           dob,
           birthday: dob,
           gender,
+          country: selectedCountry.trim().toUpperCase(),
           inviteCode: inviteCode.trim() || undefined,
+          deviceId: getDeviceId(),
         });
         showToast('Account created successfully! Welcome to Navo Live.', 'success');
         navigate('/', { replace: true });
@@ -386,6 +395,7 @@ export const Register = () => {
         dob,
         birthday: dob,
         gender,
+        country: selectedCountry.trim().toUpperCase(),
         inviteCode: inviteCode.trim() || undefined,
         code,
         idToken,
@@ -414,7 +424,7 @@ export const Register = () => {
     setIsSendingOtp(true);
     try {
       const idToken = await signInWithGoogle();
-      // Require Terms & Conditions acceptance before completing account creation
+      // Require Terms & Conditions acceptance and country selection before completing account creation
       setPendingSocialAuth({ provider: 'Google', idToken });
       setShowTermsModal(true);
     } catch (err: any) {
@@ -433,7 +443,7 @@ export const Register = () => {
     setIsSendingOtp(true);
     try {
       const { idToken, accessToken } = await signInWithFacebook();
-      // Require Terms & Conditions acceptance before completing account creation
+      // Require Terms & Conditions acceptance and country selection before completing account creation
       setPendingSocialAuth({ provider: 'Facebook', idToken, accessToken });
       setShowTermsModal(true);
     } catch (err: any) {
@@ -446,19 +456,26 @@ export const Register = () => {
     }
   };
 
-  const handleAcceptTermsAndCompleteSignup = async () => {
+  const handleAcceptTermsAndCompleteSignup = async (selectedModalCountry?: string) => {
+    const countryToUse = (selectedModalCountry || selectedCountry || '').trim().toUpperCase();
+    if (!countryToUse || countryToUse.length !== 2) {
+      setLocalError('Please select your country to create an account.');
+      return;
+    }
+
     setAgreedToTerms(true);
+    setSelectedCountry(countryToUse);
     setShowTermsModal(false);
 
     if (pendingSocialAuth) {
       setIsSendingOtp(true);
       try {
         if (pendingSocialAuth.provider === 'Google' && pendingSocialAuth.idToken) {
-          await loginWithGoogle(pendingSocialAuth.idToken);
+          await loginWithGoogle(pendingSocialAuth.idToken, countryToUse);
           showToast('Account created & signed in with Google!', 'success');
           navigate('/', { replace: true });
         } else if (pendingSocialAuth.provider === 'Facebook') {
-          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken);
+          await loginWithFacebook(pendingSocialAuth.idToken, pendingSocialAuth.accessToken, countryToUse);
           showToast('Account created & signed in with Facebook!', 'success');
           navigate('/', { replace: true });
         }
@@ -584,7 +601,11 @@ export const Register = () => {
                   {contactMethod === 'phone' ? (
                     <PhoneInputWithCountry
                       countryCode={countryCode}
-                      onCountryCodeChange={setCountryCode}
+                      onCountryCodeChange={(code) => {
+                        setCountryCode(code);
+                        setSelectedCountry(code);
+                        if (localError) setLocalError(null);
+                      }}
                       phone={phone}
                       onPhoneChange={(val) => {
                         setPhone(val);
@@ -632,6 +653,30 @@ export const Register = () => {
                       {showPassword ? <EyeClosed className="w-4 h-4" /> : <EyeOpen className="w-4 h-4" />}
                     </button>
                   </div>
+                </div>
+
+                {/* 4. Permanent Country Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1 ml-1">
+                    <label className="block text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                      Account Country <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                      Permanent (Cannot change)
+                    </span>
+                  </div>
+                  <CountrySelect
+                    value={selectedCountry}
+                    onChange={(val) => {
+                      setSelectedCountry(val);
+                      setCountryCode(val);
+                      if (localError) setLocalError(null);
+                    }}
+                    placeholder="-- Select Your Country (Required) --"
+                  />
+                  <p className="text-[10px] text-ink-faint mt-1 ml-1">
+                    This will be the permanent country of your account and feeds.
+                  </p>
                 </div>
 
                 {/* 4. Date of Birth & Gender Grid */}
@@ -906,6 +951,8 @@ export const Register = () => {
         isOpen={showTermsModal}
         onClose={handleCloseTermsModal}
         onAccept={handleAcceptTermsAndCompleteSignup}
+        requireCountry={true}
+        defaultCountry={selectedCountry || 'BD'}
         actionText={pendingSocialAuth ? `Accept & Sign Up with ${pendingSocialAuth.provider}` : 'Accept Terms'}
       />
     </div>

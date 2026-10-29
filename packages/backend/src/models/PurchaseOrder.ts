@@ -6,6 +6,9 @@ export interface IPurchaseOrderDocument extends Document {
   isOfficial?: boolean;
   paymentMethod: string;
   amountBdt: number;
+  amountUsd?: number;
+  currencyMode?: 'USD' | 'BDT';
+  currency?: string;
   diamonds: number;
   coins: number;
   screenshot: string;
@@ -26,7 +29,10 @@ const purchaseOrderSchema = new Schema<IPurchaseOrderDocument>(
       type: String,
       required: true,
     },
-    amountBdt: { type: Number, required: true, min: 1 },
+    amountBdt: { type: Number, required: true, min: 0 },
+    amountUsd: { type: Number, min: 0 },
+    currencyMode: { type: String, enum: ['USD', 'BDT'], default: 'USD' },
+    currency: { type: String, default: 'diamond' },
     diamonds: { type: Number, default: 0, min: 0 },
     coins: { type: Number, default: 0, min: 0 },
     screenshot: { type: String, required: true },

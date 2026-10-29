@@ -665,23 +665,35 @@ export const PartyRoom = () => {
       <header className="px-3 pt-3 pb-2">
         <div className="flex items-center gap-2">
           {/* #18 — the host's own picture, never a fixed logo */}
-          <span className="w-9 h-9 rounded-full overflow-hidden bg-white/10 flex items-center justify-center shrink-0">
-            {room?.ownerId?.avatar ? (
-              <img src={room.ownerId.avatar} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-white text-xs font-bold">
-                {initial(room?.ownerId?.nickname)}
-              </span>
-            )}
-          </span>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (room?.ownerId?._id) {
+                navigate(room.ownerId._id === user?._id ? '/profile' : `/user/${room.ownerId._id}`);
+              }
+            }}
+            className="flex items-center gap-2 cursor-pointer active:opacity-80 transition-opacity min-w-0"
+            title="View Host Profile"
+          >
+            <span className="w-9 h-9 rounded-full overflow-hidden bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/20">
+              {room?.ownerId?.avatar ? (
+                <img src={room.ownerId.avatar} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white text-xs font-bold">
+                  {initial(room?.ownerId?.nickname)}
+                </span>
+              )}
+            </span>
 
-          <div className="min-w-0">
-            <p className="text-white text-sm font-bold truncate">
-              {room?.ownerId?.nickname ?? room?.name ?? 'Party'}
-            </p>
-            <p className="text-[10px] text-white/60 flex items-center gap-1">
-              <Heart className="w-3 h-3" /> 0
-            </p>
+            <div className="min-w-0">
+              <p className="text-white text-sm font-bold truncate hover:underline">
+                {room?.ownerId?.nickname ?? room?.name ?? 'Party'}
+              </p>
+              <p className="text-[10px] text-white/60 flex items-center gap-1">
+                <Heart className="w-3 h-3" /> 0
+              </p>
+            </div>
           </div>
 
           <span className="ml-auto h-8 px-2.5 rounded-full bg-white/10 text-white text-xs font-semibold flex items-center gap-1 shrink-0">
@@ -733,7 +745,7 @@ export const PartyRoom = () => {
               : (room?.seats && room.seats.length > 0 ? room.seats.length : 8)
           }
           onSeatPress={handleSeatPress}
-          onHostPress={() => room?.ownerId?._id && navigate(`/user/${room.ownerId._id}`)}
+          onHostPress={() => room?.ownerId?._id && navigate(room.ownerId._id === user?._id ? '/profile' : `/user/${room.ownerId._id}`)}
         />
       </div>
 
@@ -786,7 +798,18 @@ export const PartyRoom = () => {
                         Lv.{msg.level}
                       </span>
                     )}
-                    {msg.nickname} joined
+                    <span
+                      role={msg.userId ? 'button' : undefined}
+                      onClick={() => {
+                        if (msg.userId) {
+                          navigate(msg.userId === user?._id ? '/profile' : `/user/${msg.userId}`);
+                        }
+                      }}
+                      className={msg.userId ? 'cursor-pointer hover:underline font-bold' : ''}
+                    >
+                      {msg.nickname}
+                    </span>{' '}
+                    joined
                   </span>
                 ) : msg.kind === 'win' ? (
                   <span className="text-[#FFB020]">
@@ -794,7 +817,17 @@ export const PartyRoom = () => {
                   </span>
                 ) : (
                   <span className="text-white/90">
-                    <span className="text-[#9BB4FF] font-semibold">{msg.nickname}: </span>
+                    <span
+                      role={msg.userId ? 'button' : undefined}
+                      onClick={() => {
+                        if (msg.userId) {
+                          navigate(msg.userId === user?._id ? '/profile' : `/user/${msg.userId}`);
+                        }
+                      }}
+                      className={`text-[#9BB4FF] font-semibold ${msg.userId ? 'cursor-pointer hover:underline' : ''}`}
+                    >
+                      {msg.nickname}:{' '}
+                    </span>
                     {msg.text}
                   </span>
                 )}

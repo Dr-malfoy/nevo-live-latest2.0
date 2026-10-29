@@ -6,6 +6,7 @@ import { OnlineDot } from './OnlineDot';
 import { RoleTags } from './RoleTag';
 import { HostBadge } from './HostBadge';
 import { EquippedBadge } from './EquippedBadge';
+import { SellerBadge } from './SellerBadge';
 
 type NameplateUser = Partial<UserPublic> & Partial<User> & { nickname: string; hostBadge?: string; equippedBadge?: any };
 
@@ -77,6 +78,14 @@ export const UserNameplate = ({
 
         {showHostBadge && user.hostBadge && user.hostBadge !== 'none' && (
           <HostBadge badge={user.hostBadge} size={badgeSize === 'md' ? 'sm' : 'xs'} />
+        )}
+
+        {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge) ? (
+          <SellerBadge sellerType="diamond_seller" showLabel={size === 'lg'} />
+        ) : (
+          user.sellerType && user.sellerType !== 'none' ? (
+            <SellerBadge sellerType={user.sellerType} />
+          ) : null
         )}
 
         {showId && user.uid && (

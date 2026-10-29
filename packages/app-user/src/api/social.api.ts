@@ -51,6 +51,7 @@ export interface ReferralSummary {
   lifetimeCommissionPercent?: number;
   milestones?: ReferralMilestone[];
   invitees?: ReferralInviteeItem[];
+  inviter?: { _id?: string; uid: string; nickname: string; avatar?: string } | null;
 }
 
 export interface ReferralTemplate {
@@ -79,6 +80,10 @@ export interface AgencyInvitation {
 
 export const referralApi = {
   getSummary: () => client.get<ApiResponse<ReferralSummary>>('/referral/summary'),
+  bindCode: (code: string) =>
+    client.post<ApiResponse<{ inviter: { uid: string; nickname: string; avatar?: string } }>>('/referral/bind', {
+      code,
+    }),
   claim: () => client.post<ApiResponse<{ claimed: number }>>('/referral/claim'),
   getRank: (page = 1) =>
     client.get<ApiResponse<{ rank: number; user: UserPublic; amount: number }[]>>('/referral/rank', {

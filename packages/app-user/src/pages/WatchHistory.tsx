@@ -319,7 +319,17 @@ export const WatchHistory = () => {
                       </p>
 
                       <div className="flex items-center justify-between text-[11px] text-white/80 mt-1">
-                        <span className="truncate font-medium flex items-center gap-1">
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            if (item.hostId) {
+                              e.stopPropagation();
+                              navigate(`/user/${item.hostId}`);
+                            }
+                          }}
+                          className={`truncate font-medium flex items-center gap-1 ${item.hostId ? 'hover:underline cursor-pointer' : ''}`}
+                        >
                           <UserIcon className="w-3 h-3 text-white/70" />
                           {item.hostName || 'Creator'}
                         </span>
