@@ -868,28 +868,22 @@ export const LiveStreamPage = ({
       ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
       : null;
 
+  const [isClosing, setIsClosing] = useState(false);
+
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);
+    setIsClosing(true);
     navigatingAwayRef.current = true;
+    endedRef.current = true;
     closeStream();
     onCloseProp?.();
-    if (!isMinimized) {
-      navigate(-1);
-    }
     if (id) fireEnd();
-  }, [id, fireEnd, navigate, closeStream, onCloseProp, isMinimized]);
+    navigate('/', { replace: true });
+  }, [id, fireEnd, navigate, closeStream, onCloseProp]);
 
   const confirmEndStream = useCallback(async () => {
     setShowEndConfirm(false);
     endedRef.current = true;
-
-    // If host was minimized, close player immediately
-    if (isMinimized) {
-      closeStream();
-      onCloseProp?.();
-    } else {
-      setMinimized(false);
-    }
 
     const titlePicture = stream?.cover || stream?.thumbnail || (stream as any)?.coverImage;
     const profilePicture = host?.avatar || user?.avatar;
@@ -905,7 +899,18 @@ export const LiveStreamPage = ({
       isHost: true,
     };
 
-    // Clean up Agora and session safely
+    // If host was minimized, close player immediately
+    if (isMinimized) {
+      setIsClosing(true);
+      closeStream();
+      onCloseProp?.();
+    } else {
+      setMinimized(false);
+      // Set recap IMMEDIATELY so no connecting / skeleton screen flashes!
+      setStreamEndedRecap(recap);
+    }
+
+    // Clean up Agora and session safely in background
     try {
       if (timerRef.current) clearInterval(timerRef.current);
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
@@ -930,11 +935,7 @@ export const LiveStreamPage = ({
     } catch (e) {
       console.warn('[LiveStream] socket end error:', e);
     }
-
-    if (!isMinimized) {
-      setStreamEndedRecap(recap);
-    }
-  }, [id, leaveChannel, socket, likeCount, stream?.viewerCount, host, user, isMinimized, setMinimized, closeStream, onCloseProp]);
+  }, [id, leaveChannel, socket, likeCount, stream, host, user, isMinimized, setMinimized, closeStream, onCloseProp]);
 
   const requestEndStream = useCallback(() => {
     if (isMinimized) {
@@ -1003,12 +1004,18 @@ export const LiveStreamPage = ({
         image={streamEndedRecap.image}
         isHost={streamEndedRecap.isHost}
         onGoHome={() => {
+          setIsClosing(true);
           closeStream();
           onCloseProp?.();
           navigate('/', { replace: true });
         }}
       />
     );
+  }
+
+  // Prevent rendering LiveRoom / skeleton when closing or navigating away
+  if (isClosing || navigatingAwayRef.current || (endedRef.current && !streamEndedRecap)) {
+    return null;
   }
 
   return (

@@ -297,8 +297,8 @@ export const LiveRoom = ({
             )}
           </AnimatePresence>
 
-      {/* Connecting state */}
-      {!joined && <LiveSkeleton />}
+      {/* Connecting state (only when not ended) */}
+      {!joined && stream?.status !== 'ended' && <LiveSkeleton />}
 
       {/* Reconnecting Overlay / Banner with Countdown */}
       <AnimatePresence>

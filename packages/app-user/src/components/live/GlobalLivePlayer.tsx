@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLivePlayerStore, useSocketStore } from '../../stores';
 import { LiveStreamPage } from '../../pages/LiveStream';
@@ -21,20 +21,32 @@ export const GlobalLivePlayer = () => {
   const navigate = useNavigate();
   const { activeStreamId, isMinimized, setActiveStreamId, setMinimized, closeStream } = useLivePlayerStore();
   const socket = useSocketStore((s) => s.socket);
+  const closedStreamRef = useRef<string | null>(null);
 
-  // Listen for stream ending events from socket so minimized window automatically vanishes
+  const handleCloseStream = useCallback((streamIdToClose?: string | null) => {
+    const id = streamIdToClose || activeStreamId;
+    if (id) {
+      closedStreamRef.current = id;
+    }
+    closeStream();
+    if (location.pathname.match(/^\/(?:live|stream)\//)) {
+      navigate('/', { replace: true });
+    }
+  }, [activeStreamId, closeStream, location.pathname, navigate]);
+
+  // Listen for stream ending events from socket so player automatically vanishes
   useEffect(() => {
     if (!socket || !activeStreamId) return;
 
     const onLiveStatus = (data: { userId?: string; isLive?: boolean; streamId?: string }) => {
       if (data?.streamId === activeStreamId && data.isLive === false) {
-        closeStream();
+        handleCloseStream(data.streamId);
       }
     };
 
     const onStreamEnded = (data: { streamId?: string }) => {
       if (!data?.streamId || data.streamId === activeStreamId) {
-        closeStream();
+        handleCloseStream(data?.streamId || activeStreamId);
       }
     };
 
@@ -45,12 +57,18 @@ export const GlobalLivePlayer = () => {
       socket.off('user:live-status', onLiveStatus);
       socket.off('stream:ended', onStreamEnded);
     };
-  }, [socket, activeStreamId, closeStream]);
+  }, [socket, activeStreamId, handleCloseStream]);
 
   useEffect(() => {
     const match = location.pathname.match(/^\/(?:live|stream)\/([^/]+)/);
     if (match) {
       const routeStreamId = match[1];
+      // If this stream was just closed, navigate to home and don't re-activate it
+      if (closedStreamRef.current === routeStreamId) {
+        navigate('/', { replace: true });
+        return;
+      }
+      closedStreamRef.current = null;
       if (activeStreamId !== routeStreamId) {
         setActiveStreamId(routeStreamId);
       }
@@ -58,13 +76,14 @@ export const GlobalLivePlayer = () => {
         setMinimized(false);
       }
     } else {
+      closedStreamRef.current = null;
       // User is on a different route (e.g. /, /profile, /chats, etc.)
       // If a live stream is active, minimize it to floating player instead of terminating!
       if (activeStreamId && !isMinimized) {
         setMinimized(true);
       }
     }
-  }, [location.pathname, activeStreamId, isMinimized, setActiveStreamId, setMinimized]);
+  }, [location.pathname, activeStreamId, isMinimized, setActiveStreamId, setMinimized, navigate]);
 
   if (!activeStreamId) return null;
 
@@ -83,7 +102,7 @@ export const GlobalLivePlayer = () => {
           navigate(-1);
         }}
         onClose={() => {
-          closeStream();
+          handleCloseStream(activeStreamId);
         }}
       />
     </div>
