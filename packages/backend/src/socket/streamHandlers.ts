@@ -61,6 +61,13 @@ const streamLikesMap = new Map<string, Set<string>>();
 // Track 1 like per user per PK battle: battleId -> Set<userId | socketId>
 const pkBattleLikesMap = new Map<string, Set<string>>();
 
+export interface StreamFilterState {
+  smoothness: number;
+  whitening: number;
+  filterCss?: string;
+}
+const streamFiltersMap = new Map<string, StreamFilterState>();
+
 const getTopGifters = (streamId: string): StreamGifter[] => {
   const gifters = streamGiftersMap.get(streamId);
   if (!gifters) return [];
@@ -149,6 +156,15 @@ export const registerStreamHandlers = (socket: Socket): void => {
       socket.emit('stream:like-count', {
         streamId,
         count: currentLikes.size,
+      });
+    }
+
+    // Provide the host's active beauty & color filter to the newly joined viewer
+    const currentFilter = streamFiltersMap.get(streamId);
+    if (currentFilter) {
+      socket.emit('stream:filter:update', {
+        streamId,
+        ...currentFilter,
       });
     }
   });
@@ -286,10 +302,27 @@ export const registerStreamHandlers = (socket: Socket): void => {
       streamSpeakersMap.delete(streamId);
       streamGiftersMap.delete(streamId);
       streamLikesMap.delete(streamId);
+      streamFiltersMap.delete(streamId);
       if (typeof ack === 'function') ack?.({ success: true });
     } catch {
       if (typeof ack === 'function') ack?.({ success: false });
     }
+  });
+
+  // Real-time synchronization of Beauty & Color Filters across Host and Viewers
+  socket.on('stream:filter:update', ({ streamId, smoothness, whitening, filterCss }) => {
+    if (!streamId) return;
+    const filterState: StreamFilterState = {
+      smoothness: Number(smoothness) || 0,
+      whitening: Number(whitening) || 0,
+      filterCss: typeof filterCss === 'string' ? filterCss : '',
+    };
+    streamFiltersMap.set(streamId, filterState);
+    // Broadcast live to all viewers in the stream room
+    socket.to(`stream:${streamId}`).emit('stream:filter:update', {
+      streamId,
+      ...filterState,
+    });
   });
 
   socket.on('stream:chat', async ({ streamId, message }) => {

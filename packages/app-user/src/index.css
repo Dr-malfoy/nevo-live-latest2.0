@@ -479,6 +479,7 @@
 
   #agora-video-area video,
   #agora-video-area .agora_video_player,
+  #agora-video-area .agora_video_player video,
   [id^="remote-container-"] video,
   #pk-video-left video,
   #pk-video-right video {
@@ -487,6 +488,9 @@
     object-position: center center !important;
     image-rendering: -webkit-optimize-contrast;
     backface-visibility: hidden;
+    filter: var(--live-filter, none) !important;
+    -webkit-filter: var(--live-filter, none) !important;
+    will-change: filter;
   }
 
   #agora-video-area.fit-contain video,

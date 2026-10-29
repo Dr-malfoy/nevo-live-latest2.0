@@ -117,6 +117,7 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
                 max="100"
                 value={smoothness}
                 onChange={(e) => onSmoothnessChange(Number(e.target.value))}
+                onInput={(e: any) => onSmoothnessChange(Number(e.target.value))}
                 className="w-full h-2 bg-white/15 rounded-lg appearance-none cursor-pointer accent-pink-500 focus:outline-none"
               />
               <div className="flex justify-between text-[10px] text-white/40">
@@ -142,6 +143,7 @@ export const BeautyModal: React.FC<BeautyModalProps> = ({
                 max="100"
                 value={whitening}
                 onChange={(e) => onWhiteningChange(Number(e.target.value))}
+                onInput={(e: any) => onWhiteningChange(Number(e.target.value))}
                 className="w-full h-2 bg-white/15 rounded-lg appearance-none cursor-pointer accent-purple-500 focus:outline-none"
               />
               <div className="flex justify-between text-[10px] text-white/40">

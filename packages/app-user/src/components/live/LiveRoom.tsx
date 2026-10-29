@@ -209,25 +209,114 @@ export const LiveRoom = ({
     onApplyBeautyEffect?.(0, 0);
   }, [onApplyBeautyEffect]);
 
+  // Remote filter state synchronized via socket for all room viewers
+  const [remoteSmoothness, setRemoteSmoothness] = useState(0);
+  const [remoteWhitening, setRemoteWhitening] = useState(0);
+  const [remoteFilterCss, setRemoteFilterCss] = useState('');
+
+  // Host broadcasts their filter & beauty settings to the room in real-time
+  useEffect(() => {
+    if (isHost && socket && stream?._id) {
+      socket.emit('stream:filter:update', {
+        streamId: stream._id,
+        smoothness,
+        whitening,
+        filterCss: filterCss || '',
+      });
+    }
+  }, [isHost, socket, stream?._id, smoothness, whitening, filterCss]);
+
+  // Viewers listen to the host's filter & beauty settings
+  useEffect(() => {
+    if (!isHost && socket) {
+      const handleRemoteFilter = (data: { streamId?: string; smoothness?: number; whitening?: number; filterCss?: string }) => {
+        if (!data) return;
+        if (typeof data.smoothness === 'number') setRemoteSmoothness(data.smoothness);
+        if (typeof data.whitening === 'number') setRemoteWhitening(data.whitening);
+        if (typeof data.filterCss === 'string') setRemoteFilterCss(data.filterCss);
+      };
+
+      socket.on('stream:filter:update', handleRemoteFilter);
+      return () => {
+        socket.off('stream:filter:update', handleRemoteFilter);
+      };
+    }
+  }, [isHost, socket]);
+
+  const activeSmoothness = isHost ? smoothness : remoteSmoothness;
+  const activeWhitening = isHost ? whitening : remoteWhitening;
+  const activePresetCss = isHost ? filterCss : remoteFilterCss;
+
   // Effective Video Filters (Combining color filter preset + real-time whitening and skin tone glow)
   const beautyCss = useMemo(() => {
-    if (smoothness === 0 && whitening === 0) return '';
+    if (activeSmoothness === 0 && activeWhitening === 0) return '';
     // High-power radiant whitening & porcelain glow:
-    const bLevel = whitening > 0 ? 1 + (whitening / 100) * 0.42 : 1;
-    const cLevel = (whitening > 0 || smoothness > 0)
-      ? Math.max(0.85, 1 - (whitening / 100) * 0.06 - (smoothness / 100) * 0.12)
+    // Brightness boosts luminous white tone up to +45%
+    // Contrast balances highlights for porcelain glow
+    // Saturation adds healthy vibrant skin tone
+    const bLevel = activeWhitening > 0 ? 1 + (activeWhitening / 100) * 0.45 : 1;
+    const cLevel = (activeWhitening > 0 || activeSmoothness > 0)
+      ? Math.max(0.85, 1 - (activeWhitening / 100) * 0.08 - (activeSmoothness / 100) * 0.12)
       : 1;
-    const sLevel = whitening > 0 ? 1 + (whitening / 100) * 0.18 : 1;
+    const sLevel = activeWhitening > 0 ? 1 + (activeWhitening / 100) * 0.20 : 1;
     // Skin smoothing: subtle soft-focus blur (0.3px to 1px max) to soften pores & blemishes
-    const blurPx = smoothness > 0 ? (smoothness / 100) * 0.8 : 0;
+    const blurPx = activeSmoothness > 0 ? (activeSmoothness / 100) * 0.9 : 0;
     const blurStr = blurPx > 0 ? `blur(${blurPx.toFixed(2)}px)` : '';
 
     return `brightness(${bLevel.toFixed(3)}) contrast(${cLevel.toFixed(3)}) saturate(${sLevel.toFixed(3)}) ${blurStr}`.trim();
-  }, [smoothness, whitening]);
+  }, [activeSmoothness, activeWhitening]);
 
   const combinedFilterCss = useMemo(() => {
-    return [filterCss, beautyCss].filter(Boolean).join(' ') || undefined;
-  }, [filterCss, beautyCss]);
+    return [activePresetCss, beautyCss].filter(Boolean).join(' ') || undefined;
+  }, [activePresetCss, beautyCss]);
+
+  // Apply combined filter directly to the video container AND all internal <video> and player elements
+  useEffect(() => {
+    const filterValue = combinedFilterCss || 'none';
+    const applyToElements = () => {
+      const videoArea = document.getElementById('agora-video-area');
+      if (videoArea) {
+        videoArea.style.setProperty('--live-filter', filterValue);
+        videoArea.style.filter = filterValue;
+        const elements = videoArea.querySelectorAll('video, .agora_video_player');
+        elements.forEach((el: any) => {
+          el.style.setProperty('filter', filterValue, 'important');
+          el.style.setProperty('-webkit-filter', filterValue, 'important');
+        });
+      }
+
+      ['pk-video-left', 'pk-video-right'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.style.setProperty('--live-filter', filterValue);
+          const vids = el.querySelectorAll('video, .agora_video_player');
+          vids.forEach((v: any) => {
+            v.style.setProperty('filter', filterValue, 'important');
+            v.style.setProperty('-webkit-filter', filterValue, 'important');
+          });
+        }
+      });
+    };
+
+    applyToElements();
+    const t1 = setTimeout(applyToElements, 100);
+    const t2 = setTimeout(applyToElements, 300);
+    const t3 = setTimeout(applyToElements, 700);
+
+    const videoArea = document.getElementById('agora-video-area');
+    let observer: MutationObserver | null = null;
+    if (videoArea && typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(() => applyToElements());
+      observer.observe(videoArea, { childList: true, subtree: true });
+    }
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      observer?.disconnect();
+    };
+  }, [combinedFilterCss]);
 
   // Derive viewer list from chat participants (plus host + self).
   const viewers = useMemo<Viewer[]>(() => {
@@ -394,9 +483,12 @@ export const LiveRoom = ({
         className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_div]:!w-full [&_div]:!h-full ${
           cameraFitMode === 'contain' ? 'fit-contain [&_video]:!object-contain' : 'fit-cover [&_video]:!object-cover'
         }`}
-        style={{
-          filter: combinedFilterCss,
-        }}
+        style={
+          {
+            '--live-filter': combinedFilterCss || 'none',
+            filter: combinedFilterCss,
+          } as React.CSSProperties
+        }
       />
 
       {/* Ambient gradient wash over the video (full screen only) */}
