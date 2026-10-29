@@ -461,7 +461,7 @@ export const AgencyDetails = () => {
             </div>
             <div>
               <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
-                {agency.totalLiveHours || 0}h
+                {Number(agency.totalLiveHours || 0).toFixed(2)}h
               </p>
               <p className="text-[11px] text-slate-400 font-medium mt-1">
                 Stream time
@@ -788,7 +788,7 @@ export const AgencyDetails = () => {
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                            {member.liveHours || 0}h live
+                            {Number(member.liveHours || 0).toFixed(2)}h live
                           </p>
                         </>
                       ) : (
@@ -797,7 +797,7 @@ export const AgencyDetails = () => {
                             Host
                           </span>
                           <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                            {member.liveHours || 0}h live
+                            {Number(member.liveHours || 0).toFixed(2)}h live
                           </p>
                         </>
                       )}

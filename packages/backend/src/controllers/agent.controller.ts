@@ -373,7 +373,7 @@ export const agentController = {
         const aggSec = s?.totalSeconds || 0;
         const userSec = h.liveStreamSeconds || (h.liveStreamMinutes ? h.liveStreamMinutes * 60 : 0);
         const sec = Math.max(aggSec, userSec);
-        const liveHours = Math.round((sec / 3600) * 10) / 10;
+        const liveHours = Math.round((sec / 3600) * 100) / 100;
         const liveStreams = Math.max(s?.streamCount || 0, sec > 60 ? 1 : 0);
         return {
           ...h,

@@ -39,6 +39,21 @@ export interface CallChatMessage {
 }
 
 /**
+ * Cross-browser video mirror styler.
+ * Directly applies scaleX(-1) / none with !important to guarantee instant mirroring
+ * across Agora and WebRTC video tracks on both front and rear cameras.
+ */
+const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
+  if (!container) return;
+  const videoEl = container.querySelector('video');
+  if (videoEl) {
+    const transformVal = mirror ? 'scaleX(-1)' : 'none';
+    videoEl.style.setProperty('transform', transformVal, 'important');
+    videoEl.style.setProperty('-webkit-transform', transformVal, 'important');
+  }
+};
+
+/**
  * 1:1 and group audio/video calls over Agora with WebRTC fallback.
  * Tracks (audio/video) are managed independently to prevent black-screens on mic toggles.
  * Supports camera flipping (switchCamera), beauty filters, and live in-call messaging.
@@ -60,6 +75,7 @@ export const useCall = () => {
   const cameraOnRef = useRef(true);
   const speakerOnRef = useRef(false);
   const mirrorOnRef = useRef(true);
+  const remoteMirrorRef = useRef(true);
   const joiningRef = useRef(false);
   const networkLostRef = useRef(false);
   const currentFacingModeRef = useRef<'user' | 'environment'>('user');
@@ -72,6 +88,7 @@ export const useCall = () => {
   const [cameraOn, setCameraOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(false);
   const [mirrorOn, setMirrorOn] = useState(true);
+  const [remoteMirror, setRemoteMirror] = useState(true);
   const [error, setError] = useState('');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [remoteFacingMode, setRemoteFacingMode] = useState<'user' | 'environment'>('user');
@@ -98,13 +115,16 @@ export const useCall = () => {
         return;
       }
 
+      const shouldMirror = remoteMirrorRef.current;
+
       // 1. Check Agora remote video track
       const track = remoteVideoTracksRef.current.get(uid);
       if (track) {
         try {
-          const userFacing = remoteFacingModesRef.current.get(String(uid)) || 'user';
-          const shouldMirror = mirrorOnRef.current && userFacing === 'user';
           track.play(container, { fit: 'cover', mirror: shouldMirror });
+          setElementMirror(container, shouldMirror);
+          setTimeout(() => setElementMirror(container, shouldMirror), 150);
+          setTimeout(() => setElementMirror(container, shouldMirror), 350);
           return;
         } catch (e) {
           console.warn('[useCall] Agora video play error:', e);
@@ -125,12 +145,10 @@ export const useCall = () => {
           videoEl.style.objectFit = 'cover';
           container.appendChild(videoEl);
         }
-        const userFacing = remoteFacingModesRef.current.get(String(uid)) || 'user';
-        const shouldMirror = mirrorOnRef.current && userFacing === 'user';
-        videoEl.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
         if (videoEl.srcObject !== stream) {
           videoEl.srcObject = stream;
         }
+        setElementMirror(container, shouldMirror);
         videoEl.play().catch(() => {});
         return;
       }
@@ -282,6 +300,44 @@ export const useCall = () => {
     [playRemoteVideo]
   );
 
+  const setupCameraSyncListeners = useCallback((socket: any, callId: string) => {
+    if (!socket || !callId) return;
+    socketRef.current = socket;
+    callIdRef.current = callId;
+
+    const applyRemoteMirror = (mirror: boolean) => {
+      document.querySelectorAll('[id^="remote-container-"]').forEach((container) => {
+        setElementMirror(container as HTMLElement, mirror);
+      });
+    };
+
+    socket.off('call:camera:facingMode');
+    socket.on('call:camera:facingMode', ({ facingMode, senderId }: { facingMode: 'user' | 'environment'; senderId?: string }) => {
+      setRemoteFacingMode(facingMode);
+      if (senderId) {
+        remoteFacingModesRef.current.set(String(senderId), facingMode);
+      }
+      applyRemoteMirror(remoteMirrorRef.current);
+    });
+
+    socket.off('call:camera:mirror');
+    socket.on('call:camera:mirror', ({ mirror }: { mirror: boolean }) => {
+      remoteMirrorRef.current = mirror;
+      setRemoteMirror(mirror);
+      applyRemoteMirror(mirror);
+    });
+
+    // Broadcast our initial camera state to the room
+    socket.emit('call:camera:facingMode', {
+      callId,
+      facingMode: currentFacingModeRef.current,
+    });
+    socket.emit('call:camera:mirror', {
+      callId,
+      mirror: mirrorOnRef.current,
+    });
+  }, []);
+
   const initLocalMediaFallback = useCallback(
     async (type: 'audio' | 'video', socket?: any, callId?: string) => {
       try {
@@ -323,6 +379,7 @@ export const useCall = () => {
                   container.appendChild(fallbackVideoElRef.current);
                 }
               }
+              setElementMirror(container, mirrorOnRef.current);
             } else if (attempt < 15) {
               setTimeout(() => playFallbackPreview(attempt + 1), 120);
             }
@@ -338,57 +395,32 @@ export const useCall = () => {
       setSpeakerOn(defaultSpeaker);
 
       if (socket && callId) {
-        socketRef.current = socket;
-        callIdRef.current = callId;
-
-        socket.off('call:camera:facingMode');
-        socket.on('call:camera:facingMode', ({ facingMode, senderId }: { facingMode: 'user' | 'environment'; senderId?: string }) => {
-          setRemoteFacingMode(facingMode);
-          if (senderId) {
-            remoteFacingModesRef.current.set(String(senderId), facingMode);
-          }
-          remoteVideoTracksRef.current.forEach((track, uid) => {
-            remoteFacingModesRef.current.set(String(uid), facingMode);
-            const el = document.getElementById(`remote-container-${uid}`);
-            if (el) {
-              try {
-                track.play(el, { fit: 'cover', mirror: mirrorOnRef.current && facingMode === 'user' });
-              } catch {}
-            }
-          });
-          remoteStreamsRef.current.forEach((_, fromSocketId) => {
-            remoteFacingModesRef.current.set(String(fromSocketId), facingMode);
-            const el = document.getElementById(`remote-container-${fromSocketId}`);
-            const videoEl = el?.querySelector('video');
-            if (videoEl) {
-              videoEl.style.transform = mirrorOnRef.current && facingMode === 'user' ? 'scaleX(-1)' : 'none';
-            }
-          });
-        });
+        setupCameraSyncListeners(socket, callId);
+        setupWebRTCFallback(socket, callId);
       }
       applyAudioOutputRoute(defaultSpeaker);
 
-      if (socket && callId) {
-        setupWebRTCFallback(socket, callId);
-      }
       setJoined(true);
       joinedRef.current = true;
       setConnectionState('CONNECTED');
     },
-    [setupWebRTCFallback, applyAudioOutputRoute]
+    [setupWebRTCFallback, setupCameraSyncListeners, applyAudioOutputRoute]
   );
 
   const playLocalPreview = useCallback(() => {
     const tryPlay = (attempt: number) => {
       const el = document.getElementById('call-local-video-container');
       if (el) {
-        const shouldMirror = mirrorOnRef.current && currentFacingModeRef.current === 'user';
+        const shouldMirror = mirrorOnRef.current;
         if (localVideoRef.current) {
           try {
             localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
           } catch {
             // retry
           }
+          setElementMirror(el, shouldMirror);
+          setTimeout(() => setElementMirror(el, shouldMirror), 150);
+          setTimeout(() => setElementMirror(el, shouldMirror), 350);
         } else if (fallbackStreamRef.current) {
           if (!fallbackVideoElRef.current) {
             const videoEl = document.createElement('video');
@@ -398,16 +430,14 @@ export const useCall = () => {
             videoEl.style.width = '100%';
             videoEl.style.height = '100%';
             videoEl.style.objectFit = 'cover';
-            videoEl.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
             videoEl.srcObject = fallbackStreamRef.current;
             el.appendChild(videoEl);
             fallbackVideoElRef.current = videoEl;
           } else if (fallbackVideoElRef.current.parentElement !== el) {
-            fallbackVideoElRef.current.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
             el.appendChild(fallbackVideoElRef.current);
-          } else {
-            fallbackVideoElRef.current.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
           }
+          setElementMirror(el, shouldMirror);
+          setTimeout(() => setElementMirror(el, shouldMirror), 150);
         }
       } else if (attempt < 15) {
         setTimeout(() => tryPlay(attempt + 1), 120);
@@ -427,33 +457,7 @@ export const useCall = () => {
       setSpeakerOn(defaultSpeaker);
 
       if (socket && callId) {
-        socketRef.current = socket;
-        callIdRef.current = callId;
-
-        socket.off('call:camera:facingMode');
-        socket.on('call:camera:facingMode', ({ facingMode, senderId }: { facingMode: 'user' | 'environment'; senderId?: string }) => {
-          setRemoteFacingMode(facingMode);
-          if (senderId) {
-            remoteFacingModesRef.current.set(String(senderId), facingMode);
-          }
-          remoteVideoTracksRef.current.forEach((track, uid) => {
-            remoteFacingModesRef.current.set(String(uid), facingMode);
-            const el = document.getElementById(`remote-container-${uid}`);
-            if (el) {
-              try {
-                track.play(el, { fit: 'cover', mirror: mirrorOnRef.current && facingMode === 'user' });
-              } catch {}
-            }
-          });
-          remoteStreamsRef.current.forEach((_, fromSocketId) => {
-            remoteFacingModesRef.current.set(String(fromSocketId), facingMode);
-            const el = document.getElementById(`remote-container-${fromSocketId}`);
-            const videoEl = el?.querySelector('video');
-            if (videoEl) {
-              videoEl.style.transform = mirrorOnRef.current && facingMode === 'user' ? 'scaleX(-1)' : 'none';
-            }
-          });
-        });
+        setupCameraSyncListeners(socket, callId);
       }
 
       try {
@@ -693,11 +697,15 @@ export const useCall = () => {
     currentFacingModeRef.current = nextMode;
     setFacingMode(nextMode);
 
-    // Notify remote participant about camera facing mode change so their display mirrors front camera properly
+    // Notify remote participant about camera facing mode and mirror state
     if (socketRef.current && callIdRef.current) {
       socketRef.current.emit('call:camera:facingMode', {
         callId: callIdRef.current,
         facingMode: nextMode,
+      });
+      socketRef.current.emit('call:camera:mirror', {
+        callId: callIdRef.current,
+        mirror: mirrorOnRef.current,
       });
     }
 
@@ -759,12 +767,15 @@ export const useCall = () => {
           }
         }
 
-        // Replay local preview with correct mirror configuration (mirror: true for front, mirror: false for rear)
+        // Replay local preview with correct mirror configuration for front or rear camera
         const el = document.getElementById('call-local-video-container');
         if (el) {
           try {
-            localVideoRef.current.play(el, { fit: 'cover', mirror: mirrorOnRef.current && nextMode === 'user' });
+            localVideoRef.current.play(el, { fit: 'cover', mirror: mirrorOnRef.current });
           } catch {}
+          setElementMirror(el, mirrorOnRef.current);
+          setTimeout(() => setElementMirror(el, mirrorOnRef.current), 150);
+          setTimeout(() => setElementMirror(el, mirrorOnRef.current), 350);
         }
         return;
       } catch (e) {
@@ -784,7 +795,10 @@ export const useCall = () => {
 
         if (fallbackVideoElRef.current) {
           fallbackVideoElRef.current.srcObject = fallbackStreamRef.current;
-          fallbackVideoElRef.current.style.transform = mirrorOnRef.current && nextMode === 'user' ? 'scaleX(-1)' : 'none';
+        }
+        const el = document.getElementById('call-local-video-container');
+        if (el) {
+          setElementMirror(el, mirrorOnRef.current);
         }
 
         peerConnectionsRef.current.forEach((pc) => {
@@ -805,29 +819,20 @@ export const useCall = () => {
     mirrorOnRef.current = next;
     setMirrorOn(next);
 
-    // Update local preview
+    // 1. Immediately apply mirror transform to local preview
+    const localEl = document.getElementById('call-local-video-container');
+    if (localEl) {
+      setElementMirror(localEl, next);
+    }
     playLocalPreview();
 
-    // Update all remote video containers
-    remoteVideoTracksRef.current.forEach((track, uid) => {
-      const el = document.getElementById(`remote-container-${uid}`);
-      if (el) {
-        try {
-          const userFacing = remoteFacingModesRef.current.get(String(uid)) || 'user';
-          track.play(el, { fit: 'cover', mirror: next && userFacing === 'user' });
-        } catch {}
-      }
-    });
-
-    // Update fallback remote video elements
-    remoteStreamsRef.current.forEach((_, fromSocketId) => {
-      const el = document.getElementById(`remote-container-${fromSocketId}`);
-      const videoEl = el?.querySelector('video');
-      if (videoEl) {
-        const userFacing = remoteFacingModesRef.current.get(String(fromSocketId)) || 'user';
-        videoEl.style.transform = next && userFacing === 'user' ? 'scaleX(-1)' : 'none';
-      }
-    });
+    // 2. Broadcast mirror mode to remote peer via socket so output mirrors identically
+    if (socketRef.current && callIdRef.current) {
+      socketRef.current.emit('call:camera:mirror', {
+        callId: callIdRef.current,
+        mirror: next,
+      });
+    }
   }, [playLocalPreview]);
 
   const endCall = useCallback(async () => {
@@ -838,6 +843,7 @@ export const useCall = () => {
 
     try {
       socketRef.current?.off('call:camera:facingMode');
+      socketRef.current?.off('call:camera:mirror');
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
 
@@ -887,6 +893,7 @@ export const useCall = () => {
       networkLostRef.current = false;
 
       socketRef.current?.off('call:camera:facingMode');
+      socketRef.current?.off('call:camera:mirror');
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       remoteAudioTracksRef.current.clear();
@@ -913,6 +920,7 @@ export const useCall = () => {
     cameraOn,
     speakerOn,
     mirrorOn,
+    remoteMirror,
     facingMode,
     remoteFacingMode,
     connectionState,

@@ -849,7 +849,7 @@ export const AgentDashboard = () => {
                   <p className="text-xs text-slate-500">Total Live Hours</p>
                   <div className="flex items-baseline gap-2">
                     <p className="text-2xl font-black text-slate-900 tabular-nums">
-                      {Number(myAgency.totalLiveHours || 0).toFixed(1)}h
+                      {Number(myAgency.totalLiveHours || 0).toFixed(2)}h
                     </p>
                     <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
                       {myAgency.totalLiveStreams || (myAgency as any)?.liveStreamCount || 0} Lives
@@ -1217,7 +1217,7 @@ export const AgentDashboard = () => {
                       </div>
                       <div className="flex items-baseline justify-between gap-1">
                         <p className="text-xl font-black text-slate-900 tracking-tight leading-none">
-                          {Number(myAgency?.totalLiveHours || 0).toFixed(1)}h
+                          {Number(myAgency?.totalLiveHours || 0).toFixed(2)}h
                         </p>
                         <span className="text-[11px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md tabular-nums">
                           {myAgency?.totalLiveStreams || (myAgency as any)?.liveStreamCount || 0} Lives
@@ -1498,7 +1498,7 @@ export const AgentDashboard = () => {
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
-                                {Number((h as any)?.liveHours || (h as any)?.durationHours || 0).toFixed(1)}h streamed
+                                {Number((h as any)?.liveHours || (h as any)?.durationHours || 0).toFixed(2)}h streamed
                               </p>
                             </div>
                           </div>
@@ -1781,12 +1781,12 @@ export const AgentDashboard = () => {
                                 {(liveHours > 0 || ((h as any)?.liveStreams || 0) > 0) ? (
                                   <p className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
                                     <ClockIcon className="w-3 h-3" />
-                                    <span>{liveHours.toFixed(1)}h broadcasted ({Number((h as any)?.liveStreams || 0)} lives)</span>
+                                    <span>{liveHours.toFixed(2)}h broadcasted ({Number((h as any)?.liveStreams || 0)} lives)</span>
                                   </p>
                                 ) : (
                                   <p className="text-[10px] text-slate-400 font-medium mt-0.5 flex items-center gap-1">
                                     <ClockIcon className="w-3 h-3 text-slate-300" />
-                                    <span>0.0h broadcasted (0 lives)</span>
+                                    <span>0.00h broadcasted (0 lives)</span>
                                   </p>
                                 )}
                               </div>

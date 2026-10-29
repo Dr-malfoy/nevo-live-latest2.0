@@ -92,6 +92,7 @@ export const CallScreen = ({
     cameraOn,
     speakerOn,
     mirrorOn,
+    remoteMirror,
     facingMode,
     connectionState,
     error,
@@ -510,12 +511,12 @@ export const CallScreen = ({
       });
   }, [session?.callId, answering, outgoing, accepted]);
 
-  // Re-attach local preview if camera toggled on
+  // Re-attach local preview if camera toggled on or mirror toggled
   useEffect(() => {
     if (joined && isVideo && cameraOn) {
       playLocalPreview();
     }
-  }, [joined, isVideo, cameraOn, playLocalPreview]);
+  }, [joined, isVideo, cameraOn, mirrorOn, playLocalPreview]);
 
   // Callee accepted or remote track arrived
   useEffect(() => {

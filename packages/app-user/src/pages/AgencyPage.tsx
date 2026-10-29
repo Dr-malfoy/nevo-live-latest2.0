@@ -159,7 +159,7 @@ const AgencyCard = ({
             </span>
             <span>•</span>
             <span className="text-slate-500">
-              {agency.totalLiveHours || 0}h live
+              {Number(agency.totalLiveHours || 0).toFixed(2)}h live
             </span>
           </div>
         </div>

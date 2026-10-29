@@ -123,4 +123,14 @@ export const registerCallHandlers = (socket: Socket): void => {
       facingMode,
     });
   });
+
+  /** Relay camera mirror mode so callee/caller matches mirror orientation */
+  socket.on('call:camera:mirror', ({ callId, mirror }) => {
+    if (!callId || typeof mirror !== 'boolean') return;
+    socket.to(`call:${callId}`).emit('call:camera:mirror', {
+      callId,
+      senderId: socket.data.user?.userId,
+      mirror,
+    });
+  });
 };

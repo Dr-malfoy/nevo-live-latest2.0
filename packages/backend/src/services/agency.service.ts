@@ -329,7 +329,7 @@ export const agencyService = {
         monthlyLiveGiftCoins: a.monthlyLiveGiftCoins || 0,
         monthlyCommissionCycle: a.monthlyCommissionCycle || getCurrentMonthCycle(),
         totalContribution: a.totalContribution || 0,
-        totalLiveHours: Math.round((a.totalLiveHours || 0) * 10) / 10,
+        totalLiveHours: Math.round((a.totalLiveHours || 0) * 100) / 100,
         totalLiveStreams: a.totalLiveStreams || 0,
         agent: {
           _id: agent._id ? agent._id.toString() : '',
@@ -452,7 +452,7 @@ export const agencyService = {
       totalLiveStreams += resolvedStreams;
     }
 
-    const totalLiveHours = Math.round((totalLiveSeconds / 3600) * 10) / 10;
+    const totalLiveHours = Math.round((totalLiveSeconds / 3600) * 100) / 100;
 
     return {
       totalLiveSeconds,
@@ -526,7 +526,7 @@ export const agencyService = {
       memberContributions = hosts.map((h: any) => {
         const idStr = h._id.toString();
         const memberLive = liveStats.memberStreamMap.get(idStr) || { seconds: 0, streams: 0 };
-        const liveHours = Math.round((memberLive.seconds / 3600) * 10) / 10;
+        const liveHours = Math.round((memberLive.seconds / 3600) * 100) / 100;
         const liveStreams = memberLive.streams;
         const contribution = txMap.get(idStr) || (h.coins || 0);
 
@@ -675,7 +675,7 @@ export const agencyService = {
         phone: agent.phone || '',
         country: agent.country || '',
         bio: agent.bio || '',
-        liveHours: Math.round(((liveStats.memberStreamMap.get(agent._id ? agent._id.toString() : '')?.seconds || 0) / 3600) * 10) / 10,
+        liveHours: Math.round(((liveStats.memberStreamMap.get(agent._id ? agent._id.toString() : '')?.seconds || 0) / 3600) * 100) / 100,
         liveStreams: liveStats.memberStreamMap.get(agent._id ? agent._id.toString() : '')?.streams || 0,
       },
       members: visibleMembers,
@@ -1564,7 +1564,7 @@ export const agencyService = {
         if (!h || typeof h !== 'object') return h;
         const idStr = h._id ? h._id.toString() : h.toString();
         const memberLive = liveStats.memberStreamMap.get(idStr) || { seconds: 0, streams: 0 };
-        const liveHours = Math.round((memberLive.seconds / 3600) * 10) / 10;
+        const liveHours = Math.round((memberLive.seconds / 3600) * 100) / 100;
         const liveStreams = memberLive.streams;
 
         return {
@@ -1580,7 +1580,7 @@ export const agencyService = {
     if (agency.agentId && typeof agency.agentId === 'object') {
       const agentIdStr = agency.agentId._id ? agency.agentId._id.toString() : agency.agentId.toString();
       const agentLive = liveStats.memberStreamMap.get(agentIdStr) || { seconds: 0, streams: 0 };
-      const liveHours = Math.round((agentLive.seconds / 3600) * 10) / 10;
+      const liveHours = Math.round((agentLive.seconds / 3600) * 100) / 100;
       agency.agentId.liveHours = liveHours;
       agency.agentId.durationHours = liveHours;
       agency.agentId.liveStreams = agentLive.streams;
