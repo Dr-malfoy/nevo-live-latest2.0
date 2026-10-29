@@ -76,6 +76,7 @@ export interface LiveRoomProps {
   filterCss?: string;
   activeFilterId?: string;
   onSelectFilter?: (id: string) => void;
+  onApplyBeautyEffect?: (smoothness: number, whitening: number) => void;
   stickerState?: {
     stickers: import('../../hooks/useStickers').PlacedSticker[];
     selectedId: string | null;

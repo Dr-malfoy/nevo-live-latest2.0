@@ -101,6 +101,23 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
   });
 }
 
+let beautyExtensionInstance: any = null;
+
+async function getBeautyExtension() {
+  if (typeof window === 'undefined') return null;
+  if (!beautyExtensionInstance) {
+    try {
+      const mod = await import('agora-extension-beauty-effect');
+      const BeautyExtensionClass = mod.default || (mod as any).BeautyExtension || mod;
+      beautyExtensionInstance = new BeautyExtensionClass();
+      AgoraRTC.registerExtensions([beautyExtensionInstance]);
+    } catch (e) {
+      console.warn('[useAgora] Failed to register BeautyExtension:', e);
+    }
+  }
+  return beautyExtensionInstance;
+}
+
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localVideoRef = useRef<ICameraVideoTrack | null>(null);
@@ -131,6 +148,50 @@ export const useAgora = () => {
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState('');
+
+  // Agora Beauty Effect Extension processor instance and current parameters
+  const beautyProcessorRef = useRef<any>(null);
+  const beautySettingsRef = useRef({ smoothness: 0, whitening: 0 });
+
+  const applyBeautyOptions = useCallback(async (smoothness: number, whitening: number) => {
+    beautySettingsRef.current = { smoothness, whitening };
+    if (!localVideoRef.current) return;
+
+    const shouldEnable = smoothness > 0 || whitening > 0;
+
+    try {
+      if (!beautyProcessorRef.current && shouldEnable) {
+        const ext = await getBeautyExtension();
+        if (ext && localVideoRef.current) {
+          const processor = ext.createProcessor();
+          // Pipe the camera video track through the beauty effect processor
+          try {
+            localVideoRef.current.pipe(processor).pipe(localVideoRef.current.processorDestination);
+            beautyProcessorRef.current = processor;
+          } catch (pipeErr) {
+            console.warn('[useAgora] Error piping beauty processor:', pipeErr);
+          }
+        }
+      }
+
+      if (beautyProcessorRef.current) {
+        if (shouldEnable) {
+          await beautyProcessorRef.current.enable();
+          beautyProcessorRef.current.setOptions({
+            lighteningContrastLevel: 1,
+            lighteningLevel: Math.min(1, Math.max(0, whitening / 100)),
+            smoothnessLevel: Math.min(1, Math.max(0, smoothness / 100)),
+            sharpnessLevel: 0.35, // Preserves clear facial contours, eyes & background without screen blur
+            rednessLevel: 0.1,    // Subtle rosy cheeks
+          });
+        } else {
+          await beautyProcessorRef.current.disable();
+        }
+      }
+    } catch (err) {
+      console.warn('[useAgora] applyBeautyOptions error:', err);
+    }
+  }, []);
 
   // Setup WebRTC P2P fallback for host and viewers
   const setupFallbackP2P = (role: 'host' | 'audience', socket: any, streamId: string) => {
@@ -516,6 +577,10 @@ export const useAgora = () => {
           cameraOnRef.current = Boolean(videoTrack);
           setCameraOn(Boolean(videoTrack));
 
+          if (videoTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
+            applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
+          }
+
           // Immediately render host local video in agora-video-area (mirror: false for real position)
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea && videoTrack) {
@@ -685,6 +750,10 @@ export const useAgora = () => {
       try {
         const videoTrack = await createHdCameraVideoTrack(facingModeRef.current);
         localVideoRef.current = videoTrack;
+        beautyProcessorRef.current = null;
+        if (videoTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
+          applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
+        }
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
         if (videoArea) videoTrack.play(videoArea, { fit: 'cover', mirror: false });
@@ -896,6 +965,10 @@ export const useAgora = () => {
           oldTrack?.close();
 
           localVideoRef.current = newTrack;
+          beautyProcessorRef.current = null;
+          if (newTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
+            applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
+          }
           facingModeRef.current = targetFacing;
           setFacingMode(targetFacing);
 
@@ -995,6 +1068,12 @@ export const useAgora = () => {
         await clientRef.current.leave();
         clientRef.current = null;
       }
+      if (beautyProcessorRef.current) {
+        try {
+          beautyProcessorRef.current.unpipe?.();
+        } catch {}
+        beautyProcessorRef.current = null;
+      }
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
         fallbackStreamRef.current = null;
@@ -1029,6 +1108,12 @@ export const useAgora = () => {
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       if (viewerPeerRef.current) viewerPeerRef.current.close();
+      if (beautyProcessorRef.current) {
+        try {
+          beautyProcessorRef.current.unpipe?.();
+        } catch {}
+        beautyProcessorRef.current = null;
+      }
       if (localVideoRef.current) {
         localVideoRef.current.stop();
         localVideoRef.current.close();
@@ -1069,5 +1154,6 @@ export const useAgora = () => {
     switchCamera,
     leaveChannel,
     getLocalStream: () => fallbackStreamRef.current,
+    applyBeautyOptions,
   };
 };

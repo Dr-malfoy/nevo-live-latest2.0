@@ -76,6 +76,7 @@ export const LiveRoom = ({
   filterCss,
   activeFilterId,
   onSelectFilter,
+  onApplyBeautyEffect,
   showFilters,
   onToggleFilters,
   pkBattle,
@@ -112,17 +113,27 @@ export const LiveRoom = ({
   const [mirrorOn, setMirrorOn] = useState(false);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
 
-  // Effective Video Filters (Combining color filter preset + smoothness/whitening)
-  const beautyCss = useMemo(() => {
-    if (smoothness === 0 && whitening === 0) return '';
-    const blur = smoothness > 0 ? `blur(${smoothness * 0.03}px)` : '';
-    const brightness = whitening > 0 ? `brightness(${1 + whitening * 0.003}) contrast(${1 - whitening * 0.001})` : '';
-    return [blur, brightness].filter(Boolean).join(' ');
-  }, [smoothness, whitening]);
+  // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
+  const handleSmoothnessChange = useCallback((val: number) => {
+    setSmoothness(val);
+    onApplyBeautyEffect?.(val, whitening);
+  }, [whitening, onApplyBeautyEffect]);
 
+  const handleWhiteningChange = useCallback((val: number) => {
+    setWhitening(val);
+    onApplyBeautyEffect?.(smoothness, val);
+  }, [smoothness, onApplyBeautyEffect]);
+
+  const handleResetBeauty = useCallback(() => {
+    setSmoothness(0);
+    setWhitening(0);
+    onApplyBeautyEffect?.(0, 0);
+  }, [onApplyBeautyEffect]);
+
+  // Effective Video Filters (Preset colors only — NEVER applies blur() to the whole screen)
   const combinedFilterCss = useMemo(() => {
-    return [filterCss, beautyCss].filter(Boolean).join(' ') || undefined;
-  }, [filterCss, beautyCss]);
+    return filterCss || undefined;
+  }, [filterCss]);
 
   // Derive viewer list from chat participants (plus host + self).
   const viewers = useMemo<Viewer[]>(() => {
@@ -609,15 +620,16 @@ export const LiveRoom = ({
         open={showBeauty}
         onClose={() => setShowBeauty(false)}
         smoothness={smoothness}
-        onSmoothnessChange={setSmoothness}
+        onSmoothnessChange={handleSmoothnessChange}
         whitening={whitening}
-        onWhiteningChange={setWhitening}
+        onWhiteningChange={handleWhiteningChange}
         mirrorOn={mirrorOn}
         isMirrored={mirrorOn}
         onToggleMirror={() => setMirrorOn((m) => !m)}
         noiseReductionOn={noiseReductionOn}
         noiseReduction={noiseReductionOn}
         onToggleNoiseReduction={() => setNoiseReductionOn((n) => !n)}
+        onReset={handleResetBeauty}
       />
 
       {/* PK Matchmaking Modal */}

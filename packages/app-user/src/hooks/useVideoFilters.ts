@@ -12,10 +12,10 @@ export const FILTERS: VideoFilter[] = [
   { id: 'warm', label: 'Warm', css: 'sepia(0.25) saturate(1.15) brightness(1.05)' },
   { id: 'cool', label: 'Cool', css: 'saturate(1.1) hue-rotate(-8deg) brightness(1.02)' },
   { id: 'bright', label: 'Bright', css: 'brightness(1.18) saturate(1.1) contrast(1.02)' },
-  { id: 'soft-glow', label: 'Soft Glow', css: 'brightness(1.08) contrast(0.96) saturate(1.2) blur(0.3px)' },
+  { id: 'soft-glow', label: 'Soft Glow', css: 'brightness(1.08) contrast(0.98) saturate(1.15)' },
   { id: 'vintage', label: 'Vintage', css: 'sepia(0.5) saturate(0.9) contrast(0.95) brightness(0.98)' },
   { id: 'cinematic', label: 'Cinematic', css: 'contrast(1.15) saturate(1.05) brightness(0.95) sepia(0.12)' },
-  { id: 'dreamy', label: 'Dreamy', css: 'saturate(1.35) brightness(1.1) contrast(0.92) blur(0.4px) hue-rotate(12deg)' },
+  { id: 'dreamy', label: 'Dreamy', css: 'saturate(1.25) brightness(1.08) contrast(0.96) hue-rotate(10deg)' },
 ];
 
 /**

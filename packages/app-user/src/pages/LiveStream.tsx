@@ -112,6 +112,7 @@ export const LiveStreamPage = ({
     switchCamera,
     leaveChannel,
     getLocalStream,
+    applyBeautyOptions,
   } = useAgora();
 
   const micOnRef = useRef(micOn);
@@ -1168,6 +1169,7 @@ export const LiveStreamPage = ({
         filterCss={activeFilter.css !== 'none' ? activeFilter.css : undefined}
         activeFilterId={activeFilter.id}
         onSelectFilter={handleSelectFilter}
+        onApplyBeautyEffect={applyBeautyOptions}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters((v) => !v)}
         pkBattle={pkBattle}
