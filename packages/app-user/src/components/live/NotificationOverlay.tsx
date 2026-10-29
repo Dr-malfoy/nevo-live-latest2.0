@@ -70,10 +70,10 @@ const NotificationBannerItem = ({
 
   const theme = getBannerTheme(item.kind);
 
-  const textToShow = item.text || (item as any).content || '';
+  const textToShow = (item.text || (item as any).content || '').trim();
 
   // Do not render empty/blank banners
-  if (!textToShow.trim()) {
+  if (!textToShow) {
     return null;
   }
 
@@ -130,7 +130,9 @@ export const NotificationOverlay = ({
     [onDismiss]
   );
 
-  const visible = notifications.filter((n) => !dismissedIds.has(n.id)).slice(-3);
+  const visible = notifications
+    .filter((n) => !dismissedIds.has(n.id) && !!(n.text || (n as any).content || '')?.trim())
+    .slice(-3);
 
   return (
     <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 flex flex-col gap-2 w-[min(380px,94vw)] pointer-events-none">

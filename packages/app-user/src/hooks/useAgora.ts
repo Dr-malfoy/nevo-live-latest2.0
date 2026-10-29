@@ -50,55 +50,34 @@ interface UseAgoraOptions {
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
   const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
 
-  // 1. Try 1080p FHD (1080x1920 portrait or 1920x1080 landscape, 30fps, 2200-4500 kbps, detail optimization)
+  // 1. Try portrait HD with flexible ideal constraints (avoids OverconstrainedError & landscape crop)
   try {
     return await AgoraRTC.createCameraVideoTrack({
       facingMode,
       encoderConfig: {
-        width: isPortrait ? 1080 : 1920,
-        height: isPortrait ? 1920 : 1080,
-        frameRate: 30,
-        bitrateMin: 2200,
-        bitrateMax: 4500,
+        width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: 1280, min: 640, max: 1920 },
+        height: isPortrait ? { ideal: 1280, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
+        frameRate: { ideal: 30, max: 30 },
+        bitrateMin: 1200,
+        bitrateMax: 3500,
         optimizationMode: 'detail',
       },
     });
-  } catch (err1080) {
-    console.warn('[useAgora] 1080p HD track creation failed, trying 720p HD:', err1080);
+  } catch (errFlexible) {
+    console.warn('[useAgora] Flexible portrait camera track failed, trying native camera:', errFlexible);
   }
 
-  // 2. Try 720p HD (720x1280 portrait or 1280x720 landscape, 30fps, 1600-3000 kbps, detail optimization)
+  // 2. Safe fallback: open device camera directly with facingMode (native sensor aspect ratio)
   try {
     return await AgoraRTC.createCameraVideoTrack({
       facingMode,
-      encoderConfig: {
-        width: isPortrait ? 720 : 1280,
-        height: isPortrait ? 1280 : 720,
-        frameRate: 30,
-        bitrateMin: 1600,
-        bitrateMax: 3000,
-        optimizationMode: 'detail',
-      },
     });
-  } catch (err720) {
-    console.warn('[useAgora] 720p HD track creation failed, trying Agora 720p_2 preset:', err720);
+  } catch (errNative) {
+    console.warn('[useAgora] Native facingMode camera failed, using minimal fallback:', errNative);
   }
 
-  // 3. Fallback to Agora 720p_2 preset
-  try {
-    return await AgoraRTC.createCameraVideoTrack({
-      facingMode,
-      encoderConfig: '720p_2',
-    });
-  } catch (err720p2) {
-    console.warn('[useAgora] 720p_2 preset failed, fallback to 720p_1:', err720p2);
-  }
-
-  // 4. Final fallback to 720p_1
-  return await AgoraRTC.createCameraVideoTrack({
-    facingMode,
-    encoderConfig: '720p_1',
-  });
+  // 3. Absolute fallback
+  return await AgoraRTC.createCameraVideoTrack();
 }
 
 let beautyExtensionInstance: any = null;
@@ -972,11 +951,11 @@ export const useAgora = () => {
           try {
             const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
             await localVideoRef.current.setEncoderConfiguration({
-              width: isPortrait ? 1080 : 1920,
-              height: isPortrait ? 1920 : 1080,
-              frameRate: 30,
-              bitrateMin: 2200,
-              bitrateMax: 4500,
+              width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: 1280, min: 640, max: 1920 },
+              height: isPortrait ? { ideal: 1280, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+              bitrateMin: 1200,
+              bitrateMax: 3500,
               optimizationMode: 'detail',
             });
           } catch {}

@@ -120,7 +120,7 @@ export const LiveRoom = ({
   const showToast = useUIStore((s) => s.showToast);
   const [smoothness, setSmoothness] = useState(0);
   const [whitening, setWhitening] = useState(0);
-  const [mirrorOn, setMirrorOn] = useState(false);
+  const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
 
   const handleToggleMirror = useCallback(() => {
