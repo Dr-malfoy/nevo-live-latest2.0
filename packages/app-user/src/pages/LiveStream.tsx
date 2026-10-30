@@ -1351,7 +1351,7 @@ export const LiveStreamPage = ({
   }
 
   return (
-    <div className={isMinimized ? 'contents' : 'h-screen bg-black text-white'}>
+    <div className={isMinimized ? 'contents' : 'w-full h-full min-h-screen bg-black text-white overflow-hidden'}>
       <LiveRoom
         stream={stream}
         streamTitle={stream?.title}

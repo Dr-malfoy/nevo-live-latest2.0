@@ -58,13 +58,43 @@ const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
 };
 
 /**
+ * Resets camera hardware zoom to 1x (widest normal optical view)
+ * Prevents mobile devices from defaulting to auxiliary telephoto or cropped zoom lenses.
+ */
+async function resetHardwareCameraZoom(track: ICameraVideoTrack | null) {
+  if (!track) return;
+  try {
+    const mediaTrack = track.getMediaStreamTrack();
+    if (!mediaTrack) return;
+    const caps = (mediaTrack.getCapabilities?.() as any) || {};
+    if (caps.zoom) {
+      const targetZoom = typeof caps.zoom.min === 'number' && caps.zoom.min <= 1 ? 1 : (caps.zoom.min ?? 1);
+      await (mediaTrack.applyConstraints as any)({
+        advanced: [{ zoom: targetZoom }],
+      });
+    }
+  } catch (e) {
+    console.debug('[useAgora] resetHardwareCameraZoom notice:', e);
+  }
+}
+
+/**
  * Creates high-definition camera video track optimized for vertical mobile live-streaming.
- * Uses AgoraRTC.createCameraVideoTrack with portrait encoder configuration so the camera
- * hardware sensor orientation is automatically handled in true 100% vertical PORTRAIT
- * on both Android APK and browsers, preventing sideways/landscape streaming.
+ * Uses AgoraRTC.createCameraVideoTrack with portrait encoder configuration matching the
+ * phone's exact screen aspect ratio, so the camera view fits 100% full screen edge-to-edge
+ * WITHOUT digital cropping, stretching, or zoomed-in magnification.
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
-  const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+  const screenW = typeof window !== 'undefined' ? (window.screen?.width || window.innerWidth) : 360;
+  const screenH = typeof window !== 'undefined' ? (window.screen?.height || window.innerHeight) : 640;
+  const isPortrait = screenH >= screenW;
+  const screenRatio = isPortrait ? screenH / screenW : screenW / screenH;
+
+  // Clamped between standard 16:9 (1.777) and modern tall mobile 20:9 (2.222)
+  // Ensure dimensions are multiples of 16 for H.264/VP8 hardware encoder compatibility
+  const baseW = 720;
+  const rawTargetH = Math.round(baseW * Math.min(2.25, Math.max(1.777, screenRatio)));
+  const targetH = Math.round(rawTargetH / 16) * 16;
 
   try {
     let targetCameraId: string | undefined;
@@ -72,19 +102,22 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
       const devices = await AgoraRTC.getCameras().catch(() => []);
       if (devices.length > 0) {
         if (facingMode === 'user') {
-          const front = devices.find((d, i) => /front|user|selfie/i.test(d.label || '') || i === 1);
-          if (front) targetCameraId = front.deviceId;
-        } else {
-          const backDevices = devices.filter((d, i) => {
+          // Select explicit primary front camera (exclude auxiliary telephoto/depth/macro)
+          const front = devices.find((d) => {
             const lbl = (d.label || '').toLowerCase();
-            return !lbl.includes('tele') && !lbl.includes('macro') && !lbl.includes('depth');
+            return /front|user|facetime|selfie/i.test(lbl) && !/tele|zoom|macro|depth/i.test(lbl);
           });
-          const back =
-            backDevices.find((d) => {
-              const lbl = (d.label || '').toLowerCase();
-              return /back|rear|environment|0/i.test(lbl) && !lbl.includes('ultra-wide') && !lbl.includes('ultrawide');
-            }) || backDevices[0];
-          if (back) targetCameraId = back.deviceId;
+          if (front && front.label) targetCameraId = front.deviceId;
+        } else {
+          // Select explicit primary 1x back camera (exclude telephoto/zoom/macro/depth)
+          const back = devices.find((d) => {
+            const lbl = (d.label || '').toLowerCase();
+            return (
+              /back|rear|environment|world/i.test(lbl) &&
+              !/tele|macro|depth|zoom|narrow|blur/i.test(lbl)
+            );
+          });
+          if (back && back.label) targetCameraId = back.deviceId;
         }
       }
     } catch {}
@@ -94,38 +127,31 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
       cameraId: targetCameraId,
       encoderConfig: isPortrait
         ? {
-            width: 720,
-            height: 1280,
+            width: baseW,
+            height: targetH,
             frameRate: 30,
             bitrateMin: 1500,
             bitrateMax: 3500,
           }
         : {
-            width: 1280,
-            height: 720,
+            width: targetH,
+            height: baseW,
             frameRate: 30,
             bitrateMin: 1500,
             bitrateMax: 3500,
           },
-      optimizationMode: 'detail',
+      optimizationMode: 'motion',
     });
 
-    // Reset multi-lens hardware zoom to 1x (unzoomed)
-    try {
-      const mediaTrack = track.getMediaStreamTrack();
-      const caps = (mediaTrack?.getCapabilities?.() as any) || {};
-      if (caps.zoom) {
-        const minZoom = caps.zoom.min ?? 1;
-        await (mediaTrack?.applyConstraints as any)({
-          advanced: [{ zoom: minZoom }],
-        });
-      }
-    } catch {}
+    // Reset multi-lens hardware zoom to 1x (unzoomed, full natural field of view)
+    await resetHardwareCameraZoom(track);
 
     return track;
   } catch (errAgora) {
     console.warn('[useAgora] createCameraVideoTrack with encoderConfig failed, fallback:', errAgora);
-    return await AgoraRTC.createCameraVideoTrack({ facingMode });
+    const fallbackTrack = await AgoraRTC.createCameraVideoTrack({ facingMode });
+    await resetHardwareCameraZoom(fallbackTrack);
+    return fallbackTrack;
   }
 }
 
@@ -992,6 +1018,7 @@ export const useAgora = () => {
         if (targetDevice && typeof (localVideoRef.current as any)?.setDevice === 'function') {
           try {
             await (localVideoRef.current as any).setDevice(targetDevice.deviceId);
+            await resetHardwareCameraZoom(localVideoRef.current);
             facingModeRef.current = targetFacing;
             setFacingMode(targetFacing);
             const videoArea = document.getElementById('agora-video-area');
@@ -1094,6 +1121,15 @@ export const useAgora = () => {
         }
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
+          try {
+            const caps = (newVideoTrack.getCapabilities?.() as any) || {};
+            if (caps.zoom) {
+              const targetZoom = typeof caps.zoom.min === 'number' && caps.zoom.min <= 1 ? 1 : (caps.zoom.min ?? 1);
+              await (newVideoTrack.applyConstraints as any)({
+                advanced: [{ zoom: targetZoom }],
+              });
+            }
+          } catch {}
           fallbackStreamRef.current.removeTrack(oldTrack);
           fallbackStreamRef.current.addTrack(newVideoTrack);
           if (fallbackVideoElRef.current) {

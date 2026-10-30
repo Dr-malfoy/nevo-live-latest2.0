@@ -178,14 +178,20 @@ export const GoLive: React.FC = () => {
           return;
         }
 
-        const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
+        const screenW = typeof window !== 'undefined' ? (window.screen?.width || window.innerWidth) : 360;
+        const screenH = typeof window !== 'undefined' ? (window.screen?.height || window.innerHeight) : 640;
+        const isPortrait = screenH >= screenW;
+        const screenRatio = isPortrait ? screenH / screenW : screenW / screenH;
+        const targetH = Math.min(1600, Math.max(1280, Math.round((720 * screenRatio) / 16) * 16));
+
         let stream: MediaStream | null = null;
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
-              width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: 1280, min: 640, max: 1920 },
-              height: isPortrait ? { ideal: 1280, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
+              width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: targetH, min: 640, max: 1920 },
+              height: isPortrait ? { ideal: targetH, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
+              aspectRatio: { ideal: isPortrait ? 720 / targetH : targetH / 720 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false, // local preview only, prevent feedback loop
@@ -498,8 +504,8 @@ export const GoLive: React.FC = () => {
                   className="w-full h-full object-cover transition-all duration-300"
                   style={{
                     filter: activeFilter.css,
-                    transform: mirrorOn ? 'scaleX(-1)' : 'none',
-                    WebkitTransform: mirrorOn ? 'scaleX(-1)' : 'none',
+                    transform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                    WebkitTransform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',
                   }}
                 />
               ) : (

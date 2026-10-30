@@ -139,7 +139,7 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
   micRequestPending = false,
   mirrorOn = false,
   noiseReductionOn = true,
-  cameraFitMode = 'contain',
+  cameraFitMode = 'cover',
   onToggleCameraFit,
   speakers = [],
   pendingMicRequester = null,
@@ -418,9 +418,9 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   id="camera_fit"
                   label="Camera Size"
                   icon={<ExpandIcon className="w-6 h-6 text-amber-400" />}
-                  badge={cameraFitMode === 'contain' ? 'Normal' : 'Fill'}
-                  badgeColor={cameraFitMode === 'contain' ? 'bg-emerald-500' : 'bg-purple-500'}
-                  active={cameraFitMode === 'contain'}
+                  badge={cameraFitMode === 'cover' ? 'Full' : 'Original'}
+                  badgeColor={cameraFitMode === 'cover' ? 'bg-purple-500' : 'bg-emerald-500'}
+                  active={cameraFitMode === 'cover'}
                   onClick={() => {
                     onToggleCameraFit?.();
                   }}

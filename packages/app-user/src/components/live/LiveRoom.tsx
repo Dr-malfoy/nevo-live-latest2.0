@@ -124,12 +124,12 @@ export const LiveRoom = ({
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
-  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
+  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('cover');
 
   const handleToggleCameraFit = useCallback(() => {
     setCameraFitMode((m) => {
       const next = m === 'contain' ? 'cover' : 'contain';
-      showToast(next === 'contain' ? 'Camera Size: Normal (Full View)' : 'Camera Size: Fill Screen', 'info');
+      showToast(next === 'cover' ? 'Camera Size: Full Screen' : 'Camera Size: Original (Letterbox)', 'info');
       return next;
     });
   }, [showToast]);
@@ -459,7 +459,7 @@ export const LiveRoom = ({
       className={
         isMinimized
           ? "fixed bottom-20 right-3.5 w-36 h-56 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none touch-none"
-          : "relative h-[100dvh] overflow-hidden bg-brand-bg"
+          : "relative w-full h-full min-h-[100dvh] overflow-hidden bg-brand-bg"
       }
       role="region"
       aria-label="Live stream"
