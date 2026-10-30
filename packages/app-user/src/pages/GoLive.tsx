@@ -31,6 +31,7 @@ import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
 import { getMediaUrl } from '../lib/media';
 import { GenderSelectionModal } from '../components/user';
+import { getOptimalCameraId } from '../hooks/useAgora';
 
 interface FilterPreset {
   id: string;
@@ -176,8 +177,11 @@ export const GoLive: React.FC = () => {
           return;
         }
 
+        const targetCameraId = await getOptimalCameraId(facingMode);
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
+            deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
             facingMode,
             width: { ideal: 1280 },
             height: { ideal: 720 },

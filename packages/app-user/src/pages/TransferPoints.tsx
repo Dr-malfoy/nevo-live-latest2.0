@@ -6,6 +6,7 @@ import {
   PiUserCircleFill as UserRound,
   PiReceiptFill as ReceiptIcon,
   PiShieldCheckFill as ShieldCheck,
+  PiCaretRightBold as ChevronRight,
 } from 'react-icons/pi';
 import {
   transferApi,
@@ -16,7 +17,7 @@ import { usersApi, agencyApi, type AgencyItem } from '../api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { Avatar } from '../components/user';
-import { DiamondIcon } from '../components/ui/CurrencyIcon';
+import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import type { TransferQuote } from '../api/transfer.api';
 
 /**
@@ -76,6 +77,7 @@ export const TransferPoints = () => {
   const breakdown = calculateTransferBreakdown(amount);
   const amountError = amountInput ? validateTransferAmount(amount) : 'Enter transfer amount';
   const available = user?.diamonds ?? 0;
+  const coinBalance = user?.coins ?? 0;
   const insufficient = breakdown.transferAmount > available;
 
   // Look the receiver up as they type, so the nickname appears before confirming.
@@ -164,10 +166,20 @@ export const TransferPoints = () => {
           <button onClick={() => navigate(-1)} aria-label="Back" className="p-1 -ml-1 text-ink">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-base font-bold text-ink flex-1">Transfer Diamonds</h1>
-          <button onClick={() => navigate('/transfer/history')} className="text-sm font-semibold text-accent-500">
-            Details
-          </button>
+          <h1 className="text-base font-bold text-ink flex-1 truncate">Transfer Diamonds</h1>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/withdraw')}
+              className="px-2.5 py-1 rounded-full text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 flex items-center gap-1 transition-all active:scale-95 shadow-2xs"
+              title="Go to Coin Withdraw"
+            >
+              <CoinIcon className="w-3.5 h-3.5 text-amber-500" />
+              <span>Withdraw</span>
+            </button>
+            <button onClick={() => navigate('/transfer/history')} className="text-sm font-semibold text-accent-500">
+              Details
+            </button>
+          </div>
         </div>
       </header>
 
@@ -197,6 +209,36 @@ export const TransferPoints = () => {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* ── Coin Withdraw Quick Shortcut Banner ── */}
+      <div className="mx-3 mt-1 mb-1">
+        <button
+          type="button"
+          onClick={() => navigate('/withdraw')}
+          className="w-full bg-gradient-to-r from-amber-50 via-amber-100/60 to-yellow-50 hover:from-amber-100 hover:to-yellow-100 border border-amber-300/80 rounded-2xl p-3 flex items-center justify-between shadow-2xs transition-all active:scale-[0.99] group text-left"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+              <CoinIcon className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-xs font-bold text-amber-950">Coin Withdraw</p>
+                <span className="text-[10px] font-semibold bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded-md">
+                  bKash • Nagad • Rocket
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-900/80 truncate mt-0.5">
+                Current Coins: <strong className="font-semibold tabular-nums text-amber-950">{coinBalance.toLocaleString()}</strong> • Cash out to wallet
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-xs font-bold text-amber-950 shrink-0 bg-white/90 border border-amber-300 px-2.5 py-1.5 rounded-xl group-hover:bg-white transition-colors shadow-2xs ml-2">
+            <span>Withdraw</span>
+            <ChevronRight className="w-3.5 h-3.5 text-amber-700" />
+          </div>
+        </button>
       </div>
 
       {/* Agency Member shortcut if available */}

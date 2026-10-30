@@ -118,6 +118,44 @@ export const TopUp = () => {
             </div>
           </div>
 
+          {/* ── Buy Diamonds (c2c) ────────────────────────────────────── */}
+          <div
+            onClick={() => navigate('/recharge')}
+            className="rounded-3xl bg-white border border-slate-200 p-5 shadow-xs cursor-pointer hover:border-slate-300 active:scale-[0.99] transition-all space-y-3 group"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-600 shrink-0">
+                  <WalletIcon className="w-6 h-6 text-cyan-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Buy Diamonds (c2c)</h3>
+                  <p className="text-xs text-slate-500 font-medium">Trade with Certified Diamond Sellers</p>
+                </div>
+              </div>
+
+              <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-white shrink-0">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Purchase diamonds safely through our network of verified Diamond Sellers via bKash, Nagad, Rocket, Binance BEP20, and Bybit TRC20.
+            </p>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/recharge');
+              }}
+              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+            >
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              <span>Go to Diamond Sellers Gateway →</span>
+            </button>
+          </div>
+
           {/* ── Official Safety Notice ───────────────────────────────── */}
           <div className="rounded-2xl bg-slate-900 px-4 py-3 flex items-start gap-2.5 shadow-sm text-white">
             <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
@@ -230,44 +268,6 @@ export const TopUp = () => {
                 </button>
               </div>
             </div>
-          </div>
-
-          {/* ── Shortcut Card 2: Buy from Certified Diamond Sellers (c2c) ── */}
-          <div
-            onClick={() => navigate('/recharge')}
-            className="rounded-3xl bg-white border border-slate-200 p-5 shadow-xs cursor-pointer hover:border-slate-300 active:scale-[0.99] transition-all space-y-3 group"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-11 h-11 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-600 shrink-0">
-                  <WalletIcon className="w-6 h-6 text-cyan-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">Buy Diamonds (c2c)</h3>
-                  <p className="text-xs text-slate-500 font-medium">Trade with Certified Diamond Sellers</p>
-                </div>
-              </div>
-
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-900 group-hover:text-white transition-colors shrink-0">
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Purchase diamonds safely through our network of verified Diamond Sellers via bKash, Nagad, Rocket, Binance BEP20, and Bybit TRC20.
-            </p>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate('/recharge');
-              }}
-              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-            >
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              <span>Go to Diamond Sellers Gateway →</span>
-            </button>
           </div>
         </div>
       )}
