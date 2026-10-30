@@ -42,8 +42,8 @@ export interface CallChatMessage {
  * Resolves whether a camera feed should be mirrored horizontally.
  * When mirror is enabled by user, both front and back cameras are mirrored horizontally.
  */
-const shouldMirrorFeed = (facingMode: 'user' | 'environment', mirrorEnabled: boolean) => {
-  return mirrorEnabled && facingMode === 'user';
+const shouldMirrorFeed = (_facingMode: 'user' | 'environment', mirrorEnabled: boolean) => {
+  return mirrorEnabled;
 };
 
 /**

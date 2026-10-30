@@ -142,7 +142,7 @@ export const LiveRoom = ({
   const applyVideoMirror = useCallback((mirror: boolean) => {
     const videoArea = document.getElementById('agora-video-area');
     if (videoArea) {
-      const elements = videoArea.querySelectorAll('video, .agora_video_player');
+      const elements = videoArea.querySelectorAll('video');
       elements.forEach((el: any) => {
         const val = mirror ? 'scaleX(-1)' : 'none';
         el.style.setProperty('transform', val, 'important');
@@ -155,7 +155,7 @@ export const LiveRoom = ({
       const isLocalSide = (id === 'pk-video-left' && isSideA) || (id === 'pk-video-right' && !isSideA);
       const el = document.getElementById(id);
       if (el) {
-        const elements = el.querySelectorAll('video, .agora_video_player');
+        const elements = el.querySelectorAll('video');
         elements.forEach((v: any) => {
           const val = isLocalSide && mirror ? 'scaleX(-1)' : 'none';
           v.style.setProperty('transform', val, 'important');
@@ -169,30 +169,55 @@ export const LiveRoom = ({
     setMirrorOn((m) => {
       const next = !m;
       onSetMirror?.(next);
-      // Only front camera mirrors. Back camera must ALWAYS stay normal (not ulta).
-      const shouldMirror = isHost && next && facingMode === 'user';
+      const shouldMirror = isHost && next;
       applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast, onSetMirror, isHost, applyVideoMirror, facingMode]);
+  }, [showToast, onSetMirror, isHost, applyVideoMirror]);
+
+  const handleSwitchCamera = useCallback(async () => {
+    try {
+      await onSwitchCamera?.();
+    } finally {
+      const shouldMirror = isHost && mirrorOn;
+      applyVideoMirror(shouldMirror);
+      setTimeout(() => applyVideoMirror(shouldMirror), 150);
+      setTimeout(() => applyVideoMirror(shouldMirror), 350);
+      setTimeout(() => applyVideoMirror(shouldMirror), 700);
+      setTimeout(() => applyVideoMirror(shouldMirror), 1200);
+    }
+  }, [onSwitchCamera, isHost, mirrorOn, applyVideoMirror]);
 
   useEffect(() => {
-    // Only front camera mirrors. Back camera must ALWAYS stay in natural orientation (not ulta).
-    const shouldMirror = isHost && mirrorOn && facingMode === 'user';
+    const shouldMirror = isHost && mirrorOn;
     onSetMirror?.(mirrorOn);
     applyVideoMirror(shouldMirror);
 
     const t1 = setTimeout(() => applyVideoMirror(shouldMirror), 150);
     const t2 = setTimeout(() => applyVideoMirror(shouldMirror), 350);
     const t3 = setTimeout(() => applyVideoMirror(shouldMirror), 700);
+    const t4 = setTimeout(() => applyVideoMirror(shouldMirror), 1200);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(t4);
     };
-  }, [mirrorOn, facingMode, isHost, isSideA, onSetMirror, applyVideoMirror]);
+  }, [mirrorOn, isHost, isSideA, onSetMirror, applyVideoMirror]);
+
+  // Observer to ensure newly attached video elements (e.g. after camera switch) inherit mirror state immediately
+  useEffect(() => {
+    const videoArea = document.getElementById('agora-video-area');
+    if (!videoArea) return;
+    const observer = new MutationObserver(() => {
+      const shouldMirror = isHost && mirrorOn;
+      applyVideoMirror(shouldMirror);
+    });
+    observer.observe(videoArea, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [isHost, mirrorOn, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
@@ -719,7 +744,7 @@ export const LiveRoom = ({
         onShare={handleShare}
         onToggleCamera={onToggleCamera}
         onToggleMic={onToggleMic}
-        onSwitchCamera={onSwitchCamera}
+        onSwitchCamera={handleSwitchCamera}
         onToggleFilters={onToggleFilters}
         onLeave={onLeave}
         onEnd={onEnd}
@@ -752,7 +777,7 @@ export const LiveRoom = ({
         onKickSpeaker={onKickSpeaker}
         onToggleCamera={onToggleCamera}
         onToggleMic={onToggleMic}
-        onSwitchCamera={onSwitchCamera}
+        onSwitchCamera={handleSwitchCamera}
         onToggleFilters={onToggleFilters}
         onOpenGift={onOpenGift}
         onShare={handleShare}
@@ -975,7 +1000,7 @@ export const LiveRoom = ({
           videoEnabled={videoEnabled}
           onToggleCamera={onToggleCamera}
           onToggleMic={onToggleMic}
-          onSwitchCamera={onSwitchCamera}
+          onSwitchCamera={handleSwitchCamera}
           speakers={speakers}
           isSpeaker={isSpeaker}
           micRequestPending={micRequestPending}

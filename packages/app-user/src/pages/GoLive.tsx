@@ -467,7 +467,7 @@ export const GoLive: React.FC = () => {
                   playsInline
                   muted
                   className={`w-full h-full object-cover transition-all duration-300 ${
-                    facingMode === 'user' ? 'scale-x-[-1]' : ''
+                    'scale-x-[-1]'
                   }`}
                   style={{ filter: activeFilter.css }}
                 />
@@ -918,3 +918,4 @@ export const GoLive: React.FC = () => {
     </div>
   );
 };
+
