@@ -380,9 +380,8 @@ export const useCall = () => {
           const stream = await navigator.mediaDevices.getUserMedia({
             video: type === 'video' ? {
               facingMode: currentFacingModeRef.current,
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
-              frameRate: { ideal: 30, max: 30 },
+              width: { ideal: 640 },
+              height: { ideal: 480 },
             } : false,
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           });
@@ -618,29 +617,10 @@ export const useCall = () => {
         // 2. Camera track (with graceful error handling)
         if (type === 'video') {
           try {
-            let videoTrack: ICameraVideoTrack | null = null;
-            try {
-              // High definition vertical 720p 9:16 portrait
-              videoTrack = await AgoraRTC.createCameraVideoTrack({
-                encoderConfig: {
-                  width: 720,
-                  height: 1280,
-                  frameRate: 30,
-                  bitrateMin: 1000,
-                  bitrateMax: 2400,
-                },
-                facingMode: currentFacingModeRef.current,
-                optimizationMode: 'detail',
-              });
-            } catch {
-              videoTrack = await AgoraRTC.createCameraVideoTrack({
-                encoderConfig: {
-                  width: 720,
-                  height: 1280,
-                },
-                facingMode: currentFacingModeRef.current,
-              });
-            }
+            const videoTrack = await AgoraRTC.createCameraVideoTrack({
+              encoderConfig: { width: 640, height: 480, frameRate: 30 },
+              facingMode: currentFacingModeRef.current,
+            });
             localVideoRef.current = videoTrack;
             cameraOnRef.current = true;
             setCameraOn(true);
@@ -751,11 +731,9 @@ export const useCall = () => {
       });
     }
 
-    const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
     const baseVideoConfig = {
-      width: isPortrait ? { ideal: 1080, min: 480 } : { ideal: 1920, min: 640 },
-      height: isPortrait ? { ideal: 1920, min: 640 } : { ideal: 1080, min: 480 },
-      frameRate: { ideal: 30, max: 30 },
+      width: { ideal: 640 },
+      height: { ideal: 480 },
     };
 
     let newMediaTrack: MediaStreamTrack | null = null;

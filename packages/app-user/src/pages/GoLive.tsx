@@ -23,7 +23,6 @@ import {
   PiLightningFill as ZapIcon,
   PiMusicNotesFill as MusicIcon,
   PiFireBold as FireIcon,
-  PiFlipHorizontalBold as MirrorIcon,
 } from 'react-icons/pi';
 import { VerificationGateModal } from '../components/ui';
 import { streamsApi, uploadApi } from '../api';
@@ -32,7 +31,6 @@ import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
 import { getMediaUrl } from '../lib/media';
 import { GenderSelectionModal } from '../components/user';
-import { getScreenCaptureResolution, getOptimalCameraId } from '../hooks/useAgora';
 
 interface FilterPreset {
   id: string;
@@ -128,7 +126,6 @@ export const GoLive: React.FC = () => {
   const [hasCameraAccess, setHasCameraAccess] = useState<boolean | null>(null);
   const [activeFilterId, setActiveFilterId] = useState<string>('glow');
   const [showFilterPicker, setShowFilterPicker] = useState(false);
-  const [mirrorOn, setMirrorOn] = useState(true);
 
   useEffect(() => {
     const t = searchParams.get('type');
@@ -179,44 +176,18 @@ export const GoLive: React.FC = () => {
           return;
         }
 
-        let stream: MediaStream | null = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode,
-              width: { ideal: 720, min: 480 },
-              height: { ideal: 1280, min: 640 },
-              frameRate: { ideal: 30, max: 30 },
-            },
-            audio: false, // local preview only, prevent feedback loop
-          });
-        } catch {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode,
-            },
-            audio: false,
-          });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false, // local preview only, prevent feedback loop
+        });
 
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
-        }
-
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          try {
-            const caps = (videoTrack.getCapabilities?.() as any) || {};
-            if (caps.zoom) {
-              const minZoom = caps.zoom.min ?? 1;
-              await (videoTrack.applyConstraints as any)({
-                advanced: [{ zoom: minZoom }],
-              });
-            }
-          } catch {
-            // Ignore if zoom constraints are not supported on this platform
-          }
         }
 
         mediaStreamRef.current = stream;
@@ -487,23 +458,18 @@ export const GoLive: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Video / Game Camera Feed Viewport (Natural portrait matching phone screen ratio) */
-            <div
-              className="relative max-h-[500px] w-full max-w-[280px] sm:max-w-[320px] mx-auto rounded-2xl bg-black overflow-hidden group flex items-center justify-center shadow-2xl border border-white/10"
-              style={{ aspectRatio: `${getScreenCaptureResolution().aspectRatio}` }}
-            >
+            /* Video / Game Camera Feed Viewport */
+            <div className="relative aspect-[16/10] sm:aspect-[16/9] bg-black overflow-hidden group">
               {cameraActive && hasCameraAccess !== false ? (
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover transition-all duration-300"
-                  style={{
-                    filter: activeFilter.css,
-                    transform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',
-                    WebkitTransform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',
-                  }}
+                  className={`w-full h-full object-cover transition-all duration-300 ${
+                    facingMode === 'user' ? 'scale-x-[-1]' : ''
+                  }`}
+                  style={{ filter: activeFilter.css }}
                 />
               ) : (
                 /* Fallback avatar preview when camera is paused */
@@ -553,17 +519,6 @@ export const GoLive: React.FC = () => {
                   title="Flip Camera"
                 >
                   <FlipCamera className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setMirrorOn((prev) => !prev)}
-                  className={`w-8 h-8 rounded-full backdrop-blur-md active:scale-95 flex items-center justify-center border shadow-md transition-all ${
-                    mirrorOn
-                      ? 'bg-purple-600/80 text-white border-purple-400'
-                      : 'bg-black/60 hover:bg-black/80 text-white/60 border-white/10'
-                  }`}
-                  title={mirrorOn ? 'Disable Mirror' : 'Enable Mirror'}
-                >
-                  <MirrorIcon className="w-4 h-4" />
                 </button>
                 <button
                   onClick={toggleCamera}

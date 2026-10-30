@@ -42,146 +42,6 @@ interface UseAgoraOptions {
   streamId?: string;
 }
 
-/**
- * Cross-browser video mirror styler.
- * Directly applies scaleX(-1) / none with !important to guarantee instant mirroring
- * across Agora and WebRTC video tracks on Android WebView and browsers.
- */
-const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
-  if (!container) return;
-  const elements = container.querySelectorAll('video, .agora_video_player');
-  elements.forEach((el: any) => {
-    const transformVal = mirror ? 'scaleX(-1)' : 'none';
-    el.style.setProperty('transform', transformVal, 'important');
-    el.style.setProperty('-webkit-transform', transformVal, 'important');
-  });
-};
-
-/**
- * Resets camera hardware zoom to standard 1.0x optical view.
- * Prevents mobile devices from defaulting to auxiliary telephoto, cropped sub-sensors, or digital zoom.
- */
-async function resetHardwareCameraZoom(track: any) {
-  if (!track) return;
-  try {
-    const mediaTrack = typeof track.getMediaStreamTrack === 'function' ? track.getMediaStreamTrack() : track;
-    if (!mediaTrack) return;
-    const caps = (mediaTrack.getCapabilities?.() as any) || {};
-    if (caps.zoom) {
-      // Lock camera to standard 1.0x optical view (normal wide FOV, no digital zoom)
-      const targetZoom = (typeof caps.zoom.min === 'number' && caps.zoom.min <= 1) ? 1 : (caps.zoom.min ?? 1);
-      await (mediaTrack.applyConstraints as any)({
-        advanced: [{ zoom: targetZoom }],
-      });
-      console.log('[useAgora] Camera hardware zoom locked to standard 1x optical:', targetZoom);
-    }
-  } catch (e) {
-    console.debug('[useAgora] resetHardwareCameraZoom notice:', e);
-  }
-}
-
-/**
- * Returns standard mobile vertical 9:16 portrait resolution (720x1280 HD).
- * This ensures:
- * 1. 100% full screen coverage on modern smartphones with zero letterboxing.
- * 2. Uncropped, wide natural 1x optical framing of the host (face, shoulders, background).
- * 3. High Definition (HD 720p @ 30fps) with sharp clarity.
- */
-export function getScreenCaptureResolution() {
-  return {
-    width: 720,
-    height: 1280,
-    aspectRatio: 9 / 16,
-    screenRatio: 16 / 9,
-    isPortrait: true,
-  };
-}
-
-/**
- * Selects the optimal standard 1x camera device (avoids telephoto, macro, depth, and cropped sub-sensors)
- */
-export async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<string | undefined> {
-  try {
-    const devices = await AgoraRTC.getCameras().catch(() => []);
-    if (!devices || devices.length === 0) return undefined;
-
-    const videoDevices = devices.filter((d: any) => !d.kind || d.kind === 'videoinput');
-
-    if (facingMode === 'user') {
-      const frontDevices = videoDevices.filter((d) =>
-        /front|user|facetime|selfie|forward/i.test(d.label || '') ||
-        /camera2?\s*1\b/i.test(d.label || '')
-      );
-      if (frontDevices.length === 0) return undefined;
-
-      // 1. Explicit standard 1x or wide front selfie camera if labeled
-      const standardFront = frontDevices.find((d) =>
-        (/camera2?\s*1\b/i.test(d.label || '') || /wide|main|1x|primary/i.test(d.label || '')) &&
-        !/tele|narrow|zoom|macro|depth|bokeh/i.test(d.label || '')
-      );
-      if (standardFront?.deviceId) return standardFront.deviceId;
-
-      // 2. Primary front selfie camera (Camera 1) is always first in frontDevices on Android
-      return frontDevices[0].deviceId;
-    } else {
-      const backDevices = videoDevices.filter((d) =>
-        /back|rear|environment|world/i.test(d.label || '') ||
-        /camera2?\s*0\b/i.test(d.label || '')
-      );
-      if (backDevices.length === 0) return undefined;
-
-      // Primary 1x back camera: main wide camera (Camera 0), NEVER telephoto or macro
-      const mainBack = backDevices.find((d) =>
-        (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide|1x|primary/i.test(d.label || '')) &&
-        !/tele|macro|depth|zoom|narrow/i.test(d.label || '')
-      );
-      if (mainBack?.deviceId) return mainBack.deviceId;
-
-      return backDevices[0].deviceId;
-    }
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Creates high-definition camera video track optimized for mobile live-streaming.
- * Captures in the EXACT aspect ratio of the user's phone screen so that:
- * 1. It fits the mobile screen 100% full screen without black bars.
- * 2. It has zero zoom / zero cropping on the face, ears, and shoulders.
- * 3. Normal camera resolution (clear HD details).
- */
-async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
-  try {
-    const track = await AgoraRTC.createCameraVideoTrack({
-      facingMode,
-      encoderConfig: {
-        width: 720,
-        height: 1280,
-        frameRate: 30,
-        bitrateMin: 1000,
-        bitrateMax: 2400,
-      },
-      optimizationMode: 'detail',
-    });
-    return track;
-  } catch (err) {
-    console.warn('[useAgora] Primary 720x1280 video track creation failed, fallback:', err);
-    try {
-      const track = await AgoraRTC.createCameraVideoTrack({
-        facingMode,
-        encoderConfig: {
-          width: 720,
-          height: 1280,
-        },
-      });
-      return track;
-    } catch {
-      return await AgoraRTC.createCameraVideoTrack({ facingMode });
-    }
-  }
-}
-
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localVideoRef = useRef<ICameraVideoTrack | null>(null);
@@ -191,7 +51,6 @@ export const useAgora = () => {
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const fallbackVideoElRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoElRef = useRef<HTMLVideoElement | null>(null);
-  const cachedLocalStreamRef = useRef<MediaStream | null>(null);
 
   // Fallback WebRTC P2P connections
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -202,55 +61,15 @@ export const useAgora = () => {
 
   const cameraOnRef = useRef(false);
   const micOnRef = useRef(false);
-  const facingModeRef = useRef<'user' | 'environment'>('user');
-  const mirrorRef = useRef(true);
   const joiningRef = useRef(false);
   const togglingMicRef = useRef(false);
   const networkLostRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
-
-  const setMirror = useCallback((m: boolean) => {
-    mirrorRef.current = m;
-    // Mirror ONLY applies to front camera. Back camera is NEVER mirrored (never ulta).
-    const shouldMirror = Boolean(m && facingModeRef.current === 'user');
-    const videoArea = document.getElementById('agora-video-area');
-    if (videoArea) {
-      setElementMirror(videoArea, shouldMirror);
-      setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-      setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
-    }
-  }, []);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [remoteUsers, setRemoteUsers] = useState<UID[]>([]);
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState('');
-
-  // Agora Beauty Effect Extension processor instance and current parameters
-  const beautyProcessorRef = useRef<any>(null);
-  const beautySettingsRef = useRef({ smoothness: 0, whitening: 0 });
-
-  const applyBeautyOptions = useCallback(async (smoothness: number, whitening: number) => {
-    beautySettingsRef.current = { smoothness, whitening };
-    if (!localVideoRef.current) return;
-
-    const shouldEnable = smoothness > 0 || whitening > 0;
-
-    // Use safe built-in Agora SDK beauty effect if available (never crashes WebGL or turns screen black)
-    if (typeof (localVideoRef.current as any)?.setBeautyEffect === 'function') {
-      try {
-        await (localVideoRef.current as any).setBeautyEffect(shouldEnable, {
-          lighteningLevel: Math.min(1, Math.max(0, (whitening / 100) * 0.85)),
-          smoothnessLevel: Math.min(1, Math.max(0, (smoothness / 100) * 0.85)),
-          rednessLevel: 0.1,
-          lighteningContrastLevel: 1,
-        });
-      } catch (err) {
-        console.warn('[useAgora] SDK setBeautyEffect error (CSS filter active):', err);
-      }
-    }
-  }, []);
 
   // Setup WebRTC P2P fallback for host and viewers
   const setupFallbackP2P = (role: 'host' | 'audience', socket: any, streamId: string) => {
@@ -266,32 +85,8 @@ export const useAgora = () => {
     if (role === 'host') {
       // Host side signaling handlers
       const onPeerJoined = async ({ peerSocketId }: { peerSocketId: string }) => {
-        if (!peerSocketId) return;
+        if (!peerSocketId || !fallbackStreamRef.current) return;
         try {
-          // Resolve stream to broadcast: fallback stream, Agora native tracks, or DOM video srcObject
-          let streamToShare: MediaStream | null = fallbackStreamRef.current;
-          if (!streamToShare || streamToShare.getTracks().length === 0) {
-            const tracks: MediaStreamTrack[] = [];
-            try {
-              const vTrack = (localVideoRef.current as any)?.getMediaStreamTrack?.();
-              if (vTrack) tracks.push(vTrack);
-            } catch {}
-            try {
-              const aTrack = (localAudioRef.current as any)?.getMediaStreamTrack?.();
-              if (aTrack) tracks.push(aTrack);
-            } catch {}
-            if (tracks.length > 0) {
-              streamToShare = new MediaStream(tracks);
-            }
-          }
-          if (!streamToShare || streamToShare.getTracks().length === 0) {
-            const el = document.getElementById('agora-video-area')?.querySelector('video');
-            if (el && el.srcObject instanceof MediaStream && el.srcObject.getTracks().length > 0) {
-              streamToShare = el.srcObject;
-            }
-          }
-          if (!streamToShare || streamToShare.getTracks().length === 0) return;
-
           // Close existing connection to this peer if any
           const existingPc = peerConnectionsRef.current.get(peerSocketId);
           if (existingPc) existingPc.close();
@@ -299,8 +94,8 @@ export const useAgora = () => {
           const pc = new RTCPeerConnection(RTC_CONFIG);
           peerConnectionsRef.current.set(peerSocketId, pc);
 
-          streamToShare.getTracks().forEach((track) => {
-            pc.addTrack(track, streamToShare!);
+          fallbackStreamRef.current.getTracks().forEach((track) => {
+            pc.addTrack(track, fallbackStreamRef.current!);
           });
 
           pc.onicecandidate = (event) => {
@@ -325,7 +120,7 @@ export const useAgora = () => {
 
       const onSignalAnswer = async ({ fromSocketId, answer }: { fromSocketId: string; answer: any }) => {
         const pc = peerConnectionsRef.current.get(fromSocketId);
-        if (pc && answer && pc.signalingState === 'have-local-offer') {
+        if (pc && answer) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
           } catch (e) {
@@ -336,11 +131,11 @@ export const useAgora = () => {
 
       const onSignalCandidate = async ({ fromSocketId, candidate }: { fromSocketId: string; candidate: any }) => {
         const pc = peerConnectionsRef.current.get(fromSocketId);
-        if (pc && candidate && pc.remoteDescription) {
+        if (pc && candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
           } catch (e) {
-            // Silently ignore late or redundant candidate
+            console.warn('[useAgora] Failed to add ICE candidate from viewer:', e);
           }
         }
       };
@@ -368,9 +163,6 @@ export const useAgora = () => {
           viewerPeerRef.current = pc;
 
           pc.ontrack = (event) => {
-            if (event.receiver && typeof (event.receiver as any).playoutDelayHint !== 'undefined') {
-              (event.receiver as any).playoutDelayHint = 0; // Eliminate WebRTC jitter buffer delay
-            }
             const remoteStream = event.streams[0] || new MediaStream([event.track]);
             const container = document.getElementById('agora-video-area');
             if (container) {
@@ -380,7 +172,7 @@ export const useAgora = () => {
                 videoEl.playsInline = true;
                 videoEl.style.width = '100%';
                 videoEl.style.height = '100%';
-                videoEl.style.objectFit = 'contain';
+                videoEl.style.objectFit = 'cover';
                 videoEl.srcObject = remoteStream;
                 container.appendChild(videoEl);
                 remoteVideoElRef.current = videoEl;
@@ -454,45 +246,10 @@ export const useAgora = () => {
     if (role === 'host' || shouldMicOn) {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const { width, height, aspectRatio } = getScreenCaptureResolution();
-          let stream: MediaStream | null = null;
-          try {
-            const targetDeviceId = await getOptimalCameraId('user');
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: (role === 'host' && videoEnabled) ? {
-                deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
-                width: { ideal: width },
-                height: { ideal: height },
-                aspectRatio: { ideal: aspectRatio },
-                frameRate: { ideal: 30, max: 30 },
-                facingMode: 'user',
-              } : false,
-              audio: shouldMicOn ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-              } : false,
-            });
-            if (stream) {
-              const vt = stream.getVideoTracks()[0];
-              if (vt) await resetHardwareCameraZoom(vt);
-            }
-          } catch {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: (role === 'host' && videoEnabled) ? {
-                facingMode: 'user',
-              } : false,
-              audio: shouldMicOn ? {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-              } : false,
-            });
-            if (stream) {
-              const vt = stream.getVideoTracks()[0];
-              if (vt) await resetHardwareCameraZoom(vt);
-            }
-          }
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: (role === 'host' && videoEnabled) ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } : false,
+            audio: shouldMicOn,
+          });
           fallbackStreamRef.current = stream;
           cameraOnRef.current = (role === 'host' && videoEnabled);
           micOnRef.current = shouldMicOn;
@@ -541,13 +298,8 @@ export const useAgora = () => {
         clientRef.current = null;
       }
 
-      // Resolve Agora App ID with universal fallback
-      const resolvedAppId = (appId && appId.trim() !== '' && appId !== '89383e4dfc4a43a4954a30fa9984b4f6')
-        ? appId.trim()
-        : 'b0b508017ff54158a6e30f30c7cbea98';
-
-      // If no valid Agora App ID is available, gracefully fallback to local WebRTC
-      if (!resolvedAppId) {
+      // If no valid Agora App ID is provided or in dev placeholder, gracefully fallback to local WebRTC
+      if (!appId || appId === '89383e4dfc4a43a4954a30fa9984b4f6' || appId.trim() === '') {
         console.warn('[useAgora] No valid Agora App ID provided. Using browser WebRTC live relay mode.');
         await initLocalMediaFallback(videoEnabled, role, socket, streamId, shouldMicOn);
         return null;
@@ -557,17 +309,9 @@ export const useAgora = () => {
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
 
-      try {
-        // Guarantee default subscription is high-definition stream
-        (client as any).setRemoteDefaultVideoStreamType?.(0);
-      } catch {}
-
-      // Set initial Agora client role: host or audience
-      if (role === 'host' || shouldMicOn) {
-        await client.setClientRole('host');
-      } else {
-        await client.setClientRole('audience');
-      }
+      // Set initial Agora client role: if host or shouldMicOn is true, 'host', otherwise 'audience'
+      const initialClientRole = (role === 'host' || shouldMicOn) ? 'host' : 'audience';
+      await client.setClientRole(initialClientRole);
 
       // Handle browser audio autoplay policies
       if (typeof window !== 'undefined') {
@@ -587,10 +331,10 @@ export const useAgora = () => {
       }
 
       client.on('connection-state-change', (cur, prev) => {
-        if ((cur === 'RECONNECTING' || cur === 'DISCONNECTED') && prev === 'CONNECTED') {
+        if (cur === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
           if (!networkLostRef.current) {
             networkLostRef.current = true;
-            setError('Connection lost — reconnecting…');
+            setError('Connection lost ΓÇö reconnectingΓÇª');
             onNetworkLost?.();
           }
         } else if (cur === 'CONNECTED') {
@@ -607,14 +351,6 @@ export const useAgora = () => {
         try {
           await client.subscribe(user, mediaType);
           if (mediaType === 'video') {
-            try {
-              // Guarantee high-definition (HD) video stream is requested without low-stream downgrade
-              client.setRemoteVideoStreamType(user.uid, 0);
-              client.setStreamFallbackOption(user.uid, 0);
-            } catch (hdErr) {
-              console.warn('[useAgora] setRemoteVideoStreamType error:', hdErr);
-            }
-
             let container = document.getElementById(`remote-container-${user.uid}`);
             if (!container) {
               container = document.createElement('div');
@@ -623,9 +359,7 @@ export const useAgora = () => {
               const videoArea = document.getElementById('agora-video-area');
               if (videoArea) videoArea.appendChild(container);
             }
-            if (user.videoTrack) {
-              user.videoTrack.play(container, { fit: 'cover', mirror: false });
-            }
+            user.videoTrack?.play(container);
           }
           if (mediaType === 'audio') {
             try {
@@ -655,36 +389,15 @@ export const useAgora = () => {
       });
 
       try {
-        await client.join(resolvedAppId, channel, token, uid ?? 0);
+        await client.join(appId, channel, token, uid ?? 0);
 
         if (role === 'host' && videoEnabled) {
-          let videoTrack: ICameraVideoTrack | null = null;
-          try {
-            videoTrack = await createHdCameraVideoTrack(facingModeRef.current);
-          } catch (createErr) {
-            console.warn('[useAgora] createHdCameraVideoTrack error:', createErr);
-          }
+          const videoTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: { width: 640, height: 480, frameRate: 30 },
+          });
           localVideoRef.current = videoTrack;
-          cameraOnRef.current = Boolean(videoTrack);
-          setCameraOn(Boolean(videoTrack));
-
-          if (videoTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
-            applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
-          }
-
-          // Immediately render host local video in agora-video-area
-          const videoArea = document.getElementById('agora-video-area');
-          if (videoArea && videoTrack) {
-            try {
-              const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
-              videoTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
-              setElementMirror(videoArea, shouldMirror);
-              setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-              setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
-            } catch (playErr) {
-              console.warn('[useAgora] Immediate host preview error:', playErr);
-            }
-          }
+          cameraOnRef.current = true;
+          setCameraOn(true);
         } else {
           localVideoRef.current = null;
           cameraOnRef.current = false;
@@ -718,10 +431,6 @@ export const useAgora = () => {
           }
         }
 
-        if (socket && streamId) {
-          setupFallbackP2P(role, socket, streamId);
-        }
-
         setJoined(true);
         return client;
       } catch (err: any) {
@@ -744,19 +453,11 @@ export const useAgora = () => {
   // Play local video into the container
   const playLocalVideo = useCallback((containerId: string) => {
     const tryPlay = (attempt: number) => {
-      const shouldMirror = mirrorRef.current && facingModeRef.current === 'user';
-
       // 1. If Agora native track is available
       if (localVideoRef.current) {
         try {
-          const container = document.getElementById(containerId);
-          if (container) {
-            localVideoRef.current.play(container, { fit: 'cover', mirror: shouldMirror });
-            setElementMirror(container, shouldMirror);
-            setTimeout(() => setElementMirror(container, shouldMirror), 150);
-            setTimeout(() => setElementMirror(container, shouldMirror), 350);
-            return;
-          }
+          localVideoRef.current.play(containerId);
+          return;
         } catch (e) {
           console.warn(`[useAgora] playLocalVideo attempt ${attempt + 1} failed:`, e);
         }
@@ -774,15 +475,12 @@ export const useAgora = () => {
             videoEl.style.width = '100%';
             videoEl.style.height = '100%';
             videoEl.style.objectFit = 'cover';
-            videoEl.style.imageRendering = '-webkit-optimize-contrast';
-            videoEl.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
             videoEl.srcObject = fallbackStreamRef.current;
             container.appendChild(videoEl);
             fallbackVideoElRef.current = videoEl;
           } else if (fallbackVideoElRef.current.parentElement !== container) {
             container.appendChild(fallbackVideoElRef.current);
           }
-          setElementMirror(container, shouldMirror);
           return;
         }
       }
@@ -792,56 +490,6 @@ export const useAgora = () => {
       }
     };
     tryPlay(0);
-  }, []);
-
-  // Re-verify and ensure video tracks are actively playing into the container
-  const refreshVideoTracks = useCallback((containerId: string = 'agora-video-area') => {
-    const videoArea = document.getElementById(containerId);
-    if (!videoArea) return;
-    const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
-
-    // 1. If host local camera track
-    if (localVideoRef.current && cameraOnRef.current) {
-      try {
-        localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
-        setElementMirror(videoArea, shouldMirror);
-        setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-        setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
-      } catch (e) {
-        console.warn('[useAgora] refresh local video error:', e);
-      }
-    }
-
-    // 2. If fallback host stream
-    if (fallbackStreamRef.current && fallbackVideoElRef.current) {
-      if (!videoArea.contains(fallbackVideoElRef.current)) {
-        videoArea.appendChild(fallbackVideoElRef.current);
-      }
-      try {
-        fallbackVideoElRef.current.play().catch(() => {});
-      } catch {}
-      setElementMirror(videoArea, shouldMirror);
-    }
-
-    // 3. If remote users exist
-    if (clientRef.current) {
-      clientRef.current.remoteUsers.forEach((user) => {
-        if (user.videoTrack) {
-          let container = document.getElementById(`remote-container-${user.uid}`);
-          if (!container) {
-            container = document.createElement('div');
-            container.id = `remote-container-${user.uid}`;
-            container.className = 'absolute inset-0 w-full h-full';
-            videoArea.appendChild(container);
-          }
-          try {
-            user.videoTrack.play(container, { fit: 'cover', mirror: false });
-          } catch (e) {
-            console.warn('[useAgora] refresh remote video error:', e);
-          }
-        }
-      });
-    }
   }, []);
 
   const toggleCamera = useCallback(async () => {
@@ -855,26 +503,6 @@ export const useAgora = () => {
         await localVideoRef.current.setEnabled(next);
       } catch (e) {
         console.warn('live camera toggle error:', e);
-      }
-    } else if (next && clientRef.current) {
-      try {
-        const videoTrack = await createHdCameraVideoTrack(facingModeRef.current);
-        localVideoRef.current = videoTrack;
-        beautyProcessorRef.current = null;
-        if (videoTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
-          applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
-        }
-        await clientRef.current.publish([videoTrack]);
-        const videoArea = document.getElementById('agora-video-area');
-        if (videoArea) {
-          const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
-          videoTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
-          setElementMirror(videoArea, shouldMirror);
-          setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-          setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
-        }
-      } catch (e) {
-        console.warn('[useAgora] live camera enable error:', e);
       }
     }
 
@@ -903,36 +531,24 @@ export const useAgora = () => {
             console.warn('[useAgora] setClientRole error:', roleErr);
           }
 
-          const isTrackEnded =
-            !localAudioRef.current ||
-            localAudioRef.current.getMediaStreamTrack()?.readyState === 'ended';
-
-          if (isTrackEnded) {
-            if (localAudioRef.current) {
-              try {
-                localAudioRef.current.close();
-              } catch {}
-              localAudioRef.current = null;
-            }
+          if (!localAudioRef.current) {
             const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
               AEC: true,
               ANS: true,
               AGC: true,
-              encoderConfig: 'high_quality_stereo',
             });
             localAudioRef.current = audioTrack;
-            const isPublished = clientRef.current.localTracks.includes(audioTrack);
-            if (!isPublished) {
-              await clientRef.current.publish([audioTrack]);
-            }
+            await clientRef.current.publish([audioTrack]);
+            await audioTrack.setEnabled(true);
             if (typeof (audioTrack as any).setMuted === 'function') {
               await (audioTrack as any).setMuted(false);
             }
-          } else if (localAudioRef.current) {
+          } else {
             const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
             if (!isPublished) {
               await clientRef.current.publish([localAudioRef.current]);
             }
+            await localAudioRef.current.setEnabled(true);
             if (typeof (localAudioRef.current as any).setMuted === 'function') {
               await (localAudioRef.current as any).setMuted(false);
             }
@@ -968,14 +584,15 @@ export const useAgora = () => {
         setError('');
         return true;
       } else {
-        // Turning mic OFF - mute non-destructively without shutting down device
+        // Turning mic OFF
         if (localAudioRef.current) {
           try {
+            await localAudioRef.current.setEnabled(false);
             if (typeof (localAudioRef.current as any).setMuted === 'function') {
               await (localAudioRef.current as any).setMuted(true);
             }
           } catch (e) {
-            console.warn('[useAgora] live mic mute error:', e);
+            console.warn('live mic disable error:', e);
           }
         }
 
@@ -993,13 +610,10 @@ export const useAgora = () => {
       console.error('[useAgora] Mic toggle failed:', err);
       micOnRef.current = false;
       setMicOn(false);
-      const isPermErr =
-        err?.name === 'NotAllowedError' ||
-        err?.name === 'PermissionDeniedError' ||
-        err?.code === 'PERMISSION_DENIED';
+      const isPermErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || err?.code === 'PERMISSION_DENIED';
       const errMsg = isPermErr
         ? 'Microphone permission denied. Please allow microphone access in your browser settings.'
-        : `Microphone error: ${err?.message || 'unknown error'}`;
+        : 'Failed to access microphone. Please check your audio device.';
       setError(errMsg);
       return false;
     } finally {
@@ -1008,103 +622,40 @@ export const useAgora = () => {
   }, []);
 
   const switchCamera = useCallback(async () => {
-    const currentMode = facingModeRef.current;
-    const targetFacing: 'user' | 'environment' = currentMode === 'user' ? 'environment' : 'user';
-
-    // 1. Agora native camera switch (recreate track cleanly with facingMode)
     if (localVideoRef.current) {
-      try {
-        const oldTrack = localVideoRef.current;
-        if (clientRef.current && oldTrack) {
-          try {
-            await clientRef.current.unpublish([oldTrack]);
-          } catch {}
-        }
-        if (oldTrack) {
-          try {
-            oldTrack.stop();
-            oldTrack.close();
-          } catch {}
-        }
-        localVideoRef.current = null;
-
-        // Allow Android Camera2 service to fully release hardware sensor lock
-        await new Promise((resolve) => setTimeout(resolve, 150));
-
-        let newTrack: ICameraVideoTrack | null = null;
-        try {
-          newTrack = await createHdCameraVideoTrack(targetFacing);
-        } catch (switchErr) {
-          console.warn('[useAgora] switch createHdCameraVideoTrack error:', switchErr);
-        }
-
-        if (newTrack) {
-          localVideoRef.current = newTrack;
-          facingModeRef.current = targetFacing;
-          setFacingMode(targetFacing);
-
-          if (clientRef.current) {
-            try {
-              await clientRef.current.publish([newTrack]);
-            } catch (pubErr) {
-              console.warn('[useAgora] publish switch track error:', pubErr);
-            }
-          }
-
-          const videoArea = document.getElementById('agora-video-area');
-          if (videoArea) {
-            const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
-            newTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
-            setElementMirror(videoArea, shouldMirror);
-            setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-            setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
-          }
-          return;
-        }
-      } catch (e) {
-        console.warn('[useAgora] Agora switch camera error:', e);
-      }
+      const devices = await AgoraRTC.getCameras();
+      if (devices.length < 2) return;
+      const currentLabel = (await localVideoRef.current.getTrackLabel()) || '';
+      const idx = devices.findIndex((d) => d.label === currentLabel);
+      const next = devices[(idx + 1) % devices.length];
+      await localVideoRef.current.setDevice(next.deviceId);
+      return;
     }
 
-    // 2. WebRTC Fallback device switch
-    if (fallbackStreamRef.current && navigator.mediaDevices?.getUserMedia) {
+    // Fallback device switch
+    if (fallbackStreamRef.current && navigator.mediaDevices?.enumerateDevices) {
       try {
-        const { width, height, aspectRatio } = getScreenCaptureResolution();
-        const oldTrack = fallbackStreamRef.current.getVideoTracks()[0];
-        oldTrack?.stop();
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(
+          (d) => d.kind === 'videoinput'
+        );
+        if (devices.length < 2) return;
+        const currentTrack = fallbackStreamRef.current.getVideoTracks()[0];
+        const currentDeviceId = currentTrack?.getSettings()?.deviceId;
+        const idx = devices.findIndex((d) => d.deviceId === currentDeviceId);
+        const nextDevice = devices[(idx + 1) % devices.length];
 
-        let newStream: MediaStream | null = null;
-        try {
-          const targetDeviceId = await getOptimalCameraId(targetFacing);
-          newStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: targetFacing },
-              deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
-              width: { ideal: width },
-              height: { ideal: height },
-              aspectRatio: { ideal: aspectRatio },
-              frameRate: { ideal: 30, max: 30 },
-            },
-            audio: false,
-          });
-        } catch {
-          newStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: targetFacing },
-            },
-            audio: false,
-          });
-        }
+        currentTrack?.stop();
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: nextDevice.deviceId } },
+          audio: false,
+        });
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
-          await resetHardwareCameraZoom(newVideoTrack);
-          fallbackStreamRef.current.removeTrack(oldTrack);
+          fallbackStreamRef.current.removeTrack(currentTrack);
           fallbackStreamRef.current.addTrack(newVideoTrack);
           if (fallbackVideoElRef.current) {
             fallbackVideoElRef.current.srcObject = fallbackStreamRef.current;
           }
-          const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
-          setElementMirror(document.getElementById('agora-video-area'), shouldMirror);
           // Update peers with new video track
           peerConnectionsRef.current.forEach((pc) => {
             const senders = pc.getSenders();
@@ -1113,8 +664,6 @@ export const useAgora = () => {
               videoSender.replaceTrack(newVideoTrack).catch(() => {});
             }
           });
-          facingModeRef.current = targetFacing;
-          setFacingMode(targetFacing);
         }
       } catch (e) {
         console.warn('[useAgora] Failed to switch fallback camera:', e);
@@ -1137,28 +686,18 @@ export const useAgora = () => {
       }
 
       if (localVideoRef.current) {
-        try {
-          localVideoRef.current.stop();
-          localVideoRef.current.close();
-        } catch {}
+        localVideoRef.current.stop();
+        localVideoRef.current.close();
         localVideoRef.current = null;
       }
       if (localAudioRef.current) {
-        try {
-          localAudioRef.current.stop();
-          localAudioRef.current.close();
-        } catch {}
+        localAudioRef.current.stop();
+        localAudioRef.current.close();
         localAudioRef.current = null;
       }
       if (clientRef.current) {
         await clientRef.current.leave();
         clientRef.current = null;
-      }
-      if (beautyProcessorRef.current) {
-        try {
-          beautyProcessorRef.current.unpipe?.();
-        } catch {}
-        beautyProcessorRef.current = null;
       }
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -1194,12 +733,6 @@ export const useAgora = () => {
       peerConnectionsRef.current.forEach((pc) => pc.close());
       peerConnectionsRef.current.clear();
       if (viewerPeerRef.current) viewerPeerRef.current.close();
-      if (beautyProcessorRef.current) {
-        try {
-          beautyProcessorRef.current.unpipe?.();
-        } catch {}
-        beautyProcessorRef.current = null;
-      }
       if (localVideoRef.current) {
         localVideoRef.current.stop();
         localVideoRef.current.close();
@@ -1228,24 +761,27 @@ export const useAgora = () => {
     joined,
     cameraOn,
     micOn,
-    facingMode,
     micOnRef,
     remoteUsers,
     error,
     joinChannel,
     playLocalVideo,
-    refreshVideoTracks,
     toggleCamera,
     toggleMic,
     switchCamera,
-    setMirror,
-    leaveChannel,
+    refreshVideoTracks: (containerId: string = 'agora-video-area') => {
+      if (localVideoRef.current) {
+        try {
+          localVideoRef.current.play(containerId);
+        } catch {}
+      }
+    },
+    facingMode: 'user' as const,
+    setMirror: (_mirror: boolean) => {},
     getLocalStream: () => {
-      // 1. Fallback stream if active with tracks
       if (fallbackStreamRef.current && fallbackStreamRef.current.getTracks().length > 0) {
         return fallbackStreamRef.current;
       }
-      // 2. Agora camera & audio tracks converted to native MediaStream
       const tracks: MediaStreamTrack[] = [];
       try {
         const vTrack = (localVideoRef.current as any)?.getMediaStreamTrack?.();
@@ -1256,23 +792,25 @@ export const useAgora = () => {
         if (aTrack) tracks.push(aTrack);
       } catch {}
       if (tracks.length > 0) {
-        if (cachedLocalStreamRef.current) {
-          const curTracks = cachedLocalStreamRef.current.getTracks();
-          const same = curTracks.length === tracks.length && curTracks.every((t, i) => t.id === tracks[i].id && t.readyState === 'live');
-          if (same) return cachedLocalStreamRef.current;
-        }
-        cachedLocalStreamRef.current = new MediaStream(tracks);
-        return cachedLocalStreamRef.current;
+        return new MediaStream(tracks);
       }
-      // 3. Extract stream directly from DOM video element in agora-video-area
-      if (typeof document !== 'undefined') {
-        const el = document.getElementById('agora-video-area')?.querySelector('video');
-        if (el && el.srcObject instanceof MediaStream && el.srcObject.getTracks().length > 0) {
-          return el.srcObject;
-        }
-      }
-      return fallbackStreamRef.current;
+      return null;
     },
-    applyBeautyOptions,
+    applyBeautyOptions: async (_smoothness: number, _whitening: number) => {},
+    leaveChannel,
   };
 };
+
+export function getScreenCaptureResolution() {
+  return {
+    width: 640,
+    height: 480,
+    aspectRatio: 9 / 16,
+    screenRatio: 16 / 9,
+    isPortrait: true,
+  };
+}
+
+export async function getOptimalCameraId(_facingMode: 'user' | 'environment'): Promise<string | undefined> {
+  return undefined;
+}

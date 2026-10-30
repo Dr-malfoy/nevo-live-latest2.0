@@ -482,15 +482,8 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-transparent [&_div]:!w-full [&_div]:!h-full ${
-          cameraFitMode === 'contain' ? 'fit-contain [&_video]:!object-contain' : 'fit-cover [&_video]:!object-cover'
-        }`}
-        style={
-          {
-            '--live-filter': combinedFilterCss || 'none',
-            filter: combinedFilterCss,
-          } as React.CSSProperties
-        }
+        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black/40"
+        style={{ filter: combinedFilterCss || filterCss || undefined }}
       />
 
       {/* Ambient gradient wash over the video (full screen only) */}
