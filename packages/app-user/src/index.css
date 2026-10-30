@@ -44,6 +44,21 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Video Mirroring guarantee for video calls (front & back cameras) */
+  .video-mirrored video,
+  #call-local-video-container.video-mirrored video,
+  [id^="remote-container-"].video-mirrored video {
+    transform: scaleX(-1) !important;
+    -webkit-transform: scaleX(-1) !important;
+  }
+
+  .video-unmirrored video,
+  #call-local-video-container.video-unmirrored video,
+  [id^="remote-container-"].video-unmirrored video {
+    transform: none !important;
+    -webkit-transform: none !important;
+  }
 }
 
 @layer components {

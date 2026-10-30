@@ -178,20 +178,50 @@ export const GoLive: React.FC = () => {
           return;
         }
 
-        const screenW = typeof window !== 'undefined' ? (window.screen?.width || window.innerWidth) : 360;
-        const screenH = typeof window !== 'undefined' ? (window.screen?.height || window.innerHeight) : 640;
-        const isPortrait = screenH >= screenW;
-        const screenRatio = isPortrait ? screenH / screenW : screenW / screenH;
-        const targetH = Math.min(1600, Math.max(1280, Math.round((720 * screenRatio) / 16) * 16));
-
         let stream: MediaStream | null = null;
         try {
+          // Select optimal 1x wide camera device (avoiding cropped sub-sensors)
+          let targetCameraId: string | undefined;
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+            if (facingMode === 'user') {
+              const frontDevices = videoDevices.filter((d) =>
+                /front|user|facetime|selfie|forward/i.test(d.label || '') ||
+                /camera2?\s*[13]\b/i.test(d.label || '')
+              );
+              const wide = frontDevices.find((d) =>
+                /wide|ultra|full/i.test(d.label || '') &&
+                !/tele|narrow|zoom|macro|depth/i.test(d.label || '')
+              );
+              if (wide?.deviceId) {
+                targetCameraId = wide.deviceId;
+              } else if (frontDevices.length > 1) {
+                const cam3 = frontDevices.find((d) => /camera2?\s*3\b/i.test(d.label || ''));
+                targetCameraId = cam3?.deviceId || frontDevices[frontDevices.length - 1].deviceId;
+              } else if (frontDevices[0]?.deviceId) {
+                targetCameraId = frontDevices[0].deviceId;
+              }
+            } else {
+              const backDevices = videoDevices.filter((d) =>
+                /back|rear|environment|world/i.test(d.label || '') ||
+                /camera2?\s*0\b/i.test(d.label || '')
+              );
+              const mainBack = backDevices.find((d) =>
+                (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide/i.test(d.label || '')) &&
+                !/tele|macro|depth|zoom|narrow/i.test(d.label || '')
+              );
+              targetCameraId = mainBack?.deviceId || backDevices[0]?.deviceId;
+            }
+          } catch {}
+
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
-              width: isPortrait ? { ideal: 720, min: 480, max: 1080 } : { ideal: targetH, min: 640, max: 1920 },
-              height: isPortrait ? { ideal: targetH, min: 640, max: 1920 } : { ideal: 720, min: 480, max: 1080 },
-              aspectRatio: { ideal: isPortrait ? 720 / targetH : targetH / 720 },
+              deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              aspectRatio: { ideal: 16 / 9 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false, // local preview only, prevent feedback loop
@@ -493,8 +523,8 @@ export const GoLive: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Video / Game Camera Feed Viewport (Natural portrait ratio 3/4 to eliminate cropping) */
-            <div className="relative aspect-[3/4] sm:aspect-[16/9] max-h-[460px] bg-black overflow-hidden group flex items-center justify-center">
+            /* Video / Game Camera Feed Viewport (Natural portrait 9:16 matching 1x camera sensor) */
+            <div className="relative aspect-[9/16] max-h-[500px] w-full max-w-[280px] sm:max-w-[320px] mx-auto rounded-2xl bg-black overflow-hidden group flex items-center justify-center shadow-2xl border border-white/10">
               {cameraActive && hasCameraAccess !== false ? (
                 <video
                   ref={videoRef}

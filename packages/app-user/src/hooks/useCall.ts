@@ -53,6 +53,13 @@ const shouldMirrorFeed = (facingMode: 'user' | 'environment', mirrorEnabled: boo
  */
 const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
   if (!container) return;
+  if (mirror) {
+    container.classList.add('video-mirrored');
+    container.classList.remove('video-unmirrored');
+  } else {
+    container.classList.add('video-unmirrored');
+    container.classList.remove('video-mirrored');
+  }
   const videoEl = container.querySelector('video');
   if (videoEl) {
     const transformVal = mirror ? 'scaleX(-1)' : 'none';
@@ -449,6 +456,8 @@ export const useCall = () => {
           setElementMirror(el, shouldMirror);
           setTimeout(() => setElementMirror(el, shouldMirror), 150);
           setTimeout(() => setElementMirror(el, shouldMirror), 350);
+          setTimeout(() => setElementMirror(el, shouldMirror), 700);
+          setTimeout(() => setElementMirror(el, shouldMirror), 1200);
         } else if (fallbackStreamRef.current) {
           if (!fallbackVideoElRef.current) {
             const videoEl = document.createElement('video');
@@ -802,11 +811,16 @@ export const useCall = () => {
         const el = document.getElementById('call-local-video-container');
         if (el) {
           try {
+            localVideoRef.current.stop();
+          } catch {}
+          try {
             localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
           } catch {}
           setElementMirror(el, shouldMirror);
           setTimeout(() => setElementMirror(el, shouldMirror), 150);
           setTimeout(() => setElementMirror(el, shouldMirror), 350);
+          setTimeout(() => setElementMirror(el, shouldMirror), 700);
+          setTimeout(() => setElementMirror(el, shouldMirror), 1200);
         }
         return;
       } catch (e) {
@@ -831,6 +845,10 @@ export const useCall = () => {
         if (el) {
           const shouldMirror = mirrorOnRef.current;
           setElementMirror(el, shouldMirror);
+          setTimeout(() => setElementMirror(el, shouldMirror), 150);
+          setTimeout(() => setElementMirror(el, shouldMirror), 350);
+          setTimeout(() => setElementMirror(el, shouldMirror), 700);
+          setTimeout(() => setElementMirror(el, shouldMirror), 1200);
         }
 
         peerConnectionsRef.current.forEach((pc) => {

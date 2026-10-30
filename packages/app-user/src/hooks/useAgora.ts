@@ -58,19 +58,20 @@ const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
 };
 
 /**
- * Resets camera hardware zoom to 1x (widest normal optical view)
+ * Resets camera hardware zoom to minimum 1x (widest normal optical view)
  * Prevents mobile devices from defaulting to auxiliary telephoto or cropped zoom lenses.
  */
-async function resetHardwareCameraZoom(track: ICameraVideoTrack | null) {
+async function resetHardwareCameraZoom(track: any) {
   if (!track) return;
   try {
-    const mediaTrack = track.getMediaStreamTrack();
+    const mediaTrack = typeof track.getMediaStreamTrack === 'function' ? track.getMediaStreamTrack() : track;
     if (!mediaTrack) return;
     const caps = (mediaTrack.getCapabilities?.() as any) || {};
     if (caps.zoom) {
-      const targetZoom = typeof caps.zoom.min === 'number' && caps.zoom.min <= 1 ? 1 : (caps.zoom.min ?? 1);
+      // Force camera to its absolute minimum zoom level (widest possible 1x field of view)
+      const minZoom = typeof caps.zoom.min === 'number' ? caps.zoom.min : 1;
       await (mediaTrack.applyConstraints as any)({
-        advanced: [{ zoom: targetZoom }],
+        advanced: [{ zoom: minZoom }],
       });
     }
   } catch (e) {
@@ -79,76 +80,86 @@ async function resetHardwareCameraZoom(track: ICameraVideoTrack | null) {
 }
 
 /**
- * Creates high-definition camera video track optimized for vertical mobile live-streaming.
- * Uses AgoraRTC.createCameraVideoTrack with portrait encoder configuration matching the
- * phone's exact screen aspect ratio, so the camera view fits 100% full screen edge-to-edge
- * WITHOUT digital cropping, stretching, or zoomed-in magnification.
+ * Selects the optimal 1x wide camera device (avoids telephoto, macro, and cropped virtual sensors)
+ */
+async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<string | undefined> {
+  try {
+    const devices = await AgoraRTC.getCameras().catch(() => []);
+    if (!devices || devices.length === 0) return undefined;
+
+    const videoDevices = devices.filter((d: any) => !d.kind || d.kind === 'videoinput');
+
+    if (facingMode === 'user') {
+      const frontDevices = videoDevices.filter((d) =>
+        /front|user|facetime|selfie|forward/i.test(d.label || '') ||
+        /camera2?\s*[13]\b/i.test(d.label || '')
+      );
+      if (frontDevices.length === 0) return undefined;
+
+      // 1. Explicit wide / 1x front camera if labeled
+      const wide = frontDevices.find((d) =>
+        /wide|ultra|full/i.test(d.label || '') &&
+        !/tele|narrow|zoom|macro|depth/i.test(d.label || '')
+      );
+      if (wide?.deviceId) return wide.deviceId;
+
+      // 2. On multi-front Android devices (Samsung, Xiaomi, Vivo), Camera ID 3 or the second front camera is the wide 1x sensor
+      if (frontDevices.length > 1) {
+        const cam3 = frontDevices.find((d) => /camera2?\s*3\b/i.test(d.label || ''));
+        if (cam3?.deviceId) return cam3.deviceId;
+        return frontDevices[frontDevices.length - 1].deviceId;
+      }
+
+      return frontDevices[0].deviceId;
+    } else {
+      const backDevices = videoDevices.filter((d) =>
+        /back|rear|environment|world/i.test(d.label || '') ||
+        /camera2?\s*0\b/i.test(d.label || '')
+      );
+      if (backDevices.length === 0) return undefined;
+
+      // Primary 1x back camera: main wide camera, NEVER telephoto or macro
+      const mainBack = backDevices.find((d) =>
+        (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide/i.test(d.label || '')) &&
+        !/tele|macro|depth|zoom|narrow/i.test(d.label || '')
+      );
+      if (mainBack?.deviceId) return mainBack.deviceId;
+
+      return backDevices[0].deviceId;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Creates high-definition camera video track optimized for mobile live-streaming.
+ * Uses native 16:9 landscape sensor dimensions (1280x720) so the Android Camera HAL
+ * captures the complete 1x uncropped sensor frame without digital magnification.
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
-  const screenW = typeof window !== 'undefined' ? (window.screen?.width || window.innerWidth) : 360;
-  const screenH = typeof window !== 'undefined' ? (window.screen?.height || window.innerHeight) : 640;
-  const isPortrait = screenH >= screenW;
-  const screenRatio = isPortrait ? screenH / screenW : screenW / screenH;
-
-  // Clamped between standard 16:9 (1.777) and modern tall mobile 20:9 (2.222)
-  // Ensure dimensions are multiples of 16 for H.264/VP8 hardware encoder compatibility
-  const baseW = 720;
-  const rawTargetH = Math.round(baseW * Math.min(2.25, Math.max(1.777, screenRatio)));
-  const targetH = Math.round(rawTargetH / 16) * 16;
-
   try {
-    let targetCameraId: string | undefined;
-    try {
-      const devices = await AgoraRTC.getCameras().catch(() => []);
-      if (devices.length > 0) {
-        if (facingMode === 'user') {
-          // Select explicit primary front camera (exclude auxiliary telephoto/depth/macro)
-          const front = devices.find((d) => {
-            const lbl = (d.label || '').toLowerCase();
-            return /front|user|facetime|selfie/i.test(lbl) && !/tele|zoom|macro|depth/i.test(lbl);
-          });
-          if (front && front.label) targetCameraId = front.deviceId;
-        } else {
-          // Select explicit primary 1x back camera (exclude telephoto/zoom/macro/depth)
-          const back = devices.find((d) => {
-            const lbl = (d.label || '').toLowerCase();
-            return (
-              /back|rear|environment|world/i.test(lbl) &&
-              !/tele|macro|depth|zoom|narrow|blur/i.test(lbl)
-            );
-          });
-          if (back && back.label) targetCameraId = back.deviceId;
-        }
-      }
-    } catch {}
+    const targetCameraId = await getOptimalCameraId(facingMode);
 
     const track = await AgoraRTC.createCameraVideoTrack({
       facingMode,
       cameraId: targetCameraId,
-      encoderConfig: isPortrait
-        ? {
-            width: baseW,
-            height: targetH,
-            frameRate: 30,
-            bitrateMin: 1500,
-            bitrateMax: 3500,
-          }
-        : {
-            width: targetH,
-            height: baseW,
-            frameRate: 30,
-            bitrateMin: 1500,
-            bitrateMax: 3500,
-          },
+      encoderConfig: {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        bitrateMin: 1500,
+        bitrateMax: 3500,
+      },
       optimizationMode: 'motion',
     });
 
-    // Reset multi-lens hardware zoom to 1x (unzoomed, full natural field of view)
+    // Reset multi-lens hardware zoom to absolute minimum (widest 1x natural field of view)
     await resetHardwareCameraZoom(track);
 
     return track;
   } catch (errAgora) {
-    console.warn('[useAgora] createCameraVideoTrack with encoderConfig failed, fallback:', errAgora);
+    console.warn('[useAgora] createCameraVideoTrack with optimal config failed, fallback:', errAgora);
     const fallbackTrack = await AgoraRTC.createCameraVideoTrack({ facingMode });
     await resetHardwareCameraZoom(fallbackTrack);
     return fallbackTrack;
@@ -430,10 +441,13 @@ export const useAgora = () => {
           const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
           let stream: MediaStream | null = null;
           try {
+            const targetDeviceId = await getOptimalCameraId('user');
             stream = await navigator.mediaDevices.getUserMedia({
               video: (role === 'host' && videoEnabled) ? {
-                width: isPortrait ? { ideal: 1080, min: 720 } : { ideal: 1920, min: 1080 },
-                height: isPortrait ? { ideal: 1920, min: 1080 } : { ideal: 1080, min: 720 },
+                deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                aspectRatio: { ideal: 16 / 9 },
                 frameRate: { ideal: 30, max: 30 },
                 facingMode: 'user',
               } : false,
@@ -443,12 +457,13 @@ export const useAgora = () => {
                 autoGainControl: true,
               } : false,
             });
+            if (stream) {
+              const vt = stream.getVideoTracks()[0];
+              if (vt) await resetHardwareCameraZoom(vt);
+            }
           } catch {
             stream = await navigator.mediaDevices.getUserMedia({
               video: (role === 'host' && videoEnabled) ? {
-                width: isPortrait ? { ideal: 720, min: 480 } : { ideal: 1280, min: 640 },
-                height: isPortrait ? { ideal: 1280, min: 640 } : { ideal: 720, min: 480 },
-                frameRate: { ideal: 30, max: 30 },
                 facingMode: 'user',
               } : false,
               audio: shouldMicOn ? {
@@ -457,6 +472,10 @@ export const useAgora = () => {
                 autoGainControl: true,
               } : false,
             });
+            if (stream) {
+              const vt = stream.getVideoTracks()[0];
+              if (vt) await resetHardwareCameraZoom(vt);
+            }
           }
           fallbackStreamRef.current = stream;
           cameraOnRef.current = (role === 'host' && videoEnabled);
@@ -972,52 +991,14 @@ export const useAgora = () => {
     const currentMode = facingModeRef.current;
     const targetFacing: 'user' | 'environment' = currentMode === 'user' ? 'environment' : 'user';
 
-    const isFront = (label: string, idx: number) => {
-      const lbl = label.toLowerCase();
-      if (/front|user|facetime|selfie|forward/i.test(lbl)) return true;
-      if (/back|rear|environment|world/i.test(lbl)) return false;
-      if (/camera2?\s*1\b/i.test(lbl)) return true;
-      if (!lbl && idx === 1) return true;
-      return false;
-    };
-
-    const isBack = (label: string, idx: number) => {
-      const lbl = label.toLowerCase();
-      if (/back|rear|environment|world/i.test(lbl)) return true;
-      if (/front|user|facetime|selfie|forward/i.test(lbl)) return false;
-      if (/camera2?\s*0\b/i.test(lbl)) return true;
-      if (!lbl && idx === 0) return true;
-      return false;
-    };
-
     // 1. Agora native camera switch
     if (localVideoRef.current) {
       try {
-        const devices = await AgoraRTC.getCameras();
+        const targetDeviceId = await getOptimalCameraId(targetFacing);
 
-        let targetDevice: { deviceId: string; label: string } | undefined;
-        if (targetFacing === 'user') {
-          // Find first front camera
-          targetDevice = devices.find((d, i) => isFront(d.label || '', i));
-        } else {
-          // Find primary 1x back camera (avoid auxiliary telephoto zoom and macro lenses)
-          const backDevices = devices.filter((d, i) => isBack(d.label || '', i));
-          targetDevice =
-            backDevices.find((d) => {
-              const lbl = (d.label || '').toLowerCase();
-              return (
-                !lbl.includes('tele') &&
-                !lbl.includes('macro') &&
-                !lbl.includes('depth') &&
-                !lbl.includes('ultra-wide') &&
-                !lbl.includes('ultrawide')
-              );
-            }) || backDevices[0] || devices[0];
-        }
-
-        if (targetDevice && typeof (localVideoRef.current as any)?.setDevice === 'function') {
+        if (targetDeviceId && typeof (localVideoRef.current as any)?.setDevice === 'function') {
           try {
-            await (localVideoRef.current as any).setDevice(targetDevice.deviceId);
+            await (localVideoRef.current as any).setDevice(targetDeviceId);
             await resetHardwareCameraZoom(localVideoRef.current);
             facingModeRef.current = targetFacing;
             setFacingMode(targetFacing);
@@ -1097,12 +1078,14 @@ export const useAgora = () => {
 
         let newStream: MediaStream | null = null;
         try {
+          const targetDeviceId = await getOptimalCameraId(targetFacing);
           newStream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: { ideal: isPortrait ? 720 : 1280 },
-              height: { ideal: isPortrait ? 1280 : 720 },
-              aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
+              deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              aspectRatio: { ideal: 16 / 9 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false,
@@ -1111,25 +1094,13 @@ export const useAgora = () => {
           newStream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: { ideal: isPortrait ? 540 : 960 },
-              height: { ideal: isPortrait ? 960 : 540 },
-              aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
-              frameRate: { ideal: 30, max: 30 },
             },
             audio: false,
           });
         }
         const newVideoTrack = newStream.getVideoTracks()[0];
         if (newVideoTrack) {
-          try {
-            const caps = (newVideoTrack.getCapabilities?.() as any) || {};
-            if (caps.zoom) {
-              const targetZoom = typeof caps.zoom.min === 'number' && caps.zoom.min <= 1 ? 1 : (caps.zoom.min ?? 1);
-              await (newVideoTrack.applyConstraints as any)({
-                advanced: [{ zoom: targetZoom }],
-              });
-            }
-          } catch {}
+          await resetHardwareCameraZoom(newVideoTrack);
           fallbackStreamRef.current.removeTrack(oldTrack);
           fallbackStreamRef.current.addTrack(newVideoTrack);
           if (fallbackVideoElRef.current) {

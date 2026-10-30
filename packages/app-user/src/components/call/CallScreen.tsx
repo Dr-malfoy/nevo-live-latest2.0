@@ -567,11 +567,38 @@ export const CallScreen = ({
     }
   }, [callConnected, broadcastCameraState]);
 
+  // Ensure local mirroring is immediately applied to local container
+  useEffect(() => {
+    const container = document.getElementById('call-local-video-container');
+    if (container) {
+      if (mirrorOn) {
+        container.classList.add('video-mirrored');
+        container.classList.remove('video-unmirrored');
+      } else {
+        container.classList.add('video-unmirrored');
+        container.classList.remove('video-mirrored');
+      }
+      const videoEl = container.querySelector('video');
+      if (videoEl) {
+        const transformVal = mirrorOn ? 'scaleX(-1)' : 'none';
+        videoEl.style.setProperty('transform', transformVal, 'important');
+        videoEl.style.setProperty('-webkit-transform', transformVal, 'important');
+      }
+    }
+  }, [mirrorOn, facingMode, joined, isVideo]);
+
   // Ensure remote mirroring is immediately applied to all remote video containers
   useEffect(() => {
     remoteUsers.forEach((uid) => {
       const container = document.getElementById(`remote-container-${uid}`);
       if (container) {
+        if (remoteMirror) {
+          container.classList.add('video-mirrored');
+          container.classList.remove('video-unmirrored');
+        } else {
+          container.classList.add('video-unmirrored');
+          container.classList.remove('video-mirrored');
+        }
         const videoEl = container.querySelector('video');
         if (videoEl) {
           const transformVal = remoteMirror ? 'scaleX(-1)' : 'none';
@@ -610,12 +637,12 @@ export const CallScreen = ({
       });
   }, [session?.callId, answering, outgoing, accepted]);
 
-  // Re-attach local preview if camera toggled on or mirror toggled
+  // Re-attach local preview if camera toggled on, mirror toggled, or camera switched
   useEffect(() => {
     if (joined && isVideo && cameraOn) {
       playLocalPreview();
     }
-  }, [joined, isVideo, cameraOn, mirrorOn, playLocalPreview]);
+  }, [joined, isVideo, cameraOn, mirrorOn, facingMode, playLocalPreview]);
 
   // Callee accepted or remote track arrived
   useEffect(() => {
@@ -798,7 +825,7 @@ export const CallScreen = ({
                     playRemoteVideo(uid, el);
                   }
                 }}
-                className="absolute inset-0 w-full h-full object-cover"
+                className={`absolute inset-0 w-full h-full object-cover ${remoteMirror ? 'video-mirrored' : 'video-unmirrored'}`}
               />
 
               {/* Gradient vignette for readability */}
@@ -1006,7 +1033,7 @@ export const CallScreen = ({
             {cameraOn ? (
               <div
                 id="call-local-video-container"
-                className="w-full h-full relative object-cover"
+                className={`w-full h-full relative object-cover ${mirrorOn ? 'video-mirrored' : 'video-unmirrored'}`}
                 style={{ filter: activeFilter.css }}
               />
             ) : (
