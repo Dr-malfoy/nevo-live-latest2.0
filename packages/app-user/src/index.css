@@ -508,15 +508,15 @@
     will-change: filter;
   }
 
-  #agora-video-area.fit-contain video,
-  #agora-video-area.fit-contain .agora_video_player video,
-  #agora-video-area:not(.fit-cover) video,
-  #agora-video-area:not(.fit-cover) .agora_video_player video {
-    object-fit: contain !important;
+  #agora-video-area.fit-cover video,
+  #agora-video-area.fit-cover .agora_video_player video,
+  #agora-video-area:not(.fit-contain) video,
+  #agora-video-area:not(.fit-contain) .agora_video_player video {
+    object-fit: cover !important;
   }
 
-  #agora-video-area.fit-cover video,
-  #agora-video-area.fit-cover .agora_video_player video {
-    object-fit: cover !important;
+  #agora-video-area.fit-contain video,
+  #agora-video-area.fit-contain .agora_video_player video {
+    object-fit: contain !important;
   }
 }

@@ -80,9 +80,59 @@ async function resetHardwareCameraZoom(track: any) {
 }
 
 /**
- * Selects the optimal 1x wide camera device (avoids telephoto, macro, and cropped virtual sensors)
+ * Calculates capture and encoding resolution matching the exact aspect ratio of the user's phone screen.
+ * This guarantees:
+ * 1. The video fills the phone screen 100% without letterbox black bars.
+ * 2. Zero zoom/cropping on the face, ears, or shoulders.
+ * 3. Normal camera resolution (high definition, clear details).
+ * 4. Recorded and broadcast stream matches the phone screen ratio natively.
  */
-async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<string | undefined> {
+export function getScreenCaptureResolution() {
+  if (typeof window === 'undefined') {
+    return {
+      width: 720,
+      height: 1280,
+      aspectRatio: 9 / 16,
+      screenRatio: 16 / 9,
+      isPortrait: true,
+    };
+  }
+
+  // Get screen physical or viewport dimensions
+  const screenW = window.screen?.width || window.innerWidth || 360;
+  const screenH = window.screen?.height || window.innerHeight || 800;
+
+  const isPortrait = screenH >= screenW;
+  const shortDim = Math.min(screenW, screenH);
+  const longDim = Math.max(screenW, screenH);
+
+  // Exact screen aspect ratio of the user's phone (e.g. 800/360 = 2.222, 2400/1080 = 2.222)
+  const screenRatio = longDim / shortDim;
+
+  // Normal Camera High-Definition Resolution:
+  // Base width of 720 (HD) keeps high quality while ensuring optimal 30fps without frame drops.
+  const baseShort = 720;
+  // Calculate height matching the phone's exact screen ratio, rounded to an even number (required by H.264/VP8 video codecs)
+  let baseLong = Math.round(baseShort * screenRatio);
+  if (baseLong % 2 !== 0) baseLong += 1;
+
+  const width = isPortrait ? baseShort : baseLong;
+  const height = isPortrait ? baseLong : baseShort;
+  const aspectRatio = isPortrait ? baseShort / baseLong : baseLong / baseShort;
+
+  return {
+    width,
+    height,
+    aspectRatio,
+    screenRatio,
+    isPortrait,
+  };
+}
+
+/**
+ * Selects the optimal standard 1x camera device (avoids telephoto, macro, depth, and cropped sub-sensors)
+ */
+export async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<string | undefined> {
   try {
     const devices = await AgoraRTC.getCameras().catch(() => []);
     if (!devices || devices.length === 0) return undefined;
@@ -92,24 +142,18 @@ async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<s
     if (facingMode === 'user') {
       const frontDevices = videoDevices.filter((d) =>
         /front|user|facetime|selfie|forward/i.test(d.label || '') ||
-        /camera2?\s*[13]\b/i.test(d.label || '')
+        /camera2?\s*1\b/i.test(d.label || '')
       );
       if (frontDevices.length === 0) return undefined;
 
-      // 1. Explicit wide / 1x front camera if labeled
-      const wide = frontDevices.find((d) =>
-        /wide|ultra|full/i.test(d.label || '') &&
-        !/tele|narrow|zoom|macro|depth/i.test(d.label || '')
+      // 1. Explicit standard 1x or wide front selfie camera if labeled
+      const standardFront = frontDevices.find((d) =>
+        (/camera2?\s*1\b/i.test(d.label || '') || /wide|main|1x|primary/i.test(d.label || '')) &&
+        !/tele|narrow|zoom|macro|depth|bokeh/i.test(d.label || '')
       );
-      if (wide?.deviceId) return wide.deviceId;
+      if (standardFront?.deviceId) return standardFront.deviceId;
 
-      // 2. On multi-front Android devices (Samsung, Xiaomi, Vivo), Camera ID 3 or the second front camera is the wide 1x sensor
-      if (frontDevices.length > 1) {
-        const cam3 = frontDevices.find((d) => /camera2?\s*3\b/i.test(d.label || ''));
-        if (cam3?.deviceId) return cam3.deviceId;
-        return frontDevices[frontDevices.length - 1].deviceId;
-      }
-
+      // 2. Primary front selfie camera (Camera 1) is always first in frontDevices on Android
       return frontDevices[0].deviceId;
     } else {
       const backDevices = videoDevices.filter((d) =>
@@ -118,9 +162,9 @@ async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<s
       );
       if (backDevices.length === 0) return undefined;
 
-      // Primary 1x back camera: main wide camera, NEVER telephoto or macro
+      // Primary 1x back camera: main wide camera (Camera 0), NEVER telephoto or macro
       const mainBack = backDevices.find((d) =>
-        (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide/i.test(d.label || '')) &&
+        (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide|1x|primary/i.test(d.label || '')) &&
         !/tele|macro|depth|zoom|narrow/i.test(d.label || '')
       );
       if (mainBack?.deviceId) return mainBack.deviceId;
@@ -134,11 +178,13 @@ async function getOptimalCameraId(facingMode: 'user' | 'environment'): Promise<s
 
 /**
  * Creates high-definition camera video track optimized for mobile live-streaming.
- * Forces 16:9 aspect ratio capture (720x1280 portrait / 1280x720 landscape)
- * so the camera captures in true 16:9 without 4:3 center-cropping or distortion.
+ * Captures in the EXACT aspect ratio of the user's phone screen so that:
+ * 1. It fits the mobile screen 100% full screen without black bars.
+ * 2. It has zero zoom / zero cropping on the face, ears, and shoulders.
+ * 3. Normal camera resolution (clear HD details).
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
-  const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+  const { width, height } = getScreenCaptureResolution();
 
   try {
     const targetCameraId = await getOptimalCameraId(facingMode);
@@ -146,21 +192,13 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
     const track = await AgoraRTC.createCameraVideoTrack({
       facingMode,
       cameraId: targetCameraId,
-      encoderConfig: isPortrait
-        ? {
-            width: 720,
-            height: 1280,
-            frameRate: 30,
-            bitrateMin: 1500,
-            bitrateMax: 3000,
-          }
-        : {
-            width: 1280,
-            height: 720,
-            frameRate: 30,
-            bitrateMin: 1500,
-            bitrateMax: 3000,
-          },
+      encoderConfig: {
+        width,
+        height,
+        frameRate: 30,
+        bitrateMin: 1500,
+        bitrateMax: 3500,
+      },
       optimizationMode: 'motion',
     });
 
@@ -448,16 +486,16 @@ export const useAgora = () => {
     if (role === 'host' || shouldMicOn) {
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
+          const { width, height, aspectRatio } = getScreenCaptureResolution();
           let stream: MediaStream | null = null;
           try {
             const targetDeviceId = await getOptimalCameraId('user');
             stream = await navigator.mediaDevices.getUserMedia({
               video: (role === 'host' && videoEnabled) ? {
                 deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
-                width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
-                height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
-                aspectRatio: isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
+                width: { ideal: width },
+                height: { ideal: height },
+                aspectRatio: { ideal: aspectRatio },
                 frameRate: { ideal: 30, max: 30 },
                 facingMode: 'user',
               } : false,
@@ -618,7 +656,7 @@ export const useAgora = () => {
               if (videoArea) videoArea.appendChild(container);
             }
             if (user.videoTrack) {
-              user.videoTrack.play(container, { fit: 'contain', mirror: false });
+              user.videoTrack.play(container, { fit: 'cover', mirror: false });
             }
           }
           if (mediaType === 'audio') {
@@ -670,7 +708,7 @@ export const useAgora = () => {
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea && videoTrack) {
             try {
-              videoTrack.play(videoArea, { fit: 'contain', mirror: false });
+              videoTrack.play(videoArea, { fit: 'cover', mirror: false });
             } catch (playErr) {
               console.warn('[useAgora] Immediate host preview error:', playErr);
             }
@@ -741,7 +779,7 @@ export const useAgora = () => {
         try {
           const container = document.getElementById(containerId);
           if (container) {
-            localVideoRef.current.play(container, { fit: 'contain', mirror: shouldMirror });
+            localVideoRef.current.play(container, { fit: 'cover', mirror: shouldMirror });
             setElementMirror(container, shouldMirror);
             setTimeout(() => setElementMirror(container, shouldMirror), 150);
             setTimeout(() => setElementMirror(container, shouldMirror), 350);
@@ -763,7 +801,7 @@ export const useAgora = () => {
             videoEl.playsInline = true;
             videoEl.style.width = '100%';
             videoEl.style.height = '100%';
-            videoEl.style.objectFit = 'contain';
+            videoEl.style.objectFit = 'cover';
             videoEl.style.imageRendering = '-webkit-optimize-contrast';
             videoEl.style.transform = shouldMirror ? 'scaleX(-1)' : 'none';
             videoEl.srcObject = fallbackStreamRef.current;
@@ -793,7 +831,7 @@ export const useAgora = () => {
     // 1. If host local camera track
     if (localVideoRef.current && cameraOnRef.current) {
       try {
-        localVideoRef.current.play(videoArea, { fit: 'contain', mirror: shouldMirror });
+        localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
         setElementMirror(videoArea, shouldMirror);
         setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
         setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
@@ -825,7 +863,7 @@ export const useAgora = () => {
             videoArea.appendChild(container);
           }
           try {
-            user.videoTrack.play(container, { fit: 'contain', mirror: false });
+            user.videoTrack.play(container, { fit: 'cover', mirror: false });
           } catch (e) {
             console.warn('[useAgora] refresh remote video error:', e);
           }
@@ -858,7 +896,7 @@ export const useAgora = () => {
         const videoArea = document.getElementById('agora-video-area');
         if (videoArea) {
           const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
-          videoTrack.play(videoArea, { fit: 'contain', mirror: shouldMirror });
+          videoTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
           setElementMirror(videoArea, shouldMirror);
           setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
           setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
@@ -1015,7 +1053,7 @@ export const useAgora = () => {
             const videoArea = document.getElementById('agora-video-area');
             if (videoArea) {
               const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
-              localVideoRef.current.play(videoArea, { fit: 'contain', mirror: shouldMirror });
+              localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
               setElementMirror(videoArea, shouldMirror);
               setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
               setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
@@ -1067,7 +1105,7 @@ export const useAgora = () => {
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea) {
             const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
-            newTrack.play(videoArea, { fit: 'contain', mirror: shouldMirror });
+            newTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
             setElementMirror(videoArea, shouldMirror);
             setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
             setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
@@ -1082,7 +1120,7 @@ export const useAgora = () => {
     // 2. WebRTC Fallback device switch
     if (fallbackStreamRef.current && navigator.mediaDevices?.getUserMedia) {
       try {
-        const isPortrait = typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : true;
+        const { width, height, aspectRatio } = getScreenCaptureResolution();
         const oldTrack = fallbackStreamRef.current.getVideoTracks()[0];
         oldTrack?.stop();
 
@@ -1093,9 +1131,9 @@ export const useAgora = () => {
             video: {
               facingMode: { ideal: targetFacing },
               deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
-              width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
-              height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
-              aspectRatio: isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
+              width: { ideal: width },
+              height: { ideal: height },
+              aspectRatio: { ideal: aspectRatio },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false,

@@ -32,6 +32,7 @@ import { useAuthStore, useUIStore } from '../stores';
 import { canUseLiveFeatures } from '../services/verification';
 import { getMediaUrl } from '../lib/media';
 import { GenderSelectionModal } from '../components/user';
+import { getScreenCaptureResolution, getOptimalCameraId } from '../hooks/useAgora';
 
 interface FilterPreset {
   id: string;
@@ -181,49 +182,16 @@ export const GoLive: React.FC = () => {
         let stream: MediaStream | null = null;
         try {
           // Select optimal 1x wide camera device (avoiding cropped sub-sensors)
-          let targetCameraId: string | undefined;
-          try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-            if (facingMode === 'user') {
-              const frontDevices = videoDevices.filter((d) =>
-                /front|user|facetime|selfie|forward/i.test(d.label || '') ||
-                /camera2?\s*[13]\b/i.test(d.label || '')
-              );
-              const wide = frontDevices.find((d) =>
-                /wide|ultra|full/i.test(d.label || '') &&
-                !/tele|narrow|zoom|macro|depth/i.test(d.label || '')
-              );
-              if (wide?.deviceId) {
-                targetCameraId = wide.deviceId;
-              } else if (frontDevices.length > 1) {
-                const cam3 = frontDevices.find((d) => /camera2?\s*3\b/i.test(d.label || ''));
-                targetCameraId = cam3?.deviceId || frontDevices[frontDevices.length - 1].deviceId;
-              } else if (frontDevices[0]?.deviceId) {
-                targetCameraId = frontDevices[0].deviceId;
-              }
-            } else {
-              const backDevices = videoDevices.filter((d) =>
-                /back|rear|environment|world/i.test(d.label || '') ||
-                /camera2?\s*0\b/i.test(d.label || '')
-              );
-              const mainBack = backDevices.find((d) =>
-                (/main|0\b|back\s*0|camera2?\s*0/i.test(d.label || '') || /wide/i.test(d.label || '')) &&
-                !/tele|macro|depth|zoom|narrow/i.test(d.label || '')
-              );
-              targetCameraId = mainBack?.deviceId || backDevices[0]?.deviceId;
-            }
-          } catch {}
-
-          const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+          const targetCameraId = await getOptimalCameraId(facingMode);
+          const { width, height, aspectRatio } = getScreenCaptureResolution();
 
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
               deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
-              width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
-              height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
-              aspectRatio: isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
+              width: { ideal: width },
+              height: { ideal: height },
+              aspectRatio: { ideal: aspectRatio },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false, // local preview only, prevent feedback loop
@@ -525,15 +493,18 @@ export const GoLive: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Video / Game Camera Feed Viewport (Natural portrait 9:16 matching 1x camera sensor) */
-            <div className="relative aspect-[9/16] max-h-[500px] w-full max-w-[280px] sm:max-w-[320px] mx-auto rounded-2xl bg-black overflow-hidden group flex items-center justify-center shadow-2xl border border-white/10">
+            /* Video / Game Camera Feed Viewport (Natural portrait matching phone screen ratio) */
+            <div
+              className="relative max-h-[500px] w-full max-w-[280px] sm:max-w-[320px] mx-auto rounded-2xl bg-black overflow-hidden group flex items-center justify-center shadow-2xl border border-white/10"
+              style={{ aspectRatio: `${getScreenCaptureResolution().aspectRatio}` }}
+            >
               {cameraActive && hasCameraAccess !== false ? (
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-contain transition-all duration-300"
+                  className="w-full h-full object-cover transition-all duration-300"
                   style={{
                     filter: activeFilter.css,
                     transform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',

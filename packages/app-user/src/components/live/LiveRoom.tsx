@@ -124,12 +124,12 @@ export const LiveRoom = ({
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
-  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
+  const [cameraFitMode, setCameraFitMode] = useState<'cover' | 'contain'>('cover');
 
   const handleToggleCameraFit = useCallback(() => {
     setCameraFitMode((m) => {
-      const next = m === 'contain' ? 'cover' : 'contain';
-      showToast(next === 'contain' ? 'Camera Size: Aspect Fit (No Zoom)' : 'Camera Size: Aspect Fill (Crop to Screen)', 'info');
+      const next = m === 'cover' ? 'contain' : 'cover';
+      showToast(next === 'cover' ? 'Camera Size: Full Screen' : 'Camera Size: Letterbox', 'info');
       return next;
     });
   }, [showToast]);
