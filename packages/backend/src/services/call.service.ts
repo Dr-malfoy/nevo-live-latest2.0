@@ -222,6 +222,19 @@ export const callService = {
       emitSafe('call:calling', `user:${initiatorId}`, { callId, recipientId: recipients[0], online: false });
     }
 
+    // Auto-timeout unanswered ringing call after 60 seconds on server (for both audio and video calls)
+    setTimeout(async () => {
+      try {
+        const c = await Call.findById(callId);
+        if (c && c.status === 'ringing') {
+          console.log(`[call] 60s ring timeout reached for call ${callId}, terminating as missed`);
+          await this.endCall(callId, initiatorId, 'missed');
+        }
+      } catch (err) {
+        console.warn('[call] 60s ring timeout error:', err);
+      }
+    }, 60_000);
+
     return {
       callId,
       channel,

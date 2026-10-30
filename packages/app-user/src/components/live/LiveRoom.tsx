@@ -124,7 +124,7 @@ export const LiveRoom = ({
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
-  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('cover');
+  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
 
   const handleToggleCameraFit = useCallback(() => {
     setCameraFitMode((m) => {
@@ -169,15 +169,17 @@ export const LiveRoom = ({
     setMirrorOn((m) => {
       const next = !m;
       onSetMirror?.(next);
-      const shouldMirror = isHost && next;
+      // Only front camera mirrors. Back camera must ALWAYS stay normal (not ulta).
+      const shouldMirror = isHost && next && facingMode === 'user';
       applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast, onSetMirror, isHost, applyVideoMirror]);
+  }, [showToast, onSetMirror, isHost, applyVideoMirror, facingMode]);
 
   useEffect(() => {
-    const shouldMirror = isHost && mirrorOn;
+    // Only front camera mirrors. Back camera must ALWAYS stay in natural orientation (not ulta).
+    const shouldMirror = isHost && mirrorOn && facingMode === 'user';
     onSetMirror?.(mirrorOn);
     applyVideoMirror(shouldMirror);
 
@@ -190,7 +192,7 @@ export const LiveRoom = ({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [mirrorOn, isHost, isSideA, onSetMirror, applyVideoMirror]);
+  }, [mirrorOn, facingMode, isHost, isSideA, onSetMirror, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {

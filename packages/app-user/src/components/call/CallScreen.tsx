@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PiPhoneSlashFill as PhoneOff,
@@ -116,11 +116,24 @@ export const CallScreen = ({
   const currentUser = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
 
-  const session = incoming
-    ? { callId: incoming.callId, channel: incoming.channel, type: incoming.type, token: incoming.token }
-    : outgoing
-      ? { callId: outgoing.callId, channel: outgoing.channel, type: outgoing.type, token: outgoing.token }
-      : undefined;
+  const session = useMemo(() => {
+    if (incoming) {
+      return { callId: incoming.callId, channel: incoming.channel, type: incoming.type, token: incoming.token };
+    }
+    if (outgoing) {
+      return { callId: outgoing.callId, channel: outgoing.channel, type: outgoing.type, token: outgoing.token };
+    }
+    return undefined;
+  }, [
+    incoming?.callId,
+    incoming?.channel,
+    incoming?.type,
+    incoming?.token,
+    outgoing?.callId,
+    outgoing?.channel,
+    outgoing?.type,
+    outgoing?.token,
+  ]);
 
   const other = incoming?.initiator || outgoing?.callee;
   const isVideo = incoming?.type === 'video' || outgoing?.type === 'video';
@@ -311,6 +324,13 @@ export const CallScreen = ({
     await endCall();
     onClose('ended');
   }, [session, isAudience, coinsPerMinute, endCall, onClose]);
+
+  const handleHangupRef = useRef(handleHangup);
+  handleHangupRef.current = handleHangup;
+  const handleRejectRef = useRef(handleReject);
+  handleRejectRef.current = handleReject;
+  const handleAcceptRef = useRef(handleAccept);
+  handleAcceptRef.current = handleAccept;
 
   const isCoinLow = isAudience && coinsPerMinute > 0 && callConnected && !(freeMinuteActive && elapsed < 60) && (
     isLowBalance ||
@@ -547,6 +567,21 @@ export const CallScreen = ({
     }
   }, [callConnected, broadcastCameraState]);
 
+  // Ensure remote mirroring is immediately applied to all remote video containers
+  useEffect(() => {
+    remoteUsers.forEach((uid) => {
+      const container = document.getElementById(`remote-container-${uid}`);
+      if (container) {
+        const videoEl = container.querySelector('video');
+        if (videoEl) {
+          const transformVal = remoteMirror ? 'scaleX(-1)' : 'none';
+          videoEl.style.setProperty('transform', transformVal, 'important');
+          videoEl.style.setProperty('-webkit-transform', transformVal, 'important');
+        }
+      }
+    });
+  }, [remoteMirror, remoteUsers]);
+
   // Join call when session is ready
   useEffect(() => {
     if (!session || (!answering && !outgoing && !accepted)) return;
@@ -638,17 +673,18 @@ export const CallScreen = ({
     };
   }, [callConnected, isAudience, coinsPerMinute, session?.callId, socket, updateUser]);
 
-  // 1-minute (60 seconds) unanswered call auto-hangup for outgoing calls
+  // 1-minute (60 seconds) unanswered call auto-hangup for outgoing calls (both audio and video)
   useEffect(() => {
     if (outgoing && !callConnected) {
       const timeout = setTimeout(() => {
         if (!callConnected && !endedRef.current) {
-          handleHangup();
+          console.log('[CallScreen] 60-second unanswered timeout reached -> auto hangup');
+          handleHangupRef.current();
         }
       }, 60_000);
       return () => clearTimeout(timeout);
     }
-  }, [outgoing, callConnected, handleHangup]);
+  }, [outgoing?.callId, callConnected]);
 
   // Ringtone lifecycle & 60s timeout for incoming calls
   useEffect(() => {
@@ -656,7 +692,8 @@ export const CallScreen = ({
       ringtone.start(true);
       const timeout = setTimeout(() => {
         if (!callConnected && !endedRef.current) {
-          handleReject();
+          console.log('[CallScreen] 60-second unanswered incoming timeout reached -> auto reject');
+          handleRejectRef.current();
         }
       }, 60_000);
       return () => {
@@ -674,7 +711,7 @@ export const CallScreen = ({
     return () => {
       ringtone.stop();
     };
-  }, [incoming, outgoing, ringing, callConnected, isTargetOnline, handleReject]);
+  }, [incoming?.callId, outgoing?.callId, ringing, callConnected, isTargetOnline]);
 
   useEffect(() => {
     if (incoming && accepted && !answering && !callConnected) {
@@ -1362,7 +1399,7 @@ export const CallScreen = ({
       )}
 
       {/* 11. Luxury Responsive Floating Bottom Control Dock */}
-      <footer className="absolute bottom-3 sm:bottom-8 inset-x-0 z-30 flex items-center justify-center px-2 sm:px-4 pointer-events-none">
+      <footer className="absolute bottom-3 sm:bottom-8 inset-x-0 z-30 flex items-center justify-center px-1 sm:px-4 pointer-events-none">
         {incoming && ringing && !answering ? (
           /* Incoming Call Action Controls (Decline & Accept) */
           <div className="pointer-events-auto flex items-center justify-around w-full max-w-xs sm:max-w-sm px-6 py-4 rounded-3xl bg-black/60 backdrop-blur-2xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.8)]">
@@ -1392,17 +1429,17 @@ export const CallScreen = ({
           </div>
         ) : (
           /* Active / Connected Call Control Dock */
-          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-3.5 px-2 sm:px-5 py-2 sm:py-3 rounded-full bg-neutral-950/80 backdrop-blur-3xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.85)] max-w-[calc(100vw-1rem)] sm:max-w-fit overflow-x-auto no-scrollbar">
+          <div className="pointer-events-auto flex items-center justify-center gap-1 sm:gap-3 px-1.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full bg-neutral-950/85 backdrop-blur-3xl border border-white/15 shadow-[0_16px_50px_rgba(0,0,0,0.85)] max-w-[calc(100vw-0.5rem)] sm:max-w-fit overflow-x-auto no-scrollbar mx-auto">
             {/* NEXT Match button (Random Match Mode) */}
             {joined && onNext && (
               <button
                 onClick={onNext}
                 aria-label="Next match"
-                className="shrink-0 h-9 sm:h-12 px-2.5 sm:px-3.5 rounded-full flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white font-black text-[11px] sm:text-xs shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all"
+                className="shrink-0 h-8 sm:h-11 px-2 sm:px-3.5 rounded-full flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white font-black text-[10px] sm:text-xs shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all"
                 title="Next match"
               >
                 <span>NEXT</span>
-                <FastForwardIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <FastForwardIcon className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
             )}
 
@@ -1415,16 +1452,16 @@ export const CallScreen = ({
                     setFilterPickerOpen(false);
                   }}
                   aria-label="Toggle text chat"
-                  className={`relative shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`relative shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                     chatOpen
                       ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_18px_rgba(168,85,247,0.6)]'
                       : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                   }`}
                   title="In-call chat"
                 >
-                  <ChatIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <ChatIcon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                   {unreadChatCount > 0 && !chatOpen && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] px-1 rounded-full bg-pink-500 text-white text-[9px] sm:text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
+                    <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] sm:min-w-[18px] sm:h-[18px] px-1 rounded-full bg-pink-500 text-white text-[9px] sm:text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
                       {unreadChatCount}
                     </span>
                   )}
@@ -1435,10 +1472,10 @@ export const CallScreen = ({
                   <button
                     onClick={switchCamera}
                     aria-label={`Switch camera to ${facingMode === 'user' ? 'rear' : 'front'}`}
-                    className="shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
+                    className="shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center bg-white/10 text-white/90 border border-white/10 hover:bg-white/20 active:scale-95 transition-all"
                     title={`Flip Camera (${facingMode === 'user' ? 'Front -> Back' : 'Back -> Front'})`}
                   >
-                    <CameraRotate className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <CameraRotate className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1447,14 +1484,14 @@ export const CallScreen = ({
                   <button
                     onClick={toggleMirror}
                     aria-label={mirrorOn ? 'Disable mirror mode' : 'Enable mirror mode'}
-                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                       mirrorOn
                         ? 'bg-purple-600/25 text-purple-300 border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.4)]'
                         : 'bg-white/10 text-white/70 border-white/10 hover:bg-white/20'
                     }`}
-                    title={mirrorOn ? 'Mirroring: ON (natural movement)' : 'Mirroring: OFF'}
+                    title={mirrorOn ? 'Mirroring: ON (both cameras)' : 'Mirroring: OFF'}
                   >
-                    <MirrorIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <MirrorIcon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1466,14 +1503,14 @@ export const CallScreen = ({
                       setChatOpen(false);
                     }}
                     aria-label="Beauty filter"
-                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                       filterPickerOpen || activeFilter.id !== 'natural'
                         ? 'bg-pink-500 text-white border-pink-400 shadow-[0_0_18px_rgba(236,72,153,0.7)]'
                         : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                     }`}
                     title="Beauty filters"
                   >
-                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <Sparkles className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                   </button>
                 )}
 
@@ -1482,14 +1519,14 @@ export const CallScreen = ({
                   <button
                     onClick={toggleCamera}
                     aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
-                    className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                    className={`shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                       cameraOn
                         ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                         : 'bg-rose-500/25 text-rose-400 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.3)]'
                     }`}
                     title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
                   >
-                    {cameraOn ? <Video className="w-4 h-4 sm:w-5 sm:h-5" /> : <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    {cameraOn ? <Video className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <VideoOff className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
                   </button>
                 )}
 
@@ -1497,28 +1534,28 @@ export const CallScreen = ({
                 <button
                   onClick={toggleMic}
                   aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
-                  className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                     micOn
                       ? 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                       : 'bg-rose-500/25 text-rose-400 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.3)]'
                   }`}
                   title={micOn ? 'Mute microphone' : 'Unmute microphone'}
                 >
-                  {micOn ? <Mic className="w-4 h-4 sm:w-5 sm:h-5" /> : <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {micOn ? <Mic className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <MicOff className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
                 </button>
 
                 {/* 6. Loudspeaker Toggle */}
                 <button
                   onClick={toggleSpeaker}
                   aria-label={speakerOn ? 'Turn loudspeaker off' : 'Turn loudspeaker on'}
-                  className={`shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all border ${
+                  className={`shrink-0 w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all border ${
                     speakerOn
                       ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
                       : 'bg-white/10 text-white/90 border-white/10 hover:bg-white/20'
                   }`}
                   title={speakerOn ? 'Loudspeaker: ON' : 'Loudspeaker: OFF (Earpiece mode)'}
                 >
-                  {speakerOn ? <SpeakerIcon className="w-4 h-4 sm:w-5 sm:h-5" /> : <SpeakerSlashIcon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {speakerOn ? <SpeakerIcon className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <SpeakerSlashIcon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
                 </button>
               </>
             )}
@@ -1527,10 +1564,10 @@ export const CallScreen = ({
             <button
               onClick={handleHangup}
               aria-label="End call"
-              className="shrink-0 w-10 h-10 sm:w-13 sm:h-13 rounded-full bg-gradient-to-tr from-rose-600 via-red-600 to-rose-700 shadow-[0_0_24px_rgba(225,29,72,0.7)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
+              className="shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-rose-600 via-red-600 to-rose-700 shadow-[0_0_24px_rgba(225,29,72,0.7)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-transform"
               title="End call"
             >
-              <PhoneOff className="w-5 h-5 sm:w-6 sm:h-6" />
+              <PhoneOff className="w-4 h-4 sm:w-6 sm:h-6" />
             </button>
           </div>
         )}

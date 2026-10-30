@@ -40,11 +40,10 @@ export interface CallChatMessage {
 
 /**
  * Resolves whether a camera feed should be mirrored horizontally.
- * - Front camera ('user'): mirrored when mirrorEnabled is true (natural selfie reflection).
- * - Back camera ('environment'): NEVER mirrored horizontally, so panning right pans right naturally.
+ * When mirror is enabled by user, both front and back cameras are mirrored horizontally.
  */
 const shouldMirrorFeed = (facingMode: 'user' | 'environment', mirrorEnabled: boolean) => {
-  return facingMode === 'user' && mirrorEnabled;
+  return mirrorEnabled && facingMode === 'user';
 };
 
 /**
@@ -124,7 +123,8 @@ export const useCall = () => {
         return;
       }
 
-      const shouldMirror = remoteMirrorRef.current;
+      const remoteFacing = remoteFacingModesRef.current.get(String(uid)) || remoteFacingMode || 'user';
+      const shouldMirror = shouldMirrorFeed(remoteFacing, remoteMirrorRef.current);
 
       // 1. Check Agora remote video track
       const track = remoteVideoTracksRef.current.get(uid);
@@ -314,9 +314,14 @@ export const useCall = () => {
     socketRef.current = socket;
     callIdRef.current = callId;
 
+    // Join room so socket receives broadcasts for this call
+    socket.emit('call:join-room', { callId });
+
     const applyRemoteMirror = (mirror: boolean = remoteMirrorRef.current) => {
       document.querySelectorAll('[id^="remote-container-"]').forEach((container) => {
         setElementMirror(container as HTMLElement, mirror);
+        setTimeout(() => setElementMirror(container as HTMLElement, mirror), 150);
+        setTimeout(() => setElementMirror(container as HTMLElement, mirror), 350);
       });
     };
 
@@ -349,6 +354,7 @@ export const useCall = () => {
 
   const broadcastCameraState = useCallback(() => {
     if (socketRef.current && callIdRef.current) {
+      socketRef.current.emit('call:join-room', { callId: callIdRef.current });
       socketRef.current.emit('call:camera:facingMode', {
         callId: callIdRef.current,
         facingMode: currentFacingModeRef.current,
@@ -433,7 +439,7 @@ export const useCall = () => {
     const tryPlay = (attempt: number) => {
       const el = document.getElementById('call-local-video-container');
       if (el) {
-        const shouldMirror = mirrorOnRef.current;
+        const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, mirrorOnRef.current);
         if (localVideoRef.current) {
           try {
             localVideoRef.current.play(el, { fit: 'cover', mirror: shouldMirror });
@@ -494,6 +500,7 @@ export const useCall = () => {
                 remoteVideoTracksRef.current.set(user.uid, user.videoTrack);
                 setRemoteUsers((prev) => (prev.includes(user.uid) ? prev : [...prev, user.uid]));
                 playRemoteVideo(user.uid);
+                broadcastCameraState();
               }
               if (mediaType === 'audio' && user.audioTrack) {
                 remoteAudioTracksRef.current.set(user.uid, user.audioTrack);
@@ -721,6 +728,7 @@ export const useCall = () => {
 
     // Notify remote participant about camera facing mode and mirror state
     if (socketRef.current && callIdRef.current) {
+      socketRef.current.emit('call:join-room', { callId: callIdRef.current });
       socketRef.current.emit('call:camera:facingMode', {
         callId: callIdRef.current,
         facingMode: nextMode,
@@ -846,12 +854,16 @@ export const useCall = () => {
     // 1. Immediately apply mirror transform to local preview
     const localEl = document.getElementById('call-local-video-container');
     if (localEl) {
-      setElementMirror(localEl, next);
+      const shouldMirror = shouldMirrorFeed(currentFacingModeRef.current, next);
+      setElementMirror(localEl, shouldMirror);
+      setTimeout(() => setElementMirror(localEl, shouldMirror), 150);
+      setTimeout(() => setElementMirror(localEl, shouldMirror), 350);
     }
     playLocalPreview();
 
     // 2. Broadcast mirror mode to remote peer via socket so output mirrors identically
     if (socketRef.current && callIdRef.current) {
+      socketRef.current.emit('call:join-room', { callId: callIdRef.current });
       socketRef.current.emit('call:camera:mirror', {
         callId: callIdRef.current,
         mirror: next,

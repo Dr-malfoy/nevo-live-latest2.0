@@ -67,8 +67,31 @@ async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Pro
   const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
 
   try {
+    let targetCameraId: string | undefined;
+    try {
+      const devices = await AgoraRTC.getCameras().catch(() => []);
+      if (devices.length > 0) {
+        if (facingMode === 'user') {
+          const front = devices.find((d, i) => /front|user|selfie/i.test(d.label || '') || i === 1);
+          if (front) targetCameraId = front.deviceId;
+        } else {
+          const backDevices = devices.filter((d, i) => {
+            const lbl = (d.label || '').toLowerCase();
+            return !lbl.includes('tele') && !lbl.includes('macro') && !lbl.includes('depth');
+          });
+          const back =
+            backDevices.find((d) => {
+              const lbl = (d.label || '').toLowerCase();
+              return /back|rear|environment|0/i.test(lbl) && !lbl.includes('ultra-wide') && !lbl.includes('ultrawide');
+            }) || backDevices[0];
+          if (back) targetCameraId = back.deviceId;
+        }
+      }
+    } catch {}
+
     const track = await AgoraRTC.createCameraVideoTrack({
       facingMode,
+      cameraId: targetCameraId,
       encoderConfig: isPortrait
         ? {
             width: 720,
@@ -137,7 +160,8 @@ export const useAgora = () => {
 
   const setMirror = useCallback((m: boolean) => {
     mirrorRef.current = m;
-    const shouldMirror = Boolean(m);
+    // Mirror ONLY applies to front camera. Back camera is NEVER mirrored (never ulta).
+    const shouldMirror = Boolean(m && facingModeRef.current === 'user');
     const videoArea = document.getElementById('agora-video-area');
     if (videoArea) {
       setElementMirror(videoArea, shouldMirror);
@@ -709,7 +733,7 @@ export const useAgora = () => {
   const refreshVideoTracks = useCallback((containerId: string = 'agora-video-area') => {
     const videoArea = document.getElementById(containerId);
     if (!videoArea) return;
-    const shouldMirror = Boolean(mirrorRef.current);
+    const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
 
     // 1. If host local camera track
     if (localVideoRef.current && cameraOnRef.current) {
@@ -778,7 +802,7 @@ export const useAgora = () => {
         await clientRef.current.publish([videoTrack]);
         const videoArea = document.getElementById('agora-video-area');
         if (videoArea) {
-          const shouldMirror = Boolean(mirrorRef.current);
+          const shouldMirror = Boolean(mirrorRef.current && facingModeRef.current === 'user');
           videoTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
           setElementMirror(videoArea, shouldMirror);
           setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
@@ -950,19 +974,19 @@ export const useAgora = () => {
           // Find first front camera
           targetDevice = devices.find((d, i) => isFront(d.label || '', i));
         } else {
-          // Find primary back camera (avoid auxiliary ultra-wide, telephoto, macro lenses)
+          // Find primary 1x back camera (avoid auxiliary telephoto zoom and macro lenses)
           const backDevices = devices.filter((d, i) => isBack(d.label || '', i));
           targetDevice =
             backDevices.find((d) => {
               const lbl = (d.label || '').toLowerCase();
               return (
-                !lbl.includes('wide') &&
                 !lbl.includes('tele') &&
                 !lbl.includes('macro') &&
                 !lbl.includes('depth') &&
-                !lbl.includes('virtual')
+                !lbl.includes('ultra-wide') &&
+                !lbl.includes('ultrawide')
               );
-            }) || backDevices[0];
+            }) || backDevices[0] || devices[0];
         }
 
         if (targetDevice && typeof (localVideoRef.current as any)?.setDevice === 'function') {
@@ -972,7 +996,7 @@ export const useAgora = () => {
             setFacingMode(targetFacing);
             const videoArea = document.getElementById('agora-video-area');
             if (videoArea) {
-              const shouldMirror = Boolean(mirrorRef.current);
+              const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
               localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
               setElementMirror(videoArea, shouldMirror);
               setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
@@ -1024,7 +1048,7 @@ export const useAgora = () => {
 
           const videoArea = document.getElementById('agora-video-area');
           if (videoArea) {
-            const shouldMirror = Boolean(mirrorRef.current);
+            const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
             newTrack.play(videoArea, { fit: 'cover', mirror: shouldMirror });
             setElementMirror(videoArea, shouldMirror);
             setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
@@ -1075,7 +1099,7 @@ export const useAgora = () => {
           if (fallbackVideoElRef.current) {
             fallbackVideoElRef.current.srcObject = fallbackStreamRef.current;
           }
-          const shouldMirror = Boolean(mirrorRef.current);
+          const shouldMirror = Boolean(mirrorRef.current && targetFacing === 'user');
           setElementMirror(document.getElementById('agora-video-area'), shouldMirror);
           // Update peers with new video track
           peerConnectionsRef.current.forEach((pc) => {
