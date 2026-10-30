@@ -58,8 +58,8 @@ const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
 };
 
 /**
- * Resets camera hardware zoom to minimum 1x (widest normal optical view)
- * Prevents mobile devices from defaulting to auxiliary telephoto or cropped zoom lenses.
+ * Resets camera hardware zoom to standard 1.0x optical view.
+ * Prevents mobile devices from defaulting to auxiliary telephoto, cropped sub-sensors, or digital zoom.
  */
 async function resetHardwareCameraZoom(track: any) {
   if (!track) return;
@@ -68,11 +68,12 @@ async function resetHardwareCameraZoom(track: any) {
     if (!mediaTrack) return;
     const caps = (mediaTrack.getCapabilities?.() as any) || {};
     if (caps.zoom) {
-      // Force camera to its absolute minimum zoom level (widest possible 1x field of view)
-      const minZoom = typeof caps.zoom.min === 'number' ? caps.zoom.min : 1;
+      // Lock camera to standard 1.0x optical view (normal wide FOV, no digital zoom)
+      const targetZoom = (typeof caps.zoom.min === 'number' && caps.zoom.min <= 1) ? 1 : (caps.zoom.min ?? 1);
       await (mediaTrack.applyConstraints as any)({
-        advanced: [{ zoom: minZoom }],
+        advanced: [{ zoom: targetZoom }],
       });
+      console.log('[useAgora] Camera hardware zoom locked to standard 1x optical:', targetZoom);
     }
   } catch (e) {
     console.debug('[useAgora] resetHardwareCameraZoom notice:', e);
@@ -80,52 +81,19 @@ async function resetHardwareCameraZoom(track: any) {
 }
 
 /**
- * Calculates capture and encoding resolution matching the exact aspect ratio of the user's phone screen.
- * This guarantees:
- * 1. The video fills the phone screen 100% without letterbox black bars.
- * 2. Zero zoom/cropping on the face, ears, or shoulders.
- * 3. Normal camera resolution (high definition, clear details).
- * 4. Recorded and broadcast stream matches the phone screen ratio natively.
+ * Returns standard mobile vertical 9:16 portrait resolution (720x1280 HD).
+ * This ensures:
+ * 1. 100% full screen coverage on modern smartphones with zero letterboxing.
+ * 2. Uncropped, wide natural 1x optical framing of the host (face, shoulders, background).
+ * 3. High Definition (HD 720p @ 30fps) with sharp clarity.
  */
 export function getScreenCaptureResolution() {
-  if (typeof window === 'undefined') {
-    return {
-      width: 720,
-      height: 1280,
-      aspectRatio: 9 / 16,
-      screenRatio: 16 / 9,
-      isPortrait: true,
-    };
-  }
-
-  // Get screen physical or viewport dimensions
-  const screenW = window.screen?.width || window.innerWidth || 360;
-  const screenH = window.screen?.height || window.innerHeight || 800;
-
-  const isPortrait = screenH >= screenW;
-  const shortDim = Math.min(screenW, screenH);
-  const longDim = Math.max(screenW, screenH);
-
-  // Exact screen aspect ratio of the user's phone (e.g. 800/360 = 2.222, 2400/1080 = 2.222)
-  const screenRatio = longDim / shortDim;
-
-  // Normal Camera High-Definition Resolution:
-  // Base width of 720 (HD) keeps high quality while ensuring optimal 30fps without frame drops.
-  const baseShort = 720;
-  // Calculate height matching the phone's exact screen ratio, rounded to an even number (required by H.264/VP8 video codecs)
-  let baseLong = Math.round(baseShort * screenRatio);
-  if (baseLong % 2 !== 0) baseLong += 1;
-
-  const width = isPortrait ? baseShort : baseLong;
-  const height = isPortrait ? baseLong : baseShort;
-  const aspectRatio = isPortrait ? baseShort / baseLong : baseLong / baseShort;
-
   return {
-    width,
-    height,
-    aspectRatio,
-    screenRatio,
-    isPortrait,
+    width: 720,
+    height: 1280,
+    aspectRatio: 9 / 16,
+    screenRatio: 16 / 9,
+    isPortrait: true,
   };
 }
 
@@ -184,30 +152,69 @@ export async function getOptimalCameraId(facingMode: 'user' | 'environment'): Pr
  * 3. Normal camera resolution (clear HD details).
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
-  const { width, height } = getScreenCaptureResolution();
+  const configs = [
+    { width: 720, height: 1280, fps: 30, bitMin: 1500, bitMax: 3000 },
+    { width: 540, height: 960, fps: 30, bitMin: 1000, bitMax: 2000 },
+    { width: 1080, height: 1920, fps: 30, bitMin: 2000, bitMax: 4000 },
+    { width: 480, height: 854, fps: 30, bitMin: 800, bitMax: 1500 },
+  ];
 
+  let targetCameraId: string | undefined;
   try {
-    const targetCameraId = await getOptimalCameraId(facingMode);
+    targetCameraId = await getOptimalCameraId(facingMode);
+  } catch {}
 
+  for (const cfg of configs) {
+    if (targetCameraId) {
+      try {
+        const track = await AgoraRTC.createCameraVideoTrack({
+          cameraId: targetCameraId,
+          encoderConfig: {
+            width: cfg.width,
+            height: cfg.height,
+            frameRate: cfg.fps,
+            bitrateMin: cfg.bitMin,
+            bitrateMax: cfg.bitMax,
+          },
+          optimizationMode: 'motion',
+        });
+        await resetHardwareCameraZoom(track);
+        console.log(`[useAgora] Created ${cfg.width}x${cfg.height} portrait camera track (with cameraId)`);
+        return track;
+      } catch (err) {
+        console.warn(`[useAgora] cameraId ${cfg.width}x${cfg.height} failed, trying facingMode:`, err);
+      }
+    }
+
+    try {
+      const track = await AgoraRTC.createCameraVideoTrack({
+        facingMode,
+        encoderConfig: {
+          width: cfg.width,
+          height: cfg.height,
+          frameRate: cfg.fps,
+          bitrateMin: cfg.bitMin,
+          bitrateMax: cfg.bitMax,
+        },
+        optimizationMode: 'motion',
+      });
+      await resetHardwareCameraZoom(track);
+      console.log(`[useAgora] Created ${cfg.width}x${cfg.height} portrait camera track (with facingMode)`);
+      return track;
+    } catch (errFacing) {
+      console.warn(`[useAgora] facingMode ${cfg.width}x${cfg.height} failed:`, errFacing);
+    }
+  }
+
+  // Final fallback with explicit 720x1280 portrait config
+  try {
     const track = await AgoraRTC.createCameraVideoTrack({
       facingMode,
-      cameraId: targetCameraId,
-      encoderConfig: {
-        width,
-        height,
-        frameRate: 30,
-        bitrateMin: 1500,
-        bitrateMax: 3500,
-      },
-      optimizationMode: 'motion',
+      encoderConfig: { width: 720, height: 1280, frameRate: 30 },
     });
-
-    // Reset multi-lens hardware zoom to absolute minimum (widest 1x natural field of view)
     await resetHardwareCameraZoom(track);
-
     return track;
-  } catch (errAgora) {
-    console.warn('[useAgora] createCameraVideoTrack with optimal config failed, fallback:', errAgora);
+  } catch {
     const fallbackTrack = await AgoraRTC.createCameraVideoTrack({ facingMode });
     await resetHardwareCameraZoom(fallbackTrack);
     return fallbackTrack;

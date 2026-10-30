@@ -620,11 +620,11 @@ export const useCall = () => {
           try {
             let videoTrack: ICameraVideoTrack | null = null;
             try {
-              // High definition 720p 30fps with native uncropped wide angle FOV
+              // High definition vertical 720p 9:16 portrait
               videoTrack = await AgoraRTC.createCameraVideoTrack({
                 encoderConfig: {
-                  width: 1280,
-                  height: 720,
+                  width: 720,
+                  height: 1280,
                   frameRate: 30,
                   bitrateMin: 1000,
                   bitrateMax: 2400,
@@ -634,7 +634,10 @@ export const useCall = () => {
               });
             } catch {
               videoTrack = await AgoraRTC.createCameraVideoTrack({
-                encoderConfig: '720p_2',
+                encoderConfig: {
+                  width: 720,
+                  height: 1280,
+                },
                 facingMode: currentFacingModeRef.current,
               });
             }
