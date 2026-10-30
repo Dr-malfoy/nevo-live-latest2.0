@@ -181,17 +181,11 @@ export const GoLive: React.FC = () => {
 
         let stream: MediaStream | null = null;
         try {
-          // Select optimal 1x wide camera device (avoiding cropped sub-sensors)
-          const targetCameraId = await getOptimalCameraId(facingMode);
-          const { width, height, aspectRatio } = getScreenCaptureResolution();
-
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
-              deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
-              width: { ideal: width },
-              height: { ideal: height },
-              aspectRatio: { ideal: aspectRatio },
+              width: { ideal: 720, min: 480 },
+              height: { ideal: 1280, min: 640 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false, // local preview only, prevent feedback loop
