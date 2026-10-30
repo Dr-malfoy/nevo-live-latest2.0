@@ -47,7 +47,7 @@ const RoundBtn = ({ label, onClick, active, activeClass, children }: RoundBtnPro
   <motion.button
     whileTap={{ scale: 0.88 }}
     aria-label={label}
-    className={`w-9 h-9 rounded-full glass-chip flex items-center justify-center hover:bg-white/20 transition-colors shrink-0 ${
+    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-chip flex items-center justify-center hover:bg-white/20 transition-colors shrink-0 ${
       active ? activeClass || 'text-pink-400' : ''
     }`}
     onClick={onClick}
@@ -85,14 +85,14 @@ const LoveBtn = ({ onTap }: { onTap: () => void }) => {
         whileTap={{ scale: 0.82 }}
         animate={pop ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
-        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
+        className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
           sent
             ? 'bg-gradient-to-tr from-pink-500 to-rose-500 shadow-[0_0_14px_rgba(244,63,94,0.55)] border border-pink-300/40'
             : 'bg-white/15 hover:bg-white/25 border border-white/20'
         }`}
       >
         <Heart
-          className={`w-5 h-5 transition-colors duration-300 ${
+          className={`w-4 h-4 sm:w-5 sm:h-5 transition-colors duration-300 ${
             sent ? 'text-white' : 'text-pink-300'
           }`}
         />
@@ -146,21 +146,21 @@ export const BottomToolbar = ({
     initial={{ opacity: 0, y: 24 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.45, ease: 'easeOut', delay: 0.1 }}
-    className="absolute bottom-0 inset-x-0 z-30 px-3 pt-2 pointer-events-none"
-    style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+    className="absolute bottom-0 inset-x-0 z-30 px-2 sm:px-3 pt-2 pointer-events-none"
+    style={{ paddingBottom: 'max(10px, env(safe-area-inset-bottom))' }}
   >
     {/* ── Single bottom row: chat | controls | love | gift ── */}
-    <div className="flex items-end justify-between gap-2 pointer-events-auto w-full">
+    <div className="flex items-center justify-between gap-1.5 sm:gap-2 pointer-events-auto w-full max-w-full">
       {/* Left: Chat input */}
       <div className="flex-1 min-w-0">
         <MessageInput onSend={onChatSend} />
       </div>
 
       {/* Right: icon buttons in a row */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* Menu */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Menu (Live Tools — Camera Switch, Beauty, etc.) */}
         <RoundBtn label="Menu" onClick={onOpenMenu || (() => {})}>
-          <Grid className="w-5 h-5 text-white/90" />
+          <Grid className="w-4 h-4 sm:w-5 sm:h-5 text-white/90" />
         </RoundBtn>
 
         {/* Mic toggle / request */}
@@ -172,9 +172,9 @@ export const BottomToolbar = ({
             activeClass="text-red-400"
           >
             {micOn ? (
-              <MouthIcon className="w-5 h-5 text-emerald-400" />
+              <MouthIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
             ) : (
-              <MouthOffIcon className="w-5 h-5 text-white/90" />
+              <MouthOffIcon className="w-4 h-4 sm:w-5 sm:h-5 text-white/90" />
             )}
           </RoundBtn>
         ) : (
@@ -187,15 +187,8 @@ export const BottomToolbar = ({
             activeClass="text-amber-400 animate-pulse border-amber-400"
           >
             <MouthIcon
-              className={`w-5 h-5 ${micRequestPending ? 'text-amber-400' : 'text-white/90'}`}
+              className={`w-4 h-4 sm:w-5 sm:h-5 ${micRequestPending ? 'text-amber-400' : 'text-white/90'}`}
             />
-          </RoundBtn>
-        )}
-
-        {/* Switch camera (host only) */}
-        {isHost && videoEnabled && (
-          <RoundBtn label="Switch Camera" onClick={onSwitchCamera}>
-            <CameraRotate className="w-5 h-5 text-white/90" />
           </RoundBtn>
         )}
 
@@ -205,9 +198,9 @@ export const BottomToolbar = ({
             whileTap={{ scale: 0.88 }}
             aria-label="PK Battle"
             onClick={onOpenPK}
-            className="w-9 h-9 rounded-full bg-gradient-to-tr from-purple-600 via-fuchsia-600 to-indigo-600 border border-purple-300/40 shadow-[0_0_12px_rgba(168,85,247,0.55)] flex items-center justify-center shrink-0 active:scale-90 transition-transform"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-purple-600 via-fuchsia-600 to-indigo-600 border border-purple-300/40 shadow-[0_0_12px_rgba(168,85,247,0.55)] flex items-center justify-center shrink-0 active:scale-90 transition-transform"
           >
-            <span className="text-[11px] font-black tracking-wider text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
+            <span className="text-[10px] sm:text-[11px] font-black tracking-wider text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
               PK
             </span>
           </motion.button>
@@ -221,9 +214,9 @@ export const BottomToolbar = ({
           whileTap={{ scale: 0.9 }}
           onClick={onOpenGift}
           aria-label="Gift"
-          className="w-10 h-10 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#FF5E62] shadow-[0_0_15px_rgba(255,46,147,0.45)] flex items-center justify-center shrink-0"
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#FF5E62] shadow-[0_0_15px_rgba(255,46,147,0.45)] flex items-center justify-center shrink-0"
         >
-          <GiftIcon className="w-5 h-5 text-white" />
+          <GiftIcon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
         </motion.button>
       </div>
     </div>

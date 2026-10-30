@@ -59,56 +59,51 @@ const setElementMirror = (container: HTMLElement | null, mirror: boolean) => {
 
 /**
  * Creates high-definition camera video track optimized for vertical mobile live-streaming.
- * Prioritizes the phone's native camera hardware sensor via getUserMedia at full 1080p portrait resolution,
- * preventing Agora's default 640x480 landscape capture that caused severe 4x digital zoom and blurriness.
+ * Uses AgoraRTC.createCameraVideoTrack with portrait encoder configuration so the camera
+ * hardware sensor orientation is automatically handled in true 100% vertical PORTRAIT
+ * on both Android APK and browsers, preventing sideways/landscape streaming.
  */
 async function createHdCameraVideoTrack(facingMode: 'user' | 'environment'): Promise<ICameraVideoTrack> {
   const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
 
-  // 1. PRIMARY: Request phone's REAL native camera hardware sensor at full natural portrait resolution & clarity
-  if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: isPortrait ? 1080 : 1920 },
-          height: { ideal: isPortrait ? 1920 : 1080 },
-          aspectRatio: { ideal: isPortrait ? 9 / 16 : 16 / 9 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-        audio: false,
-      });
-
-      const track = stream.getVideoTracks()[0];
-      if (track) {
-        console.log('[useAgora] Opened real phone camera sensor in native portrait:', track.label, track.getSettings());
-        const customTrack = AgoraRTC.createCustomVideoTrack({
-          mediaStreamTrack: track,
-          bitrateMin: 1500,
-          bitrateMax: 4500,
-          optimizationMode: 'detail',
-        });
-        return customTrack as unknown as ICameraVideoTrack;
-      }
-    } catch (errGUM) {
-      console.warn('[useAgora] Native getUserMedia portrait capture failed, trying Agora fallback:', errGUM);
-    }
-  }
-
-  // 2. Fallback to Agora createCameraVideoTrack with portrait encoder configuration
   try {
-    return await AgoraRTC.createCameraVideoTrack({
+    const track = await AgoraRTC.createCameraVideoTrack({
       facingMode,
       encoderConfig: isPortrait
-        ? { width: 720, height: 1280, frameRate: 30, bitrateMin: 1200, bitrateMax: 2800 }
-        : { width: 1280, height: 720, frameRate: 30, bitrateMin: 1200, bitrateMax: 2800 },
+        ? {
+            width: 720,
+            height: 1280,
+            frameRate: 30,
+            bitrateMin: 1500,
+            bitrateMax: 3500,
+          }
+        : {
+            width: 1280,
+            height: 720,
+            frameRate: 30,
+            bitrateMin: 1500,
+            bitrateMax: 3500,
+          },
+      optimizationMode: 'detail',
     });
-  } catch (errAgora) {
-    console.warn('[useAgora] Agora camera track creation failed:', errAgora);
-  }
 
-  // 3. Absolute fallback
-  return await AgoraRTC.createCameraVideoTrack({ facingMode });
+    // Reset multi-lens hardware zoom to 1x (unzoomed)
+    try {
+      const mediaTrack = track.getMediaStreamTrack();
+      const caps = (mediaTrack?.getCapabilities?.() as any) || {};
+      if (caps.zoom) {
+        const minZoom = caps.zoom.min ?? 1;
+        await (mediaTrack?.applyConstraints as any)({
+          advanced: [{ zoom: minZoom }],
+        });
+      }
+    } catch {}
+
+    return track;
+  } catch (errAgora) {
+    console.warn('[useAgora] createCameraVideoTrack with encoderConfig failed, fallback:', errAgora);
+    return await AgoraRTC.createCameraVideoTrack({ facingMode });
+  }
 }
 
 export const useAgora = () => {
@@ -971,31 +966,42 @@ export const useAgora = () => {
         }
 
         if (targetDevice && typeof (localVideoRef.current as any)?.setDevice === 'function') {
-          await (localVideoRef.current as any).setDevice(targetDevice.deviceId);
           try {
-            const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
-            await localVideoRef.current.setEncoderConfiguration({
-              width: isPortrait ? 720 : 1280,
-              height: isPortrait ? 1280 : 720,
-              frameRate: 30,
-              bitrateMin: 1200,
-              bitrateMax: 2800,
-            });
-          } catch {}
-          facingModeRef.current = targetFacing;
-          setFacingMode(targetFacing);
-          const videoArea = document.getElementById('agora-video-area');
-          if (videoArea) {
-            const shouldMirror = Boolean(mirrorRef.current);
-            localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
-            setElementMirror(videoArea, shouldMirror);
-            setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
-            setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
+            await (localVideoRef.current as any).setDevice(targetDevice.deviceId);
+            facingModeRef.current = targetFacing;
+            setFacingMode(targetFacing);
+            const videoArea = document.getElementById('agora-video-area');
+            if (videoArea) {
+              const shouldMirror = Boolean(mirrorRef.current);
+              localVideoRef.current.play(videoArea, { fit: 'cover', mirror: shouldMirror });
+              setElementMirror(videoArea, shouldMirror);
+              setTimeout(() => setElementMirror(videoArea, shouldMirror), 150);
+              setTimeout(() => setElementMirror(videoArea, shouldMirror), 350);
+            }
+            return;
+          } catch (setDeviceErr) {
+            console.warn('[useAgora] setDevice failed, will release and recreate track:', setDeviceErr);
           }
-          return;
         }
 
-        // Fallback: recreate track with real phone camera sensor in portrait
+        // Fallback: Recreate track with clean hardware camera release for Android
+        const oldTrack = localVideoRef.current;
+        if (clientRef.current && oldTrack) {
+          try {
+            await clientRef.current.unpublish([oldTrack]);
+          } catch {}
+        }
+        if (oldTrack) {
+          try {
+            oldTrack.stop();
+            oldTrack.close();
+          } catch {}
+        }
+        localVideoRef.current = null;
+
+        // Allow Android Camera2 service to fully release hardware sensor lock
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
         let newTrack: ICameraVideoTrack | null = null;
         try {
           newTrack = await createHdCameraVideoTrack(targetFacing);
@@ -1004,25 +1010,16 @@ export const useAgora = () => {
         }
 
         if (newTrack) {
-          const oldTrack = localVideoRef.current;
-          if (clientRef.current && oldTrack) {
-            try {
-              await clientRef.current.unpublish([oldTrack]);
-            } catch {}
-          }
-          oldTrack?.stop();
-          oldTrack?.close();
-
           localVideoRef.current = newTrack;
-          beautyProcessorRef.current = null;
-          if (newTrack && (beautySettingsRef.current.smoothness > 0 || beautySettingsRef.current.whitening > 0)) {
-            applyBeautyOptions(beautySettingsRef.current.smoothness, beautySettingsRef.current.whitening);
-          }
           facingModeRef.current = targetFacing;
           setFacingMode(targetFacing);
 
           if (clientRef.current) {
-            await clientRef.current.publish([newTrack]);
+            try {
+              await clientRef.current.publish([newTrack]);
+            } catch (pubErr) {
+              console.warn('[useAgora] publish switch track error:', pubErr);
+            }
           }
 
           const videoArea = document.getElementById('agora-video-area');

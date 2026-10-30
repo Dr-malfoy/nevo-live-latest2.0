@@ -124,7 +124,7 @@ export const LiveRoom = ({
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
   const [noiseReductionOn, setNoiseReductionOn] = useState(true);
-  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('contain');
+  const [cameraFitMode, setCameraFitMode] = useState<'contain' | 'cover'>('cover');
 
   const handleToggleCameraFit = useCallback(() => {
     setCameraFitMode((m) => {
