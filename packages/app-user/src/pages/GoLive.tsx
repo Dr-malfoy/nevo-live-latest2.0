@@ -215,13 +215,15 @@ export const GoLive: React.FC = () => {
             }
           } catch {}
 
+          const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
               deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              aspectRatio: { ideal: 16 / 9 },
+              width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
+              height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
+              aspectRatio: isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: false, // local preview only, prevent feedback loop
@@ -531,7 +533,7 @@ export const GoLive: React.FC = () => {
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover transition-all duration-300"
+                  className="w-full h-full object-contain transition-all duration-300"
                   style={{
                     filter: activeFilter.css,
                     transform: mirrorOn && facingMode === 'user' ? 'scaleX(-1)' : 'none',
