@@ -68,11 +68,27 @@ class RingtoneManager {
     }
   }
 
-  start(vibrate: boolean = true) {
+  start(isIncomingOrVibrate: boolean = true) {
     if (this.isPlaying) return;
     this.isPlaying = true;
 
-    // Start audio ring burst immediately
+    // 1. Invoke native Android phone ringtone bridge (real phone ringtone on STREAM_RING)
+    try {
+      const bridge = (window as any).NevoNativeBridge;
+      if (bridge) {
+        if (typeof bridge.startRingtone === 'function') {
+          bridge.startRingtone(Boolean(isIncomingOrVibrate));
+        } else if (isIncomingOrVibrate && typeof bridge.startIncomingRingtone === 'function') {
+          bridge.startIncomingRingtone();
+        } else if (!isIncomingOrVibrate && typeof bridge.startOutgoingRingtone === 'function') {
+          bridge.startOutgoingRingtone();
+        }
+      }
+    } catch (e) {
+      console.warn('[Ringtone] Native bridge start error:', e);
+    }
+
+    // 2. Start Web Audio ring burst (browser fallback)
     this.playRingBurst();
 
     // Repeat ring burst every 3 seconds (1.8s ring + 1.2s pause)
@@ -82,8 +98,8 @@ class RingtoneManager {
       }
     }, 3000);
 
-    // Vibration pattern: vibrate 800ms, pause 1000ms
-    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
+    // 3. Vibration pattern for incoming calls: vibrate 800ms, pause 1000ms
+    if (isIncomingOrVibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
       try {
         navigator.vibrate([800, 1000, 800, 1000]);
         this.vibrateInterval = setInterval(() => {

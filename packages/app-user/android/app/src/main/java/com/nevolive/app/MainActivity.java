@@ -19,10 +19,36 @@ public class MainActivity extends BridgeActivity {
 
     public class NativeCallBridge {
         @android.webkit.JavascriptInterface
+        public void startIncomingRingtone() {
+            Log.d(TAG, "NativeCallBridge: startIncomingRingtone invoked from JavaScript");
+            runOnUiThread(() -> CallRingtoneManager.startIncoming(MainActivity.this));
+        }
+
+        @android.webkit.JavascriptInterface
+        public void startOutgoingRingtone() {
+            Log.d(TAG, "NativeCallBridge: startOutgoingRingtone invoked from JavaScript");
+            runOnUiThread(() -> CallRingtoneManager.startOutgoing(MainActivity.this));
+        }
+
+        @android.webkit.JavascriptInterface
+        public void startRingtone(boolean isIncoming) {
+            Log.d(TAG, "NativeCallBridge: startRingtone invoked from JavaScript, isIncoming=" + isIncoming);
+            runOnUiThread(() -> {
+                if (isIncoming) {
+                    CallRingtoneManager.startIncoming(MainActivity.this);
+                } else {
+                    CallRingtoneManager.startOutgoing(MainActivity.this);
+                }
+            });
+        }
+
+        @android.webkit.JavascriptInterface
         public void stopRingtone() {
             Log.d(TAG, "NativeCallBridge: stopRingtone invoked from JavaScript");
-            CallRingtoneManager.stop();
-            dismissCallNotification();
+            runOnUiThread(() -> {
+                CallRingtoneManager.stop();
+                dismissCallNotification();
+            });
         }
 
         @android.webkit.JavascriptInterface
@@ -34,19 +60,24 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void attachBridgeInterface() {
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().addJavascriptInterface(new NativeCallBridge(), "NevoNativeBridge");
+                Log.d(TAG, "NevoNativeBridge attached to WebView successfully");
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "Could not attach NevoNativeBridge: " + e.getMessage());
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         handleWindowFlags();
 
         // Register Javascript interface to allow WebView to control ringtone & read deep links
-        try {
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                getBridge().getWebView().addJavascriptInterface(new NativeCallBridge(), "NevoNativeBridge");
-            }
-        } catch (Throwable e) {
-            Log.w(TAG, "Could not add NevoNativeBridge: " + e.getMessage());
-        }
+        attachBridgeInterface();
 
         handleIntent(getIntent());
 
@@ -67,6 +98,12 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.w(TAG, "Error fetching native FCM token: " + e.getMessage());
         }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        attachBridgeInterface();
     }
 
     @Override

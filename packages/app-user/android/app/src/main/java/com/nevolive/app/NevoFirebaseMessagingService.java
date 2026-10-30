@@ -26,7 +26,7 @@ import java.util.Map;
 
 public class NevoFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "NevoPushService";
-    public static final String CALL_CHANNEL_ID = "nevo_calls_v2";
+    public static final String CALL_CHANNEL_ID = "nevo_calls_v3";
     public static final String NOTIFICATION_CHANNEL_ID = "nevo_notifications";
     public static final int CALL_NOTIFICATION_ID = 9001;
 

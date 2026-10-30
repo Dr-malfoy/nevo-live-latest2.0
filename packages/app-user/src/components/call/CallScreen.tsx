@@ -686,7 +686,7 @@ export const CallScreen = ({
     }
   }, [outgoing?.callId, callConnected]);
 
-  // Ringtone lifecycle & 60s timeout for incoming calls
+  // Ringtone lifecycle & 60s timeout for incoming and outgoing calls
   useEffect(() => {
     if (incoming && ringing && !callConnected) {
       ringtone.start(true);
@@ -700,7 +700,7 @@ export const CallScreen = ({
         clearTimeout(timeout);
         ringtone.stop();
       };
-    } else if (outgoing && ringing && !callConnected && isTargetOnline) {
+    } else if (outgoing && ringing && !callConnected) {
       ringtone.start(false);
       return () => {
         ringtone.stop();
@@ -711,7 +711,7 @@ export const CallScreen = ({
     return () => {
       ringtone.stop();
     };
-  }, [incoming?.callId, outgoing?.callId, ringing, callConnected, isTargetOnline]);
+  }, [incoming?.callId, outgoing?.callId, ringing, callConnected]);
 
   useEffect(() => {
     if (incoming && accepted && !answering && !callConnected) {
