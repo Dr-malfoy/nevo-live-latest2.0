@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PiAirplaneFill as Plane, PiDiceFiveFill as Dices, PiCircleFill as CircleDot, PiBellFill as Bell, PiCalendarCheckFill as CalendarCheck, PiGameControllerFill as Gamepad2, PiGiftFill as Gift, PiGlobeHemisphereWestFill as Globe, PiMegaphoneFill as Megaphone, PiPlusBold as Plus, PiSparkleFill as Sparkles, PiXBold as X } from 'react-icons/pi';
+import { PiAirplaneFill as Plane, PiDiceFiveFill as Dices, PiCircleFill as CircleDot, PiBellFill as Bell, PiGameControllerFill as Gamepad2, PiGiftFill as Gift, PiGlobeHemisphereWestFill as Globe, PiMegaphoneFill as Megaphone, PiPlusBold as Plus, PiSparkleFill as Sparkles, PiXBold as X } from 'react-icons/pi';
 import { gamesApi, type ActivityItem, type GameItem, type GameWinner } from '../api/economy.api';
 import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
@@ -20,7 +20,7 @@ import { compactNumber } from '../lib/time';
 const BUILT_IN_GAMES: GameItem[] = [
   {
     key: 'aviator',
-    name: 'Aviator',
+    name: 'Fly High',
     currency: 'diamond',
     launchUrl: '/game/aviator',
     badge: 'HOT 🚀',
@@ -34,21 +34,12 @@ const BUILT_IN_GAMES: GameItem[] = [
     badge: 'POPULAR ♠️',
     color: 'linear-gradient(135deg, #11998E 0%, #38EF7D 100%)',
   },
-  {
-    key: 'roulette',
-    name: 'Roulette',
-    currency: 'diamond',
-    launchUrl: '/game/roulette',
-    badge: 'NEW 🎰',
-    color: 'linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%)',
-  },
 ];
 
 const QUICK_ACTIONS = [
   { key: 'rank', label: 'Diamond Rank', Icon: Globe, tint: 'bg-[#1E3A8A] text-[#FFD700]', to: '/rankings?board=earnings' },
   { key: 'reward', label: 'Reward', Icon: Gift, tint: 'bg-[#FFECEC] text-[#FF4D4D]', to: '/rewards' },
   { key: 'event', label: 'Event', Icon: Megaphone, tint: 'bg-[#FFF3E0] text-[#F97316]', to: '/activities' },
-  { key: 'signin', label: 'Sign in', Icon: CalendarCheck, tint: 'bg-[#E9F9EE] text-[#22C55E]', to: '/games', dot: true },
   { key: 'spin', label: 'Lucky Spin', Icon: Sparkles, tint: 'bg-[#F3EDFF] text-[#A855F7]', to: '/lucky-spin' },
 ];
 
@@ -75,8 +66,30 @@ export const GamesHub = () => {
     ])
       .then(([home, list, win]) => {
         if (cancelled) return;
-        const items = home?.data?.games ?? list?.data ?? [];
-        const existingKeys = new Set(items.map((i) => i.key));
+        const rawItems = home?.data?.games ?? list?.data ?? [];
+        const items = rawItems
+          .filter((item: GameItem) => item.key !== 'roulette')
+          .map((item: GameItem) => {
+            if (item.key === 'aviator') {
+              return {
+                ...item,
+                name: 'Fly High',
+                launchUrl: '/game/aviator',
+                color: item.color && item.color.includes('gradient') ? item.color : 'linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%)',
+                badge: item.badge || 'HOT 🚀',
+              };
+            }
+            if (item.key === 'teenpatti') {
+              return {
+                ...item,
+                launchUrl: '/game/teenpatti',
+                color: item.color && item.color.includes('gradient') ? item.color : 'linear-gradient(135deg, #11998E 0%, #38EF7D 100%)',
+                badge: item.badge || 'POPULAR ♠️',
+              };
+            }
+            return item;
+          });
+        const existingKeys = new Set(items.map((i: GameItem) => i.key));
         const merged = [...BUILT_IN_GAMES.filter((g) => !existingKeys.has(g.key)), ...items];
         setGames(merged);
         setBanner(home?.data?.banner ?? null);
@@ -98,15 +111,25 @@ export const GamesHub = () => {
     };
   }, []);
 
-  const visible = games.filter((g) =>
-    tab === 'diamonds' ? g.currency === 'diamond' : g.currency === 'coupon'
-  );
+  const visible = games
+    .filter((g) => g.key !== 'roulette')
+    .filter((g) =>
+      tab === 'diamonds' ? g.currency === 'diamond' : g.currency === 'coupon'
+    );
+
+  const getGameUrl = (game: GameItem) => {
+    if (game.key === 'aviator' || game.launchUrl === '/aviator') return '/game/aviator';
+    if (game.key === 'teenpatti' || game.launchUrl === '/teenpatti') return '/game/teenpatti';
+    if (game.key === 'roulette' || game.launchUrl === '/roulette') return '/game/roulette';
+    return game.launchUrl;
+  };
 
   const open = (game: GameItem) => {
-    if (game.launchUrl?.startsWith('/')) {
-      navigate(game.launchUrl);
-    } else if (game.launchUrl) {
-      window.open(game.launchUrl, '_blank', 'noopener');
+    const url = getGameUrl(game);
+    if (url?.startsWith('/')) {
+      navigate(url);
+    } else if (url) {
+      window.open(url, '_blank', 'noopener');
     } else {
       showToast(`${game.name} is not connected yet`, 'info');
     }
@@ -161,7 +184,7 @@ export const GamesHub = () => {
 
       {/* Quick actions (#70.3) */}
       <div className="mx-3 mt-4 rounded-card bg-surface-soft p-3">
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-4 gap-2">
           {QUICK_ACTIONS.map(({ key, label, Icon, tint, to, dot }) => (
             <button
               key={key}

@@ -11,6 +11,7 @@ import type { UserStoryGroup } from '../../api/story.api';
 import type { NoteItem } from '../../api/note.api';
 import { chatApi } from '../../api';
 import { getMediaUrl } from '../../lib/media';
+import { AvatarFrame } from '../user/AvatarFrame';
 
 interface ActiveUserStripProps {
   users: ActiveChatUser[];
@@ -155,6 +156,11 @@ export const ActiveUserStrip = ({
               </div>
             </div>
 
+            {/* Equipped Avatar Frame for current user */}
+            {((currentUser as any)?.equippedFrame || (currentUser as any)?.equipped?.avatar_frame) && (
+              <AvatarFrame frame={(currentUser as any).equippedFrame || (currentUser as any).equipped?.avatar_frame} size="lg" />
+            )}
+
             {/* Plus / Add Badge */}
             <button
               onClick={(e) => {
@@ -285,6 +291,11 @@ export const ActiveUserStrip = ({
                     )}
                   </div>
                 </div>
+
+                {/* Equipped Avatar Frame for active user */}
+                {(user.equippedFrame || (user as any).equipped?.avatar_frame) && (
+                  <AvatarFrame frame={user.equippedFrame || (user as any).equipped?.avatar_frame} size="lg" />
+                )}
 
                 {/* Status Badges */}
                 {isLive ? (

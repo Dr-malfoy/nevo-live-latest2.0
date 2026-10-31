@@ -43,7 +43,7 @@ const staleBeforeDate = () => new Date(Date.now() - HEARTBEAT_STALE_MS);
 
 /** Host fields every stream card needs, incl. country flag + presence dot + premium badges. */
 const HOST_FIELDS =
-  'uid nickname avatar level isAgent isDiamondSeller diamondSellerBadge role sellerType coins diamonds wealthExp liveStreamSeconds liveStreamMinutes equippedBadge verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
+  'uid nickname avatar level isAgent isDiamondSeller diamondSellerBadge role sellerType coins diamonds wealthExp liveStreamSeconds liveStreamMinutes equippedBadge equippedFrame verification country lastActiveAt wealthLevel liveLevel isVip hasPurchasedDiamonds hostBadge hostBadgeType hostBadgeAssignedAt gender';
 
 /**
  * Requirement #1 — country filter.
@@ -417,7 +417,7 @@ export const streamService = {
   async getViewers(streamId: string) {
     const { calculateWealthLevel, calculateLiveLevel } = await import('../utils/userLevels');
     const stream = await LiveStream.findById(streamId)
-      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equippedBadge isVip hasPurchasedDiamonds noble diamonds coins exp')
+      .populate('viewers', 'uid nickname avatar level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equippedBadge equippedFrame isVip hasPurchasedDiamonds noble diamonds coins exp')
       .lean();
     if (!stream) throw new AppError('Stream not found', 404);
     return (stream.viewers || []).map((v: any) => {
@@ -440,6 +440,7 @@ export const streamService = {
         isVip,
         noble: v.noble,
         equippedBadge: v.equippedBadge,
+        equippedFrame: v.equippedFrame,
         diamonds: v.diamonds || 0,
         coins: v.coins || 0,
       };

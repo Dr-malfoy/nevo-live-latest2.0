@@ -1,20 +1,23 @@
-import { SpinResult, SignInRecord, Activity, ActivityClaim, User, TaskProgress } from '../models';
+import { SpinResult, SignInRecord, Activity, ActivityClaim, User, TaskProgress, Transaction } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getBangladeshDayBounds } from '../utils/date';
 import { getIO } from '../socket';
 import { taskService } from './task.service';
 import { referralService } from './referral.service';
 
-// Lucky spin slices: index 0..7
+// Lucky spin slices: 10 diamond prize slices (5, 10, 15, 20, 25, 45, 75, 100, 250, 500 💎)
+// Probability configuration: in 1000 spins, 500 💎 has exactly 10% chance (100 / 1000)
 const SPIN_SLICES = [
-  { index: 0, amount: 100,   currency: 'coin'    as const },
-  { index: 1, amount: 500,   currency: 'coin'    as const },
-  { index: 2, amount: 1000,  currency: 'coin'    as const },
-  { index: 3, amount: 50,    currency: 'diamond' as const },
-  { index: 4, amount: 5000,  currency: 'coin'    as const },
-  { index: 5, amount: 100,   currency: 'diamond' as const },
-  { index: 6, amount: 10000, currency: 'coin'    as const },
-  { index: 7, amount: 1,     currency: 'ticket'  as const },
+  { index: 0, amount: 5,   currency: 'diamond' as const, weight: 100 }, // 10%
+  { index: 1, amount: 10,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 2, amount: 15,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 3, amount: 20,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 4, amount: 25,  currency: 'diamond' as const, weight: 120 }, // 12%
+  { index: 5, amount: 45,  currency: 'diamond' as const, weight: 80  }, // 8%
+  { index: 6, amount: 75,  currency: 'diamond' as const, weight: 70  }, // 7%
+  { index: 7, amount: 100, currency: 'diamond' as const, weight: 50  }, // 5%
+  { index: 8, amount: 250, currency: 'diamond' as const, weight: 30  }, // 3% (Major Prize)
+  { index: 9, amount: 500, currency: 'diamond' as const, weight: 100 }, // 10% (Jackpot Prize — exactly 10% chance)
 ];
 
 const SIGNIN_REWARDS = [
@@ -349,7 +352,7 @@ const SEED_ACTIVITIES = [
     key: 'daily_games_arcade',
     title: 'Daily Games & Lucky Arcade',
     tagline: 'Play daily games, spin the wheel and collect coins!',
-    description: 'Test your luck with daily mini-games! Spin the Lucky Wheel, play Aviator, Roulette or Teen Patti to complete daily gaming milestones and collect coins!',
+    description: 'Test your luck with daily mini-games! Spin the Lucky Wheel, play Fly High, Roulette or Teen Patti to complete daily gaming milestones and collect coins!',
     banner: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=1200&auto=format&fit=crop&q=80',
     badge: 'DAILY GAMES',
     prizePool: 600000,
@@ -366,7 +369,7 @@ const SEED_ACTIVITIES = [
       {
         key: 'act_play_1_game_round',
         label: 'Play 1 round of any mini game',
-        note: 'Play Lucky Spin, Roulette, Teen Patti or Aviator',
+        note: 'Play Lucky Spin, Roulette, Teen Patti or Fly High',
         metric: 'game_rounds',
         target: 1,
         unit: 'round',
@@ -378,7 +381,7 @@ const SEED_ACTIVITIES = [
       {
         key: 'act_play_3_game_rounds',
         label: 'Play 3 rounds in Diamond games',
-        note: 'Enjoy thrilling rounds in Aviator or Roulette',
+        note: 'Enjoy thrilling rounds in Fly High or Roulette',
         metric: 'game_rounds',
         target: 3,
         unit: 'rounds',
@@ -422,63 +425,102 @@ export class GamesHubService {
 
   async getSpinStatus(userId: string) {
     const { dateKey, end } = getBangladeshDayBounds();
-    const existing = await SpinResult.findOne({ userId, dateKey }).lean();
+    const existing = await SpinResult.findOne({ userId, dateKey, usedFreeSpin: true }).lean();
     return {
-      slices: SPIN_SLICES,
+      slices: SPIN_SLICES.map(({ index, amount, currency }) => ({ index, amount, currency })),
       freeSpinAvailable: !existing,
       nextFreeSpinAt: existing ? end.toISOString() : null,
-      extraSpinCostCoins: 2000,
+      extraSpinCostCoins: 0,
+      extraSpinCostDiamonds: 10,
     };
   }
 
   async executeSpin(userId: string, paid = false) {
-    const { dateKey } = getBangladeshDayBounds();
-    const existing = await SpinResult.findOne({ userId, dateKey });
+    const { dateKey, end } = getBangladeshDayBounds();
+    const existing = await SpinResult.findOne({ userId, dateKey, usedFreeSpin: true });
 
     const user = await User.findById(userId).select('coins diamonds tickets');
     if (!user) throw new AppError('User not found', 404);
 
-    if (existing) {
-      if (!paid) {
-        throw new AppError('Free spin already used today. Extra spin costs 2000 coins.', 409);
+    const EXTRA_SPIN_COST_DIAMONDS = 10;
+    const isFreeSpin = !existing;
+    const cost = isFreeSpin ? 0 : EXTRA_SPIN_COST_DIAMONDS;
+
+    // If daily free spin is already used, this spin costs 10 diamonds
+    if (!isFreeSpin) {
+      if ((user.diamonds || 0) < EXTRA_SPIN_COST_DIAMONDS) {
+        throw new AppError(`Insufficient diamonds. Each spin costs ${EXTRA_SPIN_COST_DIAMONDS} 💎.`, 400);
       }
-      if ((user.coins || 0) < 2000) {
-        throw new AppError('Insufficient coins for extra spin', 400);
-      }
-      await User.updateOne({ _id: userId, coins: { $gte: 2000 } }, { $inc: { coins: -2000 } });
-    }
-
-    // Pick slice server-side
-    const sliceIndex = Math.floor(Math.random() * SPIN_SLICES.length);
-    const slice = SPIN_SLICES[sliceIndex];
-
-    const incField = slice.currency === 'diamond' ? 'diamonds' : slice.currency === 'ticket' ? 'tickets' : 'coins';
-    await User.updateOne({ _id: userId }, { $inc: { [incField]: slice.amount } });
-
-    if (!existing) {
-      await SpinResult.create({
+      await User.updateOne(
+        { _id: userId, diamonds: { $gte: EXTRA_SPIN_COST_DIAMONDS } },
+        { $inc: { diamonds: -EXTRA_SPIN_COST_DIAMONDS } }
+      );
+      await Transaction.create({
         userId,
-        dateKey,
-        sliceIndex,
-        amount: slice.amount,
-        currency: incField,
-        usedFreeSpin: true,
-      });
+        type: 'game_bet',
+        amount: EXTRA_SPIN_COST_DIAMONDS,
+        currency: 'diamond',
+        status: 'completed',
+        description: `Lucky Spin paid spin (${EXTRA_SPIN_COST_DIAMONDS} 💎)`,
+      }).catch(() => {});
     }
+
+    // Pick slice using probability distribution (in 1000 spins, 500 & 1000 diamonds have 10% combined chance):
+    const totalWeight = SPIN_SLICES.reduce((sum, s) => sum + s.weight, 0);
+    let rand = Math.random() * totalWeight;
+    let selectedSlice = SPIN_SLICES[0];
+    for (const s of SPIN_SLICES) {
+      if (rand < s.weight) {
+        selectedSlice = s;
+        break;
+      }
+      rand -= s.weight;
+    }
+
+    const sliceIndex = selectedSlice.index;
+    const slice = selectedSlice;
+
+    // Credit won diamonds to user
+    await User.updateOne({ _id: userId }, { $inc: { diamonds: slice.amount } });
+
+    await Transaction.create({
+      userId,
+      type: 'game_win',
+      amount: slice.amount,
+      currency: 'diamond',
+      status: 'completed',
+      description: `Lucky Spin win (${slice.amount} 💎)`,
+    }).catch(() => {});
+
+    await SpinResult.create({
+      userId,
+      dateKey,
+      sliceIndex: slice.index,
+      amount: slice.amount,
+      currency: 'diamonds',
+      usedFreeSpin: isFreeSpin,
+      cost,
+    });
 
     const updated = await User.findById(userId).select('coins diamonds tickets').lean();
 
     return {
-      sliceIndex,
+      sliceIndex: slice.index,
       reward: {
         amount: slice.amount,
         currency: slice.currency,
       },
+      costDiamonds: cost,
+      isFreeSpin,
+      netDiamonds: slice.amount - cost,
       balances: {
         coins: updated?.coins || 0,
         diamonds: updated?.diamonds || 0,
         tickets: updated?.tickets || 0,
       },
+      freeSpinAvailable: false,
+      nextFreeSpinAt: end.toISOString(),
+      extraSpinCostDiamonds: EXTRA_SPIN_COST_DIAMONDS,
     };
   }
 
@@ -867,9 +909,8 @@ export class GamesHubService {
 
   async getGames() {
     return [
-      { key: 'teenpatti',  name: 'Teen Patti',  icon: 'teenpatti',  color: '#8A2BE2', badge: 'HOT', currency: 'diamond', launchUrl: '/teenpatti' },
-      { key: 'roulette',   name: 'Roulette',    icon: 'roulette',   color: '#DC143C', badge: 'HOT', currency: 'diamond', launchUrl: '/roulette'  },
-      { key: 'aviator',    name: 'Aviator',     icon: 'aviator',    color: '#FF4500', badge: 'NEW', currency: 'diamond', launchUrl: '/aviator'   },
+      { key: 'aviator',    name: 'Fly High',    icon: 'aviator',    color: 'linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%)', badge: 'HOT 🚀', currency: 'diamond', launchUrl: '/game/aviator'   },
+      { key: 'teenpatti',  name: '3 Patti',     icon: 'teenpatti',  color: 'linear-gradient(135deg, #11998E 0%, #38EF7D 100%)', badge: 'POPULAR ♠️', currency: 'diamond', launchUrl: '/game/teenpatti' },
       { key: 'lucky_spin', name: 'Lucky Spin',  icon: 'lucky_spin', color: '#FFD700', badge: 'HOT', currency: 'coupon',  launchUrl: '/lucky-spin'},
     ];
   }

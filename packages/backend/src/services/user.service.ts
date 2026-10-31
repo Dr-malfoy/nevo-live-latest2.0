@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { User, LiveStream, Chat, ChatMessage, Notification, Moment, PurchaseOrder, WithdrawalRequest, SellRequest, AgentPurchaseOrder, Report, ContactMessage, Transaction, Agency, Room, ProfileVisit } from '../models';
+import { User, LiveStream, Chat, ChatMessage, Notification, Moment, PurchaseOrder, WithdrawalRequest, SellRequest, AgentPurchaseOrder, Report, ContactMessage, Transaction, Agency, Room, ProfileVisit, DiamondSellerApplication } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { hashPassword, comparePassword } from '../utils/hash';
 import { getSkip } from '../utils/pagination';
@@ -15,7 +15,7 @@ import { calculateWealthLevel, calculateLiveLevel } from '../utils/userLevels';
  * the flag, and lastActiveAt for the online dot (requirement #3).
  */
 const CARD_FIELDS =
-  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge isAgent isDiamondSeller diamondSellerBadge noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds callPricePerMinute';
+  'uid nickname avatar cover level wealthLevel liveLevel wealthExp liveStreamSeconds liveStreamMinutes equipped equippedBadge equippedFrame isAgent isAdmin isDeveloper isDiamondSeller diamondSellerBadge noble role sellerType hostBadge hostBadgeType hostBadgeAssignedAt hostBadgeExpiresAt verification country gender genderUpdatedAt bio tags lastActiveAt diamonds coins isVip hasPurchasedDiamonds callPricePerMinute';
 
 /** A user counts as online if they were active in the last 5 minutes. */
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -46,6 +46,12 @@ const decorate = (plain: any) => {
   const calculatedLive = calculateLiveLevel(liveStreamMinutes, plain?.liveLevel || plain?.level);
   const liveLevel = Math.max(plain?.liveLevel || 1, calculatedLive.level);
   const level = plain?.level && plain.level > 1 ? plain.level : Math.max(wealthLevel, liveLevel, 1);
+  const isDiamondSeller = Boolean(
+    plain?.isDiamondSeller ||
+    plain?.diamondSellerBadge ||
+    plain?.role === 'diamond_seller' ||
+    plain?.sellerType === 'diamond_seller'
+  );
   return {
     ...plain,
     callPricePerMinute: typeof plain?.callPricePerMinute === 'number' ? plain.callPricePerMinute : 1000,
@@ -54,6 +60,10 @@ const decorate = (plain: any) => {
     liveStreamMinutes,
     hostBadge: plain?.hostBadge || 'none',
     hostBadgeType: plain?.hostBadgeType || 'none',
+    isDiamondSeller,
+    diamondSellerBadge: isDiamondSeller,
+    role: isDiamondSeller ? 'diamond_seller' : plain?.role,
+    sellerType: isDiamondSeller ? 'diamond_seller' : plain?.sellerType,
     online: isOnline(plain?.lastActiveAt),
     age: ageFrom(plain?.birthday),
     isVip,
@@ -71,6 +81,33 @@ export const userService = {
     const obj = user.toObject();
     obj.diamonds = Math.max(0, obj.diamonds ?? 0);
     obj.coins = Math.max(0, obj.coins ?? 0);
+
+    // Auto-heal / sync Diamond Seller role if user has an approved DiamondSellerApplication
+    if (obj.role !== 'diamond_seller' || !obj.isDiamondSeller || obj.sellerType !== 'diamond_seller') {
+      const hasApprovedDiamondSeller = await DiamondSellerApplication.exists({
+        userId: user._id,
+        status: 'approved',
+      });
+      if (hasApprovedDiamondSeller) {
+        obj.role = 'diamond_seller';
+        obj.sellerType = 'diamond_seller';
+        obj.isDiamondSeller = true;
+        obj.diamondSellerBadge = true;
+        obj.isAgent = true;
+        User.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              role: 'diamond_seller',
+              sellerType: 'diamond_seller',
+              isDiamondSeller: true,
+              diamondSellerBadge: true,
+              isAgent: true,
+            },
+          }
+        ).catch(() => {});
+      }
+    }
 
     // Auto-heal / backfill wealthExp so wealth level never decreases below current balance or past exp
     const baselineExp = Math.max(obj.wealthExp || 0, (obj.coins || 0) + (obj.diamonds || 0));
@@ -129,6 +166,20 @@ export const userService = {
       user = await User.findOne({ uid: userId }).select(`${CARD_FIELDS} birthday following followers`);
     }
     if (!user) throw new AppError('User not found', 404);
+
+    if (user.role !== 'diamond_seller' || !user.isDiamondSeller || user.sellerType !== 'diamond_seller') {
+      const hasApprovedDiamondSeller = await DiamondSellerApplication.exists({
+        userId: user._id,
+        status: 'approved',
+      });
+      if (hasApprovedDiamondSeller) {
+        user.role = 'diamond_seller';
+        user.sellerType = 'diamond_seller';
+        user.isDiamondSeller = true;
+        user.diamondSellerBadge = true;
+        user.isAgent = true;
+      }
+    }
 
     const targetUserId = user._id.toString();
 

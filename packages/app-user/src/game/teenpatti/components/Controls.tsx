@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import type { TPTableState } from '../../../types/teenpatti';
+import { DiamondIcon, CoinIcon } from '../../../components/ui/CurrencyIcon';
 
-// Betting controls for the current player
+const QUICK_CHIPS = [10, 20, 50, 100, 500, 1000];
+
 export const Controls = ({
   state,
   busy,
@@ -9,80 +11,93 @@ export const Controls = ({
 }: {
   state: TPTableState;
   busy: boolean;
-  onAct: (action: 'fold' | 'call' | 'raise' | 'see') => void;
+  onAct: (action: 'fold' | 'call' | 'raise' | 'see' | 'show' | 'bet' | 'reset', amount?: number) => void;
 }) => {
-  const me = state.seats.find((s) => s.isYou);
-  const isMyTurn = me && state.turnIndex === state.seats.indexOf(me) && state.phase === 'betting';
+  const [selectedChip, setSelectedChip] = useState<number>(50);
+  const Ccy = state.currency === 'coin' ? CoinIcon : DiamondIcon;
 
-  const callAmount = useMemo(() => {
-    if (!me) return 0;
-    return Math.max(0, state.stake - me.roundContributed);
-  }, [state.stake, me]);
-
-  const raiseTarget = useMemo(() => {
-    if (!me) return 0;
-    // Blind raise = ~1.5x stake (rounded to even), seen raise = 2x
-    const t = me.seen ? state.stake * 2 : Math.ceil((state.stake * 3) / 2 / 2) * 2;
-    return Math.min(t, 100000);
-  }, [state.stake, me]);
-
-  const raiseCost = Math.max(0, raiseTarget - (me?.roundContributed || 0));
-
-  if (!isMyTurn) {
+  // Phase: Dealing cards
+  if (state.phase === 'dealing') {
     return (
-      <div className="glass-card p-4 text-center">
-        <p className="text-sm text-dark-400">
-          {state.phase === 'betting' ? 'Waiting for other players…' : 'Place your bets when the round starts'}
+      <div className="bg-[#0c121d] border-2 border-cyan-500/40 rounded-2xl p-4 text-center shadow-[0_0_25px_rgba(6,182,212,0.25)] space-y-1.5 animate-pulse">
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-xl animate-spin">🎴</span>
+          <p className="text-sm font-black text-cyan-300 tracking-wide uppercase">
+            Dealing cards to all 4 players...
+          </p>
+        </div>
+        <p className="text-[11px] text-zinc-400 font-bold">
+          Revealing cards & evaluating higher hand...
         </p>
       </div>
     );
   }
 
+  // Phase: Showdown
+  if (state.phase === 'showdown') {
+    return (
+      <div className="bg-[#0c121d] border-2 border-amber-500/50 rounded-2xl p-3.5 shadow-[0_0_25px_rgba(245,197,24,0.25)] space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+            <p className="text-xs font-black text-amber-300 uppercase tracking-wide">
+              Cards Revealed on Deck! 🎴
+            </p>
+          </div>
+          <button
+            onClick={() => onAct('reset')}
+            disabled={busy}
+            className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-500 hover:brightness-110 text-black font-black text-xs shadow-md transition active:scale-95"
+          >
+            Play Next Round ➔
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Phase: Betting (Ready to Place Bet & Play)
+  const winMultiplier = selectedChip * 2;
+
   return (
-    <div className="glass-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-dark-400">Your hand: {me?.seen ? 'Seen' : 'Blind'}</span>
-        <span className="text-xs text-dark-400">Stake to match: <b className="text-white">{state.stake}</b></span>
+    <div className="bg-[#0c121d] border-2 border-amber-500/40 rounded-2xl p-3.5 space-y-3 shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+      {/* Chip Selection Bar */}
+      <div className="flex items-center justify-between gap-1.5 bg-[#070b13] p-1.5 rounded-xl border border-white/10 overflow-x-auto">
+        <span className="text-[10px] font-black text-zinc-400 px-1 whitespace-nowrap">SELECT BET:</span>
+        <div className="flex gap-1.5">
+          {QUICK_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              onClick={() => setSelectedChip(chip)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 transition active:scale-95 ${
+                selectedChip === chip
+                  ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-lg shadow-amber-500/40 ring-2 ring-white/80 scale-105'
+                  : 'bg-[#141c2c] text-zinc-200 border border-white/5 hover:border-amber-400/40 hover:text-white'
+              }`}
+            >
+              <Ccy className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{chip}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <button
-          onClick={() => onAct('fold')}
-          disabled={busy}
-          className="py-3 rounded-xl bg-gradient-to-b from-red-600 to-red-700 text-white font-bold text-sm active:scale-95 transition disabled:opacity-50"
-        >
-          Fold
-        </button>
-        <button
-          onClick={() => onAct('call')}
-          disabled={busy}
-          className="py-3 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 text-white font-bold text-sm active:scale-95 transition disabled:opacity-50"
-        >
-          Call {callAmount > 0 ? callAmount : ''}
-        </button>
-        <button
-          onClick={() => onAct('raise')}
-          disabled={busy}
-          className="py-3 rounded-xl bg-gradient-to-b from-brand-primary to-purple-700 text-white font-bold text-sm active:scale-95 transition disabled:opacity-50"
-        >
-          Raise {raiseCost > 0 ? raiseCost : ''}
-        </button>
-      </div>
-
-      {!me?.seen && (
-        <button
-          onClick={() => onAct('see')}
-          disabled={busy}
-          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-brand-accent text-white font-bold text-sm active:scale-95 transition disabled:opacity-50"
-        >
-          👁 See cards (then play seen)
-        </button>
-      )}
-
-      <div className="flex items-center justify-between text-[10px] text-dark-500">
-        <span>Raises: {state.raises}/4</span>
-        <span>Raise max: 100,000</span>
-      </div>
+      {/* Main Bet & Deal Button */}
+      <button
+        onClick={() => onAct('bet', selectedChip)}
+        disabled={busy}
+        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:brightness-110 active:scale-98 transition shadow-[0_0_25px_rgba(245,197,24,0.45)] flex flex-col items-center justify-center border-2 border-white/40 disabled:opacity-50"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🎴</span>
+          <span className="text-base font-black text-black tracking-wide">
+            BET {selectedChip.toLocaleString()} 💎 & DEAL CARDS
+          </span>
+        </div>
+        <span className="text-[11px] font-black text-black/80">
+          Win 2X ({winMultiplier.toLocaleString()} 💎) on Higher Hand!
+        </span>
+      </button>
     </div>
   );
 };

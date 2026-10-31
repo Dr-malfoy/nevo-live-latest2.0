@@ -727,11 +727,29 @@ export default function App() {
               element={<ProtectedRoute><AviatorGame /></ProtectedRoute>}
             />
             <Route
+              path="/aviator"
+              element={<ProtectedRoute><AviatorGame /></ProtectedRoute>}
+            />
+            <Route
               path="/game/teenpatti"
               element={<ProtectedRoute><TeenPattiGame /></ProtectedRoute>}
             />
             <Route
+              path="/teenpatti"
+              element={<ProtectedRoute><TeenPattiGame /></ProtectedRoute>}
+            />
+            <Route
               path="/game/roulette"
+              element={
+                <ProtectedRoute>
+                  <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center text-ink-muted">Loading Roulette…</div>}>
+                    <RouletteGame />
+                  </Suspense>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/roulette"
               element={
                 <ProtectedRoute>
                   <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center text-ink-muted">Loading Roulette…</div>}>

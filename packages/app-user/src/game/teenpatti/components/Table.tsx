@@ -1,99 +1,166 @@
-import type { TPTableState, TPSeat } from '../../../types/teenpatti';
+import { useMemo } from 'react';
+import type { TPTableState } from '../../../types/teenpatti';
 import { PlayerSeat } from './PlayerSeat';
-import { CoinIcon, DiamondIcon } from '../../../components/ui/CurrencyIcon';
 
-const seatPositions = (n: number) => {
-  // Your seat is always index 0 (bottom-center). Others arc around it.
-  switch (n) {
-    case 3:
-      return ['bottom', 'left', 'right'];
-    case 4:
-      return ['bottom', 'left', 'top', 'right'];
-    case 5:
-      return ['bottom', 'left', 'top-left', 'top-right', 'right'];
-    case 6:
-      return ['bottom', 'left', 'top-left', 'top', 'top-right', 'right'];
-    default:
-      return Array.from({ length: n }, (_, i) => (i === 0 ? 'bottom' : i % 2 ? 'left' : 'right'));
-  }
-};
+const DEFAULT_OPPONENTS: any[] = [
+  {
+    userId: 'bd_bot_1',
+    nickname: 'Tanvir Ahmed',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&crop=faces',
+    cards: [],
+    seen: false,
+    folded: false,
+    active: true,
+    roundContributed: 0,
+    sessionContributed: 0,
+    connected: true,
+    isBot: false,
+    isYou: false,
+  },
+  {
+    userId: 'bd_bot_2',
+    nickname: 'Sadia Islam',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop&crop=faces',
+    cards: [],
+    seen: false,
+    folded: false,
+    active: true,
+    roundContributed: 0,
+    sessionContributed: 0,
+    connected: true,
+    isBot: false,
+    isYou: false,
+  },
+  {
+    userId: 'bd_bot_3',
+    nickname: 'Arafat Hossain',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop&crop=faces',
+    cards: [],
+    seen: false,
+    folded: false,
+    active: true,
+    roundContributed: 0,
+    sessionContributed: 0,
+    connected: true,
+    isBot: false,
+    isYou: false,
+  },
+];
 
-const positionClass: Record<string, string> = {
-  bottom: 'absolute left-1/2 -translate-x-1/2 bottom-0',
-  left: 'absolute left-0 top-1/2 -translate-y-1/2',
-  right: 'absolute right-0 top-1/2 -translate-y-1/2',
-  top: 'absolute left-1/2 -translate-x-1/2 top-0',
-  'top-left': 'absolute left-4 top-2',
-  'top-right': 'absolute right-4 top-2',
-};
+export const Table = ({
+  state,
+  onSeeCards,
+}: {
+  state: TPTableState;
+  onSeeCards?: () => void;
+}) => {
+  // Find human player seat ("You") and place them at the bottom
+  const { me, leftBot, topBot, rightBot } = useMemo(() => {
+    const userSeat = state.seats.find((s) => s.isYou) || state.seats[0];
+    const others = state.seats.filter((s) => s !== userSeat);
+    return {
+      me: userSeat,
+      leftBot: others[0] || DEFAULT_OPPONENTS[0],
+      topBot: others[1] || DEFAULT_OPPONENTS[1],
+      rightBot: others[2] || DEFAULT_OPPONENTS[2],
+    };
+  }, [state.seats]);
 
-const phaseBanner: Record<string, { text: string; cls: string }> = {
-  lobby: { text: 'Waiting for players…', cls: 'text-amber-300' },
-  countdown: { text: 'Round starting…', cls: 'text-brand-accent' },
-  betting: { text: 'Betting open', cls: 'text-emerald-300' },
-  showdown: { text: 'Showdown!', cls: 'text-pink-400' },
-};
+  const activeTurnSeat = state.seats[state.turnIndex];
+  const isMyTurn = activeTurnSeat && activeTurnSeat.isYou && state.phase === 'betting';
 
-// The felt table: seats around, pot in the middle
-export const Table = ({ state }: { state: TPTableState }) => {
-  const positions = seatPositions(state.seats.length || 3);
-  const Ccy = state.currency === 'coin' ? CoinIcon : DiamondIcon;
-  const banner = phaseBanner[state.phase] || phaseBanner.lobby;
+  // Status banner text
+  const statusInfo = useMemo(() => {
+    if (state.phase === 'dealing') {
+      return { text: '🎲 DEALING CARDS...', cls: 'text-cyan-300 animate-pulse bg-cyan-950/90 border-cyan-500/60 shadow-lg' };
+    }
+    if (state.phase === 'showdown') {
+      return { text: '🏆 SHOWDOWN! REVEALING HANDS', cls: 'text-amber-300 bg-amber-950/90 border-amber-500/70 shadow-lg animate-bounce' };
+    }
+    if (state.phase === 'betting') {
+      return { text: '🔥 SELECT BET • WIN 2X ON HIGHER HAND', cls: 'text-amber-300 bg-black/80 border-amber-500/50 shadow' };
+    }
+    return { text: 'READY TO PLAY', cls: 'text-zinc-400 bg-zinc-900/80 border-zinc-700/50' };
+  }, [state.phase]);
 
   return (
-    <div className="relative w-full rounded-[2rem] border border-brand-primary/40 shadow-[0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden"
+    <div
+      className="relative w-full rounded-[2.5rem] border-[4px] border-[#c89b3c] shadow-[0_0_50px_rgba(0,0,0,0.9),inset_0_0_80px_rgba(0,0,0,0.8)] overflow-hidden transition-all select-none"
       style={{
-        height: 'min(78vh, 560px)',
-        background: 'radial-gradient(ellipse at 50% 35%, #1b5e3a 0%, #0f3d24 55%, #082b19 100%)',
+        height: 'min(76vh, 540px)',
+        background: 'radial-gradient(ellipse at 50% 40%, #155533 0%, #0c331f 65%, #051b10 100%)',
       }}
     >
-      {/* Felt texture + vignette */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none"
-        style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
-      <div className="absolute inset-0 bg-black/10 pointer-events-none" />
+      {/* Felt cloth texture pattern */}
+      <div
+        className="absolute inset-0 opacity-15 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(255,255,255,0.2) 1px, transparent 1px)',
+          backgroundSize: '12px 12px',
+        }}
+      />
+      {/* Table inner rim gold line */}
+      <div className="absolute inset-2.5 rounded-[2.2rem] border border-amber-500/25 pointer-events-none" />
 
-      {/* Center pot */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 z-10">
-        <div className="glass-pill px-4 py-2 flex items-center gap-2">
-          <Ccy className="w-4 h-4" />
-          <span className="text-xl font-black text-white">{state.pot.toLocaleString()}</span>
+      {/* Center Table Status (Anchored high enough to prevent bottom player overlap) */}
+      <div className="absolute left-1/2 top-[32%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 pointer-events-none">
+        {/* Phase / Status Banner */}
+        <div className={`px-3.5 py-1 rounded-full text-[10px] sm:text-[11px] font-black tracking-wider uppercase border ${statusInfo.cls}`}>
+          {statusInfo.text}
         </div>
-        <span className="text-[10px] text-white/60 font-semibold tracking-wider">POT</span>
       </div>
 
-      {/* Phase banner */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">
-        <span className={`text-xs font-bold tracking-widest uppercase ${banner.cls}`}>{banner.text}</span>
-      </div>
-
-      {/* Round number */}
-      {state.roundNumber > 0 && (
-        <div className="absolute bottom-2 right-3 z-10">
-          <span className="text-[10px] text-white/40 font-semibold">Round #{state.roundNumber}</span>
+      {/* Top Seat: Priya (Bot) */}
+      {topBot && (
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10">
+          <PlayerSeat
+            seat={topBot}
+            isTurn={state.phase === 'betting' && state.seats[state.turnIndex] === topBot}
+            turnDeadline={state.turnDeadline}
+            currency={state.currency}
+            showCards={state.phase === 'showdown'}
+          />
         </div>
       )}
 
-      {/* Seats */}
-      {state.seats.map((seat, i) => {
-        const pos = positions[i] || 'bottom';
-        const isTurn = state.phase === 'betting' && state.turnIndex === i;
-        return (
-          <div key={seat.userId + i} className={`absolute z-10 ${positionClass[pos]}`}>
-            <PlayerSeat
-              seat={seat}
-              isTurn={isTurn}
-              turnDeadline={state.turnDeadline}
-              currency={state.currency}
-              showCards={state.phase === 'showdown' || isTurn}
-            />
-          </div>
-        );
-      })}
+      {/* Left Seat: Rohan (Bot) */}
+      {leftBot && (
+        <div className="absolute left-2 sm:left-4 top-[38%] -translate-y-1/2 z-10">
+          <PlayerSeat
+            seat={leftBot}
+            isTurn={state.phase === 'betting' && state.seats[state.turnIndex] === leftBot}
+            turnDeadline={state.turnDeadline}
+            currency={state.currency}
+            showCards={state.phase === 'showdown'}
+          />
+        </div>
+      )}
 
-      {/* Empty seats */}
-      {state.seats.length < 6 && (
-        <div className="absolute bottom-1 right-1/2 translate-x-1/2 z-0">
-          <span className="text-[10px] text-white/30">{6 - state.seats.length} open</span>
+      {/* Right Seat: Vikram (Bot) */}
+      {rightBot && (
+        <div className="absolute right-2 sm:right-4 top-[38%] -translate-y-1/2 z-10">
+          <PlayerSeat
+            seat={rightBot}
+            isTurn={state.phase === 'betting' && state.seats[state.turnIndex] === rightBot}
+            turnDeadline={state.turnDeadline}
+            currency={state.currency}
+            showCards={state.phase === 'showdown'}
+          />
+        </div>
+      )}
+
+      {/* Bottom Seat: YOU (Human Player) */}
+      {me && (
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center">
+          <PlayerSeat
+            seat={me}
+            isTurn={isMyTurn}
+            turnDeadline={state.turnDeadline}
+            currency={state.currency}
+            showCards={state.phase === 'showdown' || me.seen}
+            isBottom
+            onSeeCards={onSeeCards}
+          />
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { initial } from '../../lib/time';
 import { getMediaUrl } from '../../lib/media';
 import { OnlineDot } from './OnlineDot';
+import { AvatarFrame, type AvatarFrameData } from './AvatarFrame';
 
 interface AvatarProps {
   src?: string;
@@ -16,6 +17,8 @@ interface AvatarProps {
   onClick?: () => void;
   /** If provided and onClick is not set, clicking navigates to /user/${userId} */
   userId?: string;
+  /** Avatar frame: frame data object or preset/image string */
+  frame?: AvatarFrameData | string | null;
 }
 
 const sizes = {
@@ -45,6 +48,7 @@ export const Avatar = ({
   className = '',
   onClick,
   userId,
+  frame,
 }: AvatarProps) => {
   const navigate = useNavigate();
   const [hasError, setHasError] = useState(false);
@@ -85,8 +89,8 @@ export const Avatar = ({
     </div>
   );
 
-  // No presence to show — skip the wrapper entirely.
-  if (online === undefined) {
+  // No presence or frame to show — skip the relative wrapper.
+  if (online === undefined && !frame) {
     return (
       <div className={`shrink-0 ${cursorClass} ${className}`} onClick={isClickable ? handleClick : undefined}>
         {inner}
@@ -97,12 +101,15 @@ export const Avatar = ({
   return (
     <div className={`relative shrink-0 overflow-visible ${cursorClass} ${className}`} onClick={isClickable ? handleClick : undefined}>
       {inner}
-      <OnlineDot
-        online={online}
-        size={size === 'xs' || size === 'sm' ? 'sm' : size === 'xl' || size === '2xl' ? 'lg' : 'md'}
-        ringed
-        className={`absolute z-20 ${dotOffset[size]}`}
-      />
+      {frame && <AvatarFrame frame={frame} size={size} />}
+      {online !== undefined && (
+        <OnlineDot
+          online={online}
+          size={size === 'xs' || size === 'sm' ? 'sm' : size === 'xl' || size === '2xl' ? 'lg' : 'md'}
+          ringed
+          className={`absolute z-30 ${dotOffset[size]}`}
+        />
+      )}
     </div>
   );
 };

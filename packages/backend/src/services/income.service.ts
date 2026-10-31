@@ -46,6 +46,12 @@ export const incomeService = {
       }
 
       const amount = tx.amount || 0;
+      if (amount <= 0) continue;
+
+      const isCoin = tx.currency === 'coin';
+      const isSystemOrAdminTransfer =
+        tx.type === 'transfer' && /admin|system/i.test(tx.description || '');
+
       if (tx.type === 'gift_receive') {
         if (tx.sourceType === 'party') {
           partyPoints += amount;
@@ -54,26 +60,32 @@ export const incomeService = {
         }
       } else if (tx.type === 'call_earning') {
         livestreamPoints += amount;
-      } else if (tx.type === 'commission') {
+      } else if (tx.type === 'commission' && isCoin) {
         commissionPoints += amount;
+        platformRewardPoints += amount; // Agency commission can also be viewed in Platform Rewards
       } else if (
-        tx.type === 'transfer_in' ||
-        (tx.type === 'transfer' && (!tx.description || !/^Transferred /i.test(tx.description)))
+        !isSystemOrAdminTransfer &&
+        (tx.type === 'transfer_in' ||
+        (tx.type === 'transfer' && (!tx.description || !/^Transferred /i.test(tx.description))))
       ) {
         transferPoints += amount;
       } else if (
-        [
-          'daily_reward',
-          'game_win',
-          'task_reward',
-          'signin_reward',
-          'activity_reward',
-          'spin_reward',
-          'creator_reward',
-          'ranking_prize',
-          'referral_bonus',
-          'platform_rewards',
-        ].includes(tx.type)
+        isCoin &&
+        (
+          [
+            'daily_reward',
+            'task_reward',
+            'signin_reward',
+            'activity_reward',
+            'spin_reward',
+            'creator_reward',
+            'ranking_prize',
+            'referral_bonus',
+            'host_bonus',
+            'platform_rewards',
+          ].includes(tx.type) ||
+          isSystemOrAdminTransfer
+        )
       ) {
         platformRewardPoints += amount;
       }
@@ -105,8 +117,9 @@ export const incomeService = {
     limit: number = 20
   ) {
     const startDate = getRangeStartDate(range);
+    const userObjectId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
     const filter: any = {
-      userId,
+      userId: userObjectId,
       status: 'completed',
     };
     if (startDate) {
@@ -123,26 +136,44 @@ export const incomeService = {
       filter.sourceType = 'party';
     } else if (key === 'commission') {
       filter.type = 'commission';
+      filter.currency = 'coin';
     } else if (key === 'transfer') {
-      filter.$or = [
-        { type: 'transfer_in' },
-        { type: 'transfer', description: { $not: /^Transferred /i } },
+      filter.$and = [
+        {
+          $or: [
+            { type: 'transfer_in' },
+            { type: 'transfer', description: { $not: /^Transferred /i } },
+          ],
+        },
+        {
+          description: { $not: /admin|system/i },
+        },
       ];
     } else if (key === 'platform_rewards') {
-      filter.type = {
-        $in: [
-          'daily_reward',
-          'game_win',
-          'task_reward',
-          'signin_reward',
-          'activity_reward',
-          'spin_reward',
-          'creator_reward',
-          'ranking_prize',
-          'referral_bonus',
-          'platform_rewards',
-        ],
-      };
+      filter.currency = 'coin';
+      filter.$or = [
+        {
+          type: {
+            $in: [
+              'daily_reward',
+              'task_reward',
+              'signin_reward',
+              'activity_reward',
+              'spin_reward',
+              'creator_reward',
+              'ranking_prize',
+              'referral_bonus',
+              'host_bonus',
+              'platform_rewards',
+              'commission',
+            ],
+          },
+        },
+        {
+          type: 'transfer',
+          description: { $regex: /admin|system/i },
+        },
+      ];
     }
 
     const total = await Transaction.countDocuments(filter);

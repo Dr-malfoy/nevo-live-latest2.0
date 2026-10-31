@@ -1121,6 +1121,19 @@ export const ChatThread = () => {
       const msg = payload.message;
       setMessages((prev) => (prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]));
 
+      if (payload?.senderInfo && !isGroup) {
+        setOther((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            avatar: payload.senderInfo.avatar || prev.avatar,
+            nickname: payload.senderInfo.nickname || prev.nickname,
+            equippedFrame: payload.senderInfo.equippedFrame || prev.equippedFrame,
+            equippedBadge: payload.senderInfo.equippedBadge || prev.equippedBadge,
+          };
+        });
+      }
+
       if (msg.senderId !== user?._id) {
         chatApi.markRead(chatId).catch(() => {});
         socket.emit('chat:read', { chatId });
@@ -1786,6 +1799,7 @@ export const ChatThread = () => {
                     src={other?.avatar}
                     nickname={other?.nickname || '?'}
                     size="sm"
+                    frame={other?.equippedFrame || (other as any)?.equipped?.avatar_frame}
                     online={other?.online}
                     className={other?.isLive ? 'ring-1 ring-white' : ''}
                   />
@@ -1938,7 +1952,13 @@ export const ChatThread = () => {
                 <span className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 via-pink-500 to-amber-400 opacity-75 blur-xs animate-pulse" />
               )}
               <div className={other?.isLive ? 'relative p-[2.5px] rounded-full bg-gradient-to-tr from-rose-600 via-pink-500 to-rose-400 ring-2 ring-rose-500/50' : 'relative'}>
-                <Avatar src={other?.avatar} nickname={other?.nickname || '?'} size="lg" className="mx-auto mb-3" />
+                <Avatar
+                  src={other?.avatar}
+                  nickname={other?.nickname || '?'}
+                  size="lg"
+                  frame={other?.equippedFrame || (other as any)?.equipped?.avatar_frame}
+                  className="mx-auto mb-3"
+                />
               </div>
               {other?.isLive && (
                 <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-gradient-to-r from-rose-600 to-pink-600 text-white text-[9px] font-black uppercase tracking-wider shadow-md flex items-center gap-1 border border-white animate-pulse">
@@ -1979,8 +1999,12 @@ export const ChatThread = () => {
               );
             }
 
-            const mine = item.senderId === user?._id;
-            const senderObj = isGroup ? participantsMap.get(item.senderId) : null;
+            const senderIdStr = typeof item.senderId === 'object' ? (item.senderId?._id?.toString() || '') : String(item.senderId || '');
+            const mine = senderIdStr === user?._id?.toString();
+            const senderObj = participantsMap.get(senderIdStr) || (mine ? user : other);
+            const senderFrame = senderObj?.equippedFrame || (senderObj as any)?.equipped?.avatar_frame || (mine ? (user?.equippedFrame || (user as any)?.equipped?.avatar_frame) : (other?.equippedFrame || (other as any)?.equipped?.avatar_frame));
+            const senderAvatar = senderObj?.avatar || (mine ? user?.avatar : other?.avatar);
+            const senderNickname = senderObj?.nickname || (mine ? (user?.nickname || 'You') : (other?.nickname || '?'));
             const isGift = item.kind === 'gift';
             const resolvedGiftIcon = isGift ? resolveGiftIcon(item, giftList) : '';
             const isLastSent =
@@ -1998,10 +2022,11 @@ export const ChatThread = () => {
               <div key={item._id || index} className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
                 {!mine && (
                   <Avatar
-                    src={senderObj?.avatar || other?.avatar}
-                    nickname={senderObj?.nickname || other?.nickname || '?'}
+                    src={senderAvatar}
+                    nickname={senderNickname}
                     size="xs"
-                    className="mt-auto mb-1 ring-1 ring-black/5"
+                    frame={senderFrame}
+                    className="mt-auto mb-1 ring-1 ring-black/5 shrink-0"
                     userId={senderObj?._id || other?._id}
                   />
                 )}
@@ -2220,6 +2245,17 @@ export const ChatThread = () => {
                     </div>
                   )}
                 </div>
+
+                {mine && (
+                  <Avatar
+                    src={user?.avatar}
+                    nickname={user?.nickname || 'You'}
+                    size="xs"
+                    frame={user?.equippedFrame || (user as any)?.equipped?.avatar_frame}
+                    className="mt-auto mb-1 ring-1 ring-black/5 shrink-0"
+                    userId={user?._id}
+                  />
+                )}
               </div>
             );
           })
@@ -3034,7 +3070,12 @@ export const ChatThread = () => {
                   }}
                   className="flex items-center gap-3 py-2 px-1 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
                 >
-                  <Avatar src={p.avatar} nickname={p.nickname || '?'} size="sm" />
+                  <Avatar
+                    src={p.avatar}
+                    nickname={p.nickname || '?'}
+                    size="sm"
+                    frame={p.equippedFrame || p.equipped?.avatar_frame}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-xs font-bold text-ink truncate">
@@ -3099,7 +3140,12 @@ export const ChatThread = () => {
               addMemberResults.map((u: any) => (
                 <div key={u._id} className="flex items-center justify-between gap-2.5 py-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar src={u.avatar} nickname={u.nickname} size="sm" />
+                    <Avatar
+                      src={u.avatar}
+                      nickname={u.nickname}
+                      size="sm"
+                      frame={u.equippedFrame || u.equipped?.avatar_frame}
+                    />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-ink truncate">{u.nickname}</p>
                       {u.uid && <p className="text-[10px] text-ink-muted">UID: {u.uid}</p>}

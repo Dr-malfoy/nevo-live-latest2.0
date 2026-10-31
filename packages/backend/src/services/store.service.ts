@@ -338,59 +338,89 @@ export const storeService = {
     const user = await User.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
-    if (!user.equipped) {
-      user.equipped = {};
-    }
+    let updatedUser: any;
 
     if (equipped) {
-      // Unequip all items of the same category for this user
+      // 1. Unequip any existing items in the same category for this user
       await UserInventory.updateMany(
         { userId, category: inventory.category },
         { equipped: false }
       );
+
+      // 2. Mark this inventory item as equipped
       inventory.equipped = true;
       await inventory.save();
 
-      // Mirror onto user document
-      user.equipped[inventory.category] = inventory.itemId as any;
-
-      if (inventory.category === 'badge') {
-        const storeItem = await StoreItem.findById(inventory.itemId);
-        if (storeItem) {
-          user.equippedBadge = {
-            _id: storeItem._id as any,
+      // 3. Fetch StoreItem details to mirror onto User
+      const storeItem = await StoreItem.findById(inventory.itemId);
+      const equippedObj = storeItem
+        ? {
+            _id: storeItem._id,
             name: storeItem.name,
             image: storeItem.image,
             preview: storeItem.preview || storeItem.image,
             rarity: storeItem.rarity || undefined,
-          };
-        }
+          }
+        : null;
+
+      const setFields: any = {
+        [`equipped.${inventory.category}`]: inventory.itemId,
+      };
+      if (inventory.category === 'badge') {
+        setFields.equippedBadge = equippedObj;
+      }
+      if (inventory.category === 'avatar_frame') {
+        setFields.equippedFrame = equippedObj;
       }
 
-      user.markModified('equipped');
-      user.markModified('equippedBadge');
-      await user.save();
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $set: setFields },
+        { new: true }
+      );
     } else {
+      // 1. Mark this inventory item as unequipped
       inventory.equipped = false;
       await inventory.save();
 
-      if (user.equipped && user.equipped[inventory.category]?.toString() === inventory.itemId.toString()) {
-        delete user.equipped[inventory.category];
-        if (inventory.category === 'badge') {
-          user.equippedBadge = undefined;
-        }
-        user.markModified('equipped');
-        user.markModified('equippedBadge');
-        await user.save();
+      // 2. Clear category from equipped map and nullify badge/frame
+      const unsetFields: any = {
+        [`equipped.${inventory.category}`]: 1,
+      };
+      const setFields: any = {};
+      if (inventory.category === 'badge') {
+        setFields.equippedBadge = null;
       }
+      if (inventory.category === 'avatar_frame') {
+        setFields.equippedFrame = null;
+      }
+
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $unset: unsetFields, $set: setFields },
+        { new: true }
+      );
     }
+
+    // 4. Safely broadcast real-time update
+    try {
+      const io = getIO();
+      if (io) {
+        io.to(`user:${userId}`).emit('user:update', {
+          equippedBadge: updatedUser?.equippedBadge || null,
+          equippedFrame: updatedUser?.equippedFrame || null,
+          equipped: updatedUser?.equipped || {},
+        });
+      }
+    } catch {}
 
     return {
       inventoryId: inventory._id,
       category: inventory.category,
       equipped: inventory.equipped,
-      equippedBadge: user.equippedBadge,
-      equippedMap: user.equipped,
+      equippedBadge: updatedUser?.equippedBadge || null,
+      equippedFrame: updatedUser?.equippedFrame || null,
+      equippedMap: updatedUser?.equipped || {},
     };
   },
 };

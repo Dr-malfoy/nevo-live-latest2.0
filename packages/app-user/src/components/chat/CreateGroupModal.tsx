@@ -21,6 +21,8 @@ export interface PickedMember {
   avatar?: string;
   uid?: string;
   level?: number;
+  equippedFrame?: any;
+  equipped?: any;
 }
 
 interface CreateGroupModalProps {
@@ -299,7 +301,12 @@ export const CreateGroupModal = ({
                     key={user._id}
                     className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-full bg-rose-50 border border-rose-200/80 text-rose-900 text-xs font-semibold shadow-2xs animate-in zoom-in-95 duration-150"
                   >
-                    <Avatar src={user.avatar} nickname={user.nickname} size="xs" />
+                    <Avatar
+                      src={user.avatar}
+                      nickname={user.nickname}
+                      size="xs"
+                      frame={user.equippedFrame || (user as any).equipped?.avatar_frame}
+                    />
                     <span className="truncate max-w-[90px]">{user.nickname}</span>
                     <button
                       type="button"
@@ -333,7 +340,12 @@ export const CreateGroupModal = ({
                           : 'hover:bg-slate-50 border border-transparent'
                       }`}
                     >
-                      <Avatar src={u.avatar} nickname={u.nickname} size="sm" />
+                      <Avatar
+                        src={u.avatar}
+                        nickname={u.nickname}
+                        size="sm"
+                        frame={(u as any).equippedFrame || (u as any).equipped?.avatar_frame}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="font-bold text-xs text-slate-900 truncate">{u.nickname}</p>

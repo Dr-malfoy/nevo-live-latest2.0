@@ -3,4 +3,5 @@ export { FlightCanvas } from './FlightCanvas';
 export { BetPanel } from './BetPanel';
 export { LiveBets } from './LiveBets';
 export { HistoryPanel } from './HistoryPanel';
+export { BetsHistory } from './BetsHistory';
 export { ResultToast } from './ResultToast';

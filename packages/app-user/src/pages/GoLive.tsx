@@ -90,7 +90,7 @@ const TOPIC_SUGGESTIONS: Record<string, string[]> = {
   game: [
     'Live Gaming Showdown 🎮',
     'Playing with Fans 🕹️',
-    'Aviator High Stakes ✈️',
+    'Fly High Stakes ✈️',
     'Road to Top Ranking 🏆',
     'Casual Arcade Night 🎉',
   ],

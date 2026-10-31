@@ -11,52 +11,151 @@ import {
   HandResult,
 } from '../utils/teenpattiHand';
 
-// ─── Configuration (regulating conditions, mirrors Aviator) ──────────
-const MIN_BET = 1; // min stake
-const MAX_BET = 100000; // max stake (capped raise)
-const BOOT = 5; // ante per player per round
-const RAISE_MULT = 2; // a raise doubles the stake
-const MAX_RAISES = 4; // max raises per round
-const TURN_MS = 20000; // seconds per player turn (auto-fold on timeout)
-const COUNTDOWN_MS = 5000; // pre-round countdown once 3+ players seated
-const RESULT_MS = 6000; // result screen before next round
-const MIN_PLAYERS = 3;
-const MAX_PLAYERS = 6;
-const RTP = 0.97; // ~97% return to player → 3% house cut on the pot
+// ─── Configuration ───────────────────────────────────────────────────
+const MIN_BET = 5; // min bet per turn in diamonds
+const MAX_BET = 100000; // max bet
+const DEAL_DELAY_MS = 500; // brief card dealing animation before showdown reveal on felt
+const SHOWDOWN_DISPLAY_MS = 5000; // cards show on the deck for 5 seconds before result pop-up window
+const RESULT_RESET_MS = 8000; // auto-seat new players after result modal if left idle
 
-type Currency = 'diamond' | 'coin';
-type Action = 'fold' | 'call' | 'raise' | 'see';
+export type Currency = 'diamond' | 'coin';
+export type Action = 'fold' | 'call' | 'raise' | 'see' | 'show' | 'bet' | 'reset';
 
-interface Seat {
+// Authentic Bangladeshi player profiles — NO "(Bot)" tags!
+export const BANGLADESHI_PLAYERS = [
+  {
+    name: 'Tanvir Ahmed',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Sadia Islam',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Arafat Hossain',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Nusrat Jahan',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Shakib Hasan',
+    avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Mehedi Miraz',
+    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Tamim Iqbal',
+    avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Sabrina Sultana',
+    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Fahim Chowdhury',
+    avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Tasnim Rahman',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Rifat Karim',
+    avatar: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Nabila Akter',
+    avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Anik Roy',
+    avatar: 'https://images.unsplash.com/photo-1517070208541-6ddc4d3efbcb?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Mim Akter',
+    avatar: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Sabbir Khan',
+    avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Shanto Paul',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Rafiul Islam',
+    avatar: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Farhan Ahmed',
+    avatar: 'https://images.unsplash.com/photo-1513956589380-bad6acb9b9d4?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Sumaiya Khan',
+    avatar: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=120&h=120&fit=crop&crop=faces',
+  },
+  {
+    name: 'Mahmudul Hasan',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=faces',
+  },
+];
+
+// Pick 3 distinct random Bangladeshi opponents
+function pickRandomBangladeshiOpponents() {
+  const shuffled = [...BANGLADESHI_PLAYERS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 3).map((p, idx) => ({
+    userId: `bd_player_${idx + 1}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    nickname: p.name,
+    avatar: p.avatar,
+    socketIds: new Set<string>(),
+    seen: false,
+    folded: false,
+    active: true,
+    cards: [] as TPCard[],
+    roundContributed: 0,
+    sessionContributed: 0,
+    connected: true,
+    turnStartedAt: 0,
+    isBot: false, // NO "(Bot)" tags!
+  }));
+}
+
+export interface Seat {
   userId: string;
   nickname: string;
   avatar: string;
   socketIds: Set<string>;
-  seen: boolean; // saw cards (vs blind)
+  seen: boolean;
   folded: boolean;
-  active: boolean; // still in this round
+  active: boolean;
   cards: TPCard[];
-  roundContributed: number; // contributed this round
-  sessionContributed: number; // total staked at this table (for history chip display)
+  roundContributed: number;
+  sessionContributed: number;
   connected: boolean;
   turnStartedAt: number;
+  isBot?: boolean;
 }
 
-interface Table {
+export interface Table {
   id: string;
   currency: Currency;
   seats: Seat[];
-  phase: 'lobby' | 'countdown' | 'betting' | 'showdown';
+  phase: 'lobby' | 'countdown' | 'betting' | 'dealing' | 'showdown';
   pot: number;
-  stake: number; // current bet to match
-  roundContributed: number; // highest contributed by any player this round
+  stake: number;
+  roundContributed: number;
   raises: number;
-  turnIndex: number; // index into seats of the player to act
+  turnIndex: number;
   roundNumber: number;
   roundId: string | null;
   countdownTo: number;
   turnDeadline: number;
-  result: any; // last round result for display
+  result: any;
   timers: NodeJS.Timeout[];
   lock: Promise<any>;
 }
@@ -66,76 +165,72 @@ let running = false;
 const tables = new Map<string, Table>();
 const queues: Record<Currency, string[]> = { diamond: [], coin: [] };
 let queueEmitTimer: NodeJS.Timeout | null = null;
-const socketsByUser = new Map<string, Set<string>>(); // userId → socket ids
+const socketsByUser = new Map<string, Set<string>>();
 let nextTableId = 1;
 let nextRoundNumber = 0;
+const userWinStreaks = new Map<string, number>();
+const userSpinCounts = new Map<string, number>();
 
-const tableKey = (currency: Currency) => `tp:${currency}`;
 const getRoom = (tableId: string) => `teenpatti:${tableId}`;
 const getTable = (id: string) => tables.get(id);
 
 function makeId(): string {
-  return `t${Date.now().toString(36)}${(nextTableId++).toString(36)}`;
+  return `tp_${Date.now().toString(36)}_${(nextTableId++).toString(36)}`;
 }
 
 function broadcast(event: string, data: any) {
   try {
-    getIO().emit(event, data);
-    getIO().of('/teenpatti').emit(event, data);
-  } catch {
-    // socket not initialized yet
-  }
+    const io = getIO();
+    io.emit(event, data);
+    io.of('/teenpatti').emit(event, data);
+  } catch {}
 }
 
 function broadcastToTable(table: Table, event: string, data: any) {
   try {
-    getIO().to(getRoom(table.id)).emit(event, data);
-  } catch {
-    // socket not initialized yet
-  }
+    const io = getIO();
+    const room = getRoom(table.id);
+    io.to(room).emit(event, data);
+    io.of('/teenpatti').to(room).emit(event, data);
+  } catch {}
 }
 
-async function emitPrivate(table: Table, userId: string, event: string, data: any) {
+function pushBalance(userId: string, currency: Currency, newBalance: number) {
   try {
     const io = getIO();
-    const socketIds = socketsByUser.get(userId) || new Set<string>();
-    for (const sid of socketIds) {
-      const socket = io.sockets.sockets.get(sid);
-      if (socket) socket.emit(event, data);
-    }
-  } catch {
-    // socket not initialized
-  }
-}
-
-function pushBalance(userId: string, currency: Currency, amount: number) {
-  try {
-    getIO().to(`user:${userId}`).emit('balance:update', {
-      coins: currency === 'coin' ? amount : undefined,
-      diamonds: currency === 'diamond' ? amount : undefined,
+    const cleanBalance = Math.floor(newBalance);
+    io.to(`user:${userId}`).emit('balance:update', {
+      [currency === 'diamond' ? 'diamonds' : 'coins']: cleanBalance,
     });
-  } catch {
-    // socket not initialized
-  }
+  } catch {}
 }
 
-function seatState(s: Seat, self: boolean) {
+function seatState(seat: Seat, isYou: boolean, showAll = false) {
+  const cardsRevealed = showAll || (isYou && seat.seen);
+  const handRankName = seat.cards?.length === 3 && (showAll || isYou)
+    ? HAND_NAMES[evaluateHand(seat.cards).rank]
+    : undefined;
+
   return {
-    userId: s.userId,
-    nickname: s.nickname,
-    avatar: s.avatar,
-    seen: s.seen,
-    folded: s.folded,
-    active: s.active,
-    connected: s.connected,
-    roundContributed: s.roundContributed,
-    sessionContributed: s.sessionContributed,
-    cards: self ? s.cards : s.cards.map(() => ({ back: true })),
-    isYou: self,
+    userId: seat.userId,
+    nickname: seat.nickname,
+    avatar: seat.avatar,
+    seen: seat.seen,
+    folded: seat.folded,
+    active: seat.active,
+    connected: seat.connected,
+    roundContributed: seat.roundContributed,
+    sessionContributed: seat.sessionContributed,
+    isYou,
+    isBot: false,
+    handRankName,
+    cards: cardsRevealed
+      ? seat.cards
+      : seat.cards.map(() => ({ back: true })),
   };
 }
 
-function tableState(table: Table, userId?: string) {
+function tableState(table: Table, userId?: string, showAll = false) {
   return {
     tableId: table.id,
     currency: table.currency,
@@ -148,7 +243,7 @@ function tableState(table: Table, userId?: string) {
     turnIndex: table.turnIndex,
     countdownTo: table.phase === 'countdown' ? table.countdownTo : 0,
     turnDeadline: table.phase === 'betting' ? table.turnDeadline : 0,
-    seats: table.seats.map((s) => seatState(s, userId ? s.userId === userId : false)),
+    seats: table.seats.map((s) => seatState(s, userId ? s.userId === userId : false, showAll)),
   };
 }
 
@@ -172,24 +267,38 @@ function emitLobby(currency: Currency) {
 }
 
 function emitTable(table: Table) {
-  broadcastToTable(table, 'teenpatti:table', tableState(table));
-  // Private card delivery
-  for (const seat of table.seats) {
-    if (seat.cards.length) emitPrivate(table, seat.userId, 'teenpatti:cards', {
-      tableId: table.id,
-      cards: seat.cards,
-      seen: seat.seen,
-    });
-  }
+  try {
+    const io = getIO();
+    const showAll = table.phase === 'showdown';
+
+    // 1. Deliver personalized state directly to human player
+    for (const seat of table.seats) {
+      if (seat.connected && !seat.isBot) {
+        try {
+          const pState = tableState(table, seat.userId, showAll);
+          io.to(`user:${seat.userId}`).emit('teenpatti:table', pState);
+          if (seat.cards.length) {
+            io.to(`user:${seat.userId}`).emit('teenpatti:cards', {
+              tableId: table.id,
+              cards: seat.cards,
+              seen: seat.seen,
+            });
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Broadcast public state to the table room
+    broadcastToTable(table, 'teenpatti:table', tableState(table, undefined, showAll));
+  } catch {}
 }
 
-// Lock every table-mutating step so simultaneous socket actions can't interleave
 function withTable(table: Table, fn: () => Promise<void> | void): Promise<void> {
   const run = table.lock.then(async () => {
     try {
       await fn();
     } catch (e) {
-      console.error(`[TeenPatti] table ${table.id} step error:`, e);
+      console.error(`[TeenPatti] table ${table.id} error:`, e);
     }
   });
   table.lock = run.catch(() => undefined);
@@ -201,378 +310,347 @@ function clearTimers(table: Table) {
   table.timers = [];
 }
 
-function clearTurnTimer(table: Table) {
-  for (const t of table.timers) clearTimeout(t);
-  table.timers = [];
-}
-
 function seatOf(table: Table, userId: string): Seat | undefined {
   return table.seats.find((s) => s.userId === userId);
 }
 
-function activeSeats(table: Table): Seat[] {
-  return table.seats.filter((s) => s.active && !s.folded);
-}
-
-function nextTurnIndex(table: Table, from = table.turnIndex): number | null {
-  const n = table.seats.length;
-  for (let i = 1; i <= n; i++) {
-    const idx = (from + i) % n;
-    const s = table.seats[idx];
-    if (s.active && !s.folded) return idx;
+// Seat 3 random Bangladeshi players around the table
+function seatFreshOpponents(table: Table) {
+  const humanSeat = table.seats.find((s) => s.connected && !s.isBot);
+  const opponents = pickRandomBangladeshiOpponents();
+  if (humanSeat) {
+    table.seats = [humanSeat, ...opponents];
+  } else {
+    table.seats = opponents;
   }
-  return null;
 }
 
-function setTurn(table: Table, index: number) {
-  table.turnIndex = index;
-  table.turnDeadline = Date.now() + TURN_MS;
-  const seat = table.seats[index];
-  if (seat) seat.turnStartedAt = Date.now();
+// Controlled deal function ensuring realistic Teen Patti cards from a valid 52-card deck.
+// - When shouldUserWin === true: guarantees Seat 0 (Human Player) has the winning hand.
+// - When shouldUserWin === false: guarantees an opponent has a higher hand than Seat 0.
+function dealControlledHands(deck: TPCard[], shouldUserWin: boolean): TPCard[][] {
+  const hands: TPCard[][] = [
+    deck.slice(0, 3),   // Human Player (Seat 0)
+    deck.slice(3, 6),   // Opponent 1
+    deck.slice(6, 9),   // Opponent 2
+    deck.slice(9, 12),  // Opponent 3
+  ];
+
+  const evaluated = hands.map((h, idx) => ({
+    idx,
+    hand: evaluateHand(h),
+  }));
+
+  // Sort hands descending: best hand first (compareHands negative means a is better than b)
+  evaluated.sort((a, b) => compareHands(a.hand, b.hand));
+  const bestHandIdx = evaluated[0].idx;
+
+  if (shouldUserWin) {
+    // If Human is not holding the best hand, swap with the best hand
+    if (bestHandIdx !== 0) {
+      const temp = hands[0];
+      hands[0] = hands[bestHandIdx];
+      hands[bestHandIdx] = temp;
+    }
+  } else {
+    // Human should lose: ensure at least one opponent has a strictly better hand
+    const humanEval = evaluateHand(hands[0]);
+    const isHumanHighest = !evaluated.some(
+      (e) => e.idx !== 0 && compareHands(e.hand, humanEval) < 0
+    );
+
+    if (isHumanHighest) {
+      // Human is currently highest or tied: swap human hand with the lowest or second-best hand
+      const targetIdx = evaluated[evaluated.length - 1].idx !== 0
+        ? evaluated[evaluated.length - 1].idx
+        : evaluated[1].idx;
+      const temp = hands[0];
+      hands[0] = hands[targetIdx];
+      hands[targetIdx] = temp;
+    }
+  }
+
+  return hands;
 }
 
-function scheduleTurnTimeout(table: Table) {
-  const t = setTimeout(() => {
-    withTable(table, async () => {
-      if (table.phase !== 'betting') return;
-      const idx = table.turnIndex;
-      const seat = table.seats[idx];
-      if (!seat || !seat.active || seat.folded) return;
-      // Auto-fold on timeout
-      seat.folded = true;
-      seat.active = false;
-      await persistFolded(table, seat);
-      await afterAction(table, idx, 'fold');
-    });
-  }, TURN_MS + 300);
-  table.timers.push(t);
-}
-
-async function startRound(table: Table) {
-  clearTurnTimer(table);
+// Core Execution: Bet -> Deal -> Showdown -> 2X Winner Calculation
+async function executeBetRound(table: Table, humanSeat: Seat, betAmount: number) {
+  clearTimers(table);
   nextRoundNumber = (nextRoundNumber || 0) + 1;
   const roundNumber = nextRoundNumber;
 
   table.roundNumber = roundNumber;
+  table.stake = betAmount;
+  table.pot = betAmount * 4; // Human bet + 3 matched opponent bets
+  table.roundContributed = betAmount;
+  table.result = null;
+  table.phase = 'dealing';
+
+  // Dynamic 100-spin cycle & probability distribution:
+  // - 1000 💎: overall 35% win probability (higher probability between spins 15-90)
+  // - 500 💎: overall 40% win probability (higher probability between spins 15-90)
+  // - Other bets (10, 20, 50, 100 💎): overall 50% win probability (higher probability from spin 6 to 100)
+  // - Anti-consecutive streak: right after winning, back-to-back win is rare (~8-16%)
+  // - All outcomes are evaluated randomly per spin
+  const currentStreak = userWinStreaks.get(humanSeat.userId) || 0;
+  const userTotalSpins = (userSpinCounts.get(humanSeat.userId) || 0) + 1;
+  userSpinCounts.set(humanSeat.userId, userTotalSpins);
+  const cycleSpin = ((userTotalSpins - 1) % 100) + 1; // 1 to 100
+
+  let winChance: number;
+  if (betAmount >= 1000) {
+    // 1000 💎 bet -> 35% overall win rate
+    if (cycleSpin <= 14) {
+      winChance = currentStreak >= 1 ? 0.04 : 0.20;
+    } else if (cycleSpin <= 90) {
+      // Spins 15-90: High win probability phase
+      if (currentStreak >= 2) winChance = 0.02;
+      else if (currentStreak === 1) winChance = 0.10;
+      else winChance = 0.595;
+    } else {
+      winChance = currentStreak >= 1 ? 0.06 : 0.32;
+    }
+  } else if (betAmount >= 500) {
+    // 500 💎 bet -> 40% overall win rate
+    if (cycleSpin <= 14) {
+      winChance = currentStreak >= 1 ? 0.05 : 0.25;
+    } else if (cycleSpin <= 90) {
+      // Spins 15-90: High win probability phase
+      if (currentStreak >= 2) winChance = 0.02;
+      else if (currentStreak === 1) winChance = 0.12;
+      else winChance = 0.705;
+    } else {
+      winChance = currentStreak >= 1 ? 0.08 : 0.45;
+    }
+  } else {
+    // 10, 20, 50, 100 💎 bets -> 50% overall win rate
+    if (cycleSpin <= 5) {
+      winChance = currentStreak >= 1 ? 0.08 : 0.40;
+    } else {
+      // Spins 6-100: High win probability phase (after 5 spins)
+      if (currentStreak >= 2) winChance = 0.02;
+      else if (currentStreak === 1) winChance = 0.16;
+      else winChance = 0.89;
+    }
+  }
+  const shouldUserWin = Math.random() < winChance;
+
+  // Shuffle 52-card deck and deal controlled hands according to configured win rate
+  const deck = shuffleDeck(createDeck());
+  const dealtHands = dealControlledHands(deck, shouldUserWin);
+
+  table.seats.forEach((seat, idx) => {
+    seat.cards = dealtHands[idx];
+    // Reveal human user cards immediately on the table deck as soon as dealt!
+    seat.seen = seat.userId === humanSeat.userId;
+    seat.folded = false;
+    seat.active = true;
+    seat.roundContributed = betAmount;
+    seat.sessionContributed += betAmount;
+  });
+
+  // Save round in DB
+  try {
+    table.roundId = String((await TeenPattiRound.create({
+      roundNumber,
+      tableId: table.id,
+      currency: table.currency,
+      pot: table.pot,
+      stake: table.stake,
+      houseCut: 0,
+      status: 'betting',
+      startedAt: new Date(),
+    }))._id);
+
+    await TeenPattiBet.create({
+      userId: humanSeat.userId,
+      roundId: table.roundId,
+      currency: table.currency,
+      ante: betAmount,
+      totalBet: betAmount,
+      winAmount: 0,
+      status: 'playing',
+    });
+
+    await Transaction.create({
+      userId: humanSeat.userId,
+      type: 'game_bet',
+      amount: betAmount,
+      currency: table.currency,
+      status: 'completed',
+      description: `Teen Patti bet (${betAmount} 💎)`,
+    });
+  } catch (err) {
+    console.error('[TeenPatti] DB round creation error:', err);
+  }
+
+  // Emit table in dealing phase (cards dealt face down)
+  broadcastToTable(table, 'teenpatti:result', null);
+  emitTable(table);
+
+  // After dealing animation delay (1.4s), trigger Showdown!
+  const showdownTimer = setTimeout(() => {
+    withTable(table, async () => {
+      await executeShowdown(table, humanSeat, betAmount);
+    });
+  }, DEAL_DELAY_MS);
+  table.timers.push(showdownTimer);
+}
+
+// Showdown: Reveal all cards, compare hands, award 2X Diamonds on higher hand
+async function executeShowdown(table: Table, humanSeat: Seat, betAmount: number) {
+  table.phase = 'showdown';
+
+  // Reveal all cards
+  table.seats.forEach((s) => {
+    s.seen = true;
+  });
+
+  // Evaluate all 4 hands
+  const evaluated = table.seats.map((seat) => {
+    const hand = evaluateHand(seat.cards);
+    return {
+      seat,
+      hand,
+      handName: HAND_NAMES[hand.rank],
+    };
+  });
+
+  // Sort hands using official Teen Patti ranking rules
+  // compareHands: negative means a is better than b
+  const sorted = [...evaluated].sort((a, b) => compareHands(a.hand, b.hand));
+  const best = sorted[0];
+
+  // Check if Human User has the winning (highest) hand
+  const isHumanWinner = best.seat.userId === humanSeat.userId;
+  const winPayout = isHumanWinner ? Math.floor(betAmount * 2) : 0;
+
+  // Update consecutive win streak
+  if (isHumanWinner) {
+    const prevStreak = userWinStreaks.get(humanSeat.userId) || 0;
+    userWinStreaks.set(humanSeat.userId, prevStreak + 1);
+  } else {
+    userWinStreaks.set(humanSeat.userId, 0);
+  }
+
+  if (isHumanWinner) {
+    // Credit 2X Diamonds directly to user's MongoDB account!
+    try {
+      const updatedUser = await User.findByIdAndUpdate(
+        humanSeat.userId,
+        { $inc: { diamonds: winPayout } },
+        { new: true }
+      );
+      if (updatedUser) {
+        pushBalance(humanSeat.userId, 'diamond', updatedUser.diamonds);
+      }
+
+      if (table.roundId) {
+        await TeenPattiBet.updateOne(
+          { roundId: table.roundId, userId: humanSeat.userId },
+          { $set: { status: 'won', winAmount: winPayout, handRank: best.hand.rank, handName: best.handName } }
+        );
+        await Transaction.create({
+          userId: humanSeat.userId,
+          type: 'game_win',
+          amount: winPayout,
+          currency: 'diamond',
+          status: 'completed',
+          description: `Teen Patti 2X Win (${best.handName}) — ${winPayout} 💎`,
+        });
+      }
+    } catch (err) {
+      console.error('[TeenPatti] Payout error:', err);
+    }
+  } else {
+    // Human lost this round
+    if (table.roundId) {
+      const humanEval = evaluated.find((e) => e.seat.userId === humanSeat.userId);
+      await TeenPattiBet.updateOne(
+        { roundId: table.roundId, userId: humanSeat.userId },
+        { $set: { status: 'lost', handRank: humanEval?.hand.rank, handName: humanEval?.handName } }
+      ).catch(() => {});
+    }
+  }
+
+  if (table.roundId) {
+    await TeenPattiRound.updateOne(
+      { _id: table.roundId },
+      { $set: { status: 'ended', winnerId: best.seat.userId, endedAt: new Date() } }
+    ).catch(() => {});
+  }
+
+  // Construct Result Payload for client
+  const resultPayload = {
+    tableId: table.id,
+    pot: table.pot,
+    payout: winPayout,
+    isHumanWinner,
+    winners: [
+      {
+        userId: best.seat.userId,
+        nickname: best.seat.nickname,
+        handName: best.handName,
+        cards: best.seat.cards,
+        isBot: false,
+      },
+    ],
+    hands: evaluated.map((e) => ({
+      userId: e.seat.userId,
+      nickname: e.seat.nickname,
+      handName: e.handName,
+      cards: e.seat.cards,
+      folded: false,
+      isWinner: e.seat.userId === best.seat.userId,
+    })),
+    seats: table.seats.map((s) => seatState(s, s.userId === humanSeat.userId, true)),
+  };
+
+  // Cards remain visible on the felt deck for 5 seconds before the result pop-up window appears!
+  table.result = null;
+  emitTable(table);
+
+  // After 5 seconds of cards displaying on the table deck, pop up the winner modal window!
+  const popupTimer = setTimeout(() => {
+    withTable(table, async () => {
+      table.result = resultPayload;
+      broadcastToTable(table, 'teenpatti:result', resultPayload);
+      emitTable(table);
+    });
+  }, SHOWDOWN_DISPLAY_MS);
+  table.timers.push(popupTimer);
+
+  // Auto-reset fallback timer (5s deck card display + 8s result modal = 13s total)
+  const resetTimer = setTimeout(() => {
+    withTable(table, async () => {
+      resetTableForNextRound(table);
+    });
+  }, SHOWDOWN_DISPLAY_MS + RESULT_RESET_MS);
+  table.timers.push(resetTimer);
+}
+
+// Reset table and seat 3 fresh random Bangladeshi opponents
+function resetTableForNextRound(table: Table) {
+  clearTimers(table);
   table.phase = 'betting';
-  table.stake = MIN_BET;
-  table.roundContributed = 0;
-  table.raises = 0;
   table.pot = 0;
   table.result = null;
   table.roundId = null;
 
-  // Deal cards
-  const deck = shuffleDeck(createDeck());
-  const seatOrder = [...table.seats];
-  let ci = 0;
-  for (const seat of seatOrder) {
-    seat.cards = deck.slice(ci, ci + 3);
-    ci += 3;
+  // Seat 3 fresh random Bangladeshi opponents
+  seatFreshOpponents(table);
+
+  // Reset player cards
+  table.seats.forEach((seat) => {
+    seat.cards = [];
     seat.seen = false;
     seat.folded = false;
     seat.active = true;
     seat.roundContributed = 0;
-  }
-
-  // Ante (boot) — atomic deduction per player
-  for (const seat of seatOrder) {
-    const query = table.currency === 'diamond'
-      ? { _id: seat.userId, diamonds: { $gte: BOOT } }
-      : { _id: seat.userId, coins: { $gte: BOOT } };
-    const inc = table.currency === 'diamond' ? { diamonds: -BOOT } : { coins: -BOOT };
-    const updated = await User.findOneAndUpdate(query, { $inc: inc }, { new: true });
-    if (!updated) {
-      // Can't pay the boot → drop from the round (and stay seated)
-      seat.active = false;
-      seat.folded = true;
-      seat.cards = [];
-      continue;
-    }
-    seat.roundContributed = BOOT;
-    seat.sessionContributed += BOOT;
-    table.pot += BOOT;
-    pushBalance(seat.userId, table.currency, table.currency === 'diamond' ? updated.diamonds : updated.coins);
-  }
-
-  // Persist round + bets
-  table.roundId = String((await TeenPattiRound.create({
-    roundNumber,
-    tableId: table.id,
-    currency: table.currency,
-    pot: table.pot,
-    stake: table.stake,
-    houseCut: 0,
-    status: 'betting',
-    startedAt: new Date(),
-  }))._id);
-
-  for (const seat of table.seats) {
-    if (!seat.cards.length) continue;
-    await TeenPattiBet.create({
-      userId: seat.userId,
-      roundId: table.roundId,
-      currency: table.currency,
-      ante: BOOT,
-      totalBet: seat.roundContributed,
-      winAmount: 0,
-      status: 'playing',
-    });
-  }
-
-  await Transaction.create(
-    table.seats
-      .filter((s) => s.cards.length)
-      .map((s) => ({
-        userId: s.userId,
-        type: 'game_bet' as const,
-        amount: BOOT,
-        currency: table.currency,
-        status: 'completed' as const,
-        description: `Teen Patti boot (${BOOT} ${table.currency})`,
-      }))
-  );
-
-  // If fewer than 2 players can play, bail out
-  if (activeSeats(table).length < 2) {
-    await endRoundEarly(table, 'not enough players');
-    return;
-  }
-
-  const firstIdx = table.seats.findIndex((s) => s.active && !s.folded);
-  if (firstIdx >= 0) {
-    setTurn(table, firstIdx);
-    scheduleTurnTimeout(table);
-  }
-
-  emitTable(table);
-  broadcast('teenpatti:history', await getHistoryNumbers(table.currency));
-}
-
-async function persistContribution(table: Table, seat: Seat, amount: number) {
-  if (!table.roundId || amount <= 0) return;
-  await TeenPattiBet.updateOne(
-    { roundId: table.roundId, userId: seat.userId },
-    { $inc: { totalBet: amount } }
-  );
-  await Transaction.create({
-    userId: seat.userId,
-    type: 'game_bet',
-    amount,
-    currency: table.currency,
-    status: 'completed',
-    description: `Teen Patti bet (${amount} ${table.currency})`,
-  });
-}
-
-async function persistFolded(table: Table, seat: Seat) {
-  if (!table.roundId) return;
-  await TeenPattiBet.updateOne(
-    { roundId: table.roundId, userId: seat.userId },
-    { $set: { status: 'folded' } }
-  );
-}
-
-// After an action: check win-by-default, showdown, or advance turn
-async function afterAction(table: Table, fromIdx: number, _action: Action) {
-  const active = activeSeats(table);
-
-  if (active.length === 0) {
-    // Everyone folded (edge) — return the pot? Keep the house edge simple: roll back
-    await endRoundEarly(table, 'all folded');
-    return;
-  }
-
-  if (active.length === 1) {
-    // Single player left → they win the pot immediately
-    await showdown(table, [active[0]]);
-    return;
-  }
-
-  // Everyone active matched the stake → showdown
-  const allMatched = active.every((s) => s.roundContributed === table.roundContributed);
-  if (allMatched && table.roundContributed >= table.stake) {
-    await showdown(table, active);
-    return;
-  }
-
-  const next = nextTurnIndex(table, fromIdx);
-  if (next === null) {
-    await showdown(table, active);
-    return;
-  }
-  setTurn(table, next);
-  scheduleTurnTimeout(table);
-  emitTable(table);
-}
-
-async function endRoundEarly(table: Table, reason: string) {
-  // Refund contributions when there is no winner
-  for (const seat of table.seats) {
-    if (seat.roundContributed > 0) {
-      await User.updateOne({ _id: seat.userId }, { $inc: { [table.currency]: seat.roundContributed } });
-      pushBalance(seat.userId, table.currency, 0);
-    }
-    seat.roundContributed = 0;
-  }
-  if (table.roundId) {
-    await TeenPattiRound.updateOne({ _id: table.roundId }, { $set: { status: 'ended', endedAt: new Date() } });
-  }
-  table.result = { reason, seats: table.seats.map((s) => seatState(s, false)) };
-  table.phase = 'lobby';
-  clearTurnTimer(table);
-  broadcastToTable(table, 'teenpatti:result', table.result);
-  table.roundId = null;
-  emitTable(table);
-  emitLobby(table.currency);
-  table.countdownTo = Date.now() + COUNTDOWN_MS;
-  const t = setTimeout(() => {
-    withTable(table, async () => {
-      if (table.seats.length >= MIN_PLAYERS && table.phase === 'lobby') {
-        table.phase = 'countdown';
-        table.countdownTo = Date.now() + COUNTDOWN_MS;
-        emitTable(table);
-        const t2 = setTimeout(() => {
-          withTable(table, async () => {
-            if (table.seats.length >= MIN_PLAYERS && table.phase === 'countdown') {
-              await startRound(table);
-            }
-          });
-        }, COUNTDOWN_MS);
-        table.timers.push(t2);
-      }
-    });
-  }, RESULT_MS);
-  table.timers.push(t);
-}
-
-async function showdown(table: Table, contenders: Seat[]) {
-  clearTurnTimer(table);
-  table.phase = 'showdown';
-
-  const evaluated: { seat: Seat; hand: HandResult; name: string }[] = contenders.map((seat) => {
-    const hand = evaluateHand(seat.cards);
-    return { seat, hand, name: HAND_NAMES[hand.rank] };
   });
 
-  // Find best (ties split)
-  const best = evaluated.reduce((acc, e) => {
-    const c = compareHands(e.hand, acc.hand);
-    return c < 0 ? e : acc;
-  }, evaluated[0]);
-  const winners = evaluated.filter((e) => compareHands(e.hand, best.hand) === 0);
-
-  const houseCut = Math.round(table.pot * (1 - RTP));
-  const netPot = table.pot - houseCut;
-  const perWinner = Math.floor(netPot / winners.length);
-
-  for (const w of winners) {
-    const seat = w.seat;
-    await User.updateOne({ _id: seat.userId }, { $inc: { [table.currency]: perWinner } });
-    await TeenPattiBet.updateOne(
-      { roundId: table.roundId, userId: seat.userId },
-      { $set: { status: 'won', winAmount: perWinner, handRank: w.hand.rank, handName: w.name } }
-    );
-    await Transaction.create({
-      userId: seat.userId,
-      type: 'game_win',
-      amount: perWinner,
-      currency: table.currency,
-      status: 'completed',
-      description: `Teen Patti win (${w.name}) — ${perWinner} ${table.currency}`,
-    });
-    pushBalance(seat.userId, table.currency, 0);
-  }
-
-  // Mark losers
-  for (const seat of table.seats) {
-    if (!seat.cards.length) continue;
-    const isWinner = winners.some((w) => w.seat.userId === seat.userId);
-    if (!isWinner && seat.active && !seat.folded) {
-      await TeenPattiBet.updateOne(
-        { roundId: table.roundId, userId: seat.userId },
-        { $set: { status: 'lost', handRank: seat.cards.length ? evaluateHand(seat.cards).rank : undefined, handName: seat.cards.length ? HAND_NAMES[evaluateHand(seat.cards).rank] : undefined } }
-      );
-    }
-  }
-
-  await TeenPattiRound.updateOne(
-    { _id: table.roundId },
-    {
-      $set: {
-        status: 'ended',
-        endedAt: new Date(),
-        pot: table.pot,
-        houseCut,
-        winnerId: winners.length === 1 ? winners[0].seat.userId : undefined,
-      },
-    }
-  );
-
-  table.result = {
-    tableId: table.id,
-    winners: winners.map((w) => ({
-      userId: w.seat.userId,
-      nickname: w.seat.nickname,
-      handName: w.name,
-      cards: w.seat.cards,
-    })),
-    houseCut,
-    pot: table.pot,
-    payout: perWinner,
-    split: winners.length > 1,
-    hands: table.seats.filter((s) => s.cards.length).map((s) => ({
-      userId: s.userId,
-      nickname: s.nickname,
-      handName: s.cards.length ? HAND_NAMES[evaluateHand(s.cards).rank] : '—',
-      cards: s.cards,
-      folded: s.folded,
-    })),
-  };
-
-  // Reset for next round
-  for (const seat of table.seats) {
-    seat.roundContributed = 0;
-  }
-  table.pot = 0;
-  table.stake = MIN_BET;
-  table.roundContributed = 0;
-  table.raises = 0;
-  table.roundId = null;
-  table.phase = 'lobby';
-
-  broadcastToTable(table, 'teenpatti:result', table.result);
+  broadcastToTable(table, 'teenpatti:result', null);
   emitTable(table);
-  emitLobby(table.currency);
-  broadcast('teenpatti:history', await getHistoryNumbers(table.currency));
-
-  // Start next round after result window
-  const t = setTimeout(() => {
-    withTable(table, async () => {
-      if (table.seats.length >= MIN_PLAYERS && table.phase === 'lobby') {
-        table.phase = 'countdown';
-        table.countdownTo = Date.now() + COUNTDOWN_MS;
-        emitTable(table);
-        const t2 = setTimeout(() => {
-          withTable(table, async () => {
-            if (table.seats.length >= MIN_PLAYERS && table.phase === 'countdown') {
-              await startRound(table);
-            }
-          });
-        }, COUNTDOWN_MS);
-        table.timers.push(t2);
-      }
-    });
-  }, RESULT_MS);
-  table.timers.push(t);
-}
-
-async function getHistoryNumbers(currency: Currency) {
-  const rounds = await TeenPattiRound.find({ currency })
-    .sort({ roundNumber: -1 })
-    .limit(15)
-    .select('roundNumber pot winnerId endedAt houseCut');
-  return rounds;
 }
 
 async function createTable(currency: Currency): Promise<Table> {
@@ -580,12 +658,12 @@ async function createTable(currency: Currency): Promise<Table> {
     id: makeId(),
     currency,
     seats: [],
-    phase: 'lobby',
+    phase: 'betting',
     pot: 0,
-    stake: MIN_BET,
+    stake: 50,
     roundContributed: 0,
     raises: 0,
-    turnIndex: -1,
+    turnIndex: 0,
     roundNumber: 0,
     roundId: null,
     countdownTo: 0,
@@ -594,33 +672,28 @@ async function createTable(currency: Currency): Promise<Table> {
     timers: [],
     lock: Promise.resolve(),
   };
+
+  // Seat 3 random Bangladeshi opponents
+  table.seats = pickRandomBangladeshiOpponents();
   tables.set(table.id, table);
   return table;
 }
-
-// ─── Public API ──────────────────────────────────────────────────────
 
 export const teenPattiService = {
   async start() {
     if (running) return;
     running = true;
-    console.log('🃏 Teen Patti game engine started');
+    console.log('🃏 Teen Patti Bangladeshi Multiplayer Casino Engine Started');
 
-    // Seed the next round number from the DB (max + 1, like Aviator)
     const last = await TeenPattiRound.findOne().sort({ roundNumber: -1 }).select('roundNumber');
     nextRoundNumber = last?.roundNumber || 0;
 
-    // Reconcile orphaned bets from a previous run (same semantics as Aviator)
-    await TeenPattiBet.updateMany(
-      { status: 'playing' },
-      { $set: { status: 'lost' } }
-    );
+    await TeenPattiBet.updateMany({ status: 'playing' }, { $set: { status: 'lost' } });
     await TeenPattiRound.updateMany(
-      { status: { $in: ['betting', 'showdown'] } },
+      { status: { $in: ['betting', 'dealing', 'showdown'] } },
       { $set: { status: 'ended', endedAt: new Date() } }
     );
 
-    // Re-emit lobby state on a slow interval so a late-joining client syncs
     queueEmitTimer = setInterval(() => {
       broadcast('teenpatti:lobby', lobbyState('diamond'));
       broadcast('teenpatti:lobby', lobbyState('coin'));
@@ -643,19 +716,6 @@ export const teenPattiService = {
       set.delete(socket.id);
       if (set.size === 0) socketsByUser.delete(userId);
     }
-    // Disconnect mid-game → fold their active seat(s)
-    for (const table of tables.values()) {
-      const seat = seatOf(table, userId);
-      if (!seat || !seat.active || seat.folded || table.phase !== 'betting') continue;
-      withTable(table, async () => {
-        if (table.phase !== 'betting') return;
-        const idx = table.seats.indexOf(seat);
-        seat.folded = true;
-        seat.active = false;
-        await persistFolded(table, seat);
-        await afterAction(table, idx, 'fold');
-      });
-    }
   },
 
   async joinQueue(userId: string, currency: Currency) {
@@ -663,219 +723,158 @@ export const teenPattiService = {
     if (!user) throw new AppError('User not found', 404);
     if (user.isBanned) throw new AppError('You are not allowed to play', 403);
 
-    // Already seated somewhere → return that table
     for (const table of tables.values()) {
       if (table.currency !== currency) continue;
-      if (seatOf(table, userId)) return { tableId: table.id };
+      const existing = seatOf(table, userId);
+      if (existing) {
+        existing.connected = true;
+        return { tableId: table.id };
+      }
     }
 
-    // Remove from the other currency's queue if present
-    const other: Currency = currency === 'diamond' ? 'coin' : 'diamond';
-    queues[other] = queues[other].filter((id) => id !== userId);
-    if (!queues[currency].includes(userId)) queues[currency].push(userId);
+    const table = (await createTable(currency));
 
-    // Find an open lobby table
-    const candidates = [...tables.values()].filter(
-      (t) => t.currency === currency && t.phase === 'lobby' && t.seats.length < MAX_PLAYERS
-    );
-    const table = candidates[0] || (await createTable(currency));
+    // Seat Human Player at Seat 0
+    const humanSeat: Seat = {
+      userId,
+      nickname: user.nickname || 'Player',
+      avatar: user.avatar || '',
+      socketIds: new Set(),
+      seen: false,
+      folded: false,
+      active: true,
+      cards: [],
+      roundContributed: 0,
+      sessionContributed: 0,
+      connected: true,
+      turnStartedAt: 0,
+      isBot: false,
+    };
 
-    // Seat them (they may already be a member of this table from a previous round)
-    let seat = seatOf(table, userId);
-    if (!seat) {
-      seat = {
-        userId,
-        nickname: user.nickname || 'Player',
-        avatar: user.avatar || '',
-        socketIds: new Set(),
-        seen: false,
-        folded: false,
-        active: false,
-        cards: [],
-        roundContributed: 0,
-        sessionContributed: 0,
-        connected: true,
-        turnStartedAt: 0,
-      };
-      table.seats.push(seat);
-    } else {
-      seat.connected = true;
-      seat.nickname = user.nickname || seat.nickname;
-      seat.avatar = user.avatar || seat.avatar;
-    }
-    queues[currency] = queues[currency].filter((id) => id !== userId);
+    // Human player at bottom (Seat 0), with 3 random Bangladeshi opponents
+    table.seats = [humanSeat, ...pickRandomBangladeshiOpponents()];
 
     emitLobby(currency);
     emitTable(table);
-
-    // Start countdown when enough players
-    if (table.phase === 'lobby' && table.seats.length >= MIN_PLAYERS) {
-      table.phase = 'countdown';
-      table.countdownTo = Date.now() + COUNTDOWN_MS;
-      emitTable(table);
-      const t = setTimeout(() => {
-        withTable(table, async () => {
-          if (table.seats.length >= MIN_PLAYERS && table.phase === 'countdown') {
-            await startRound(table);
-          }
-        });
-      }, COUNTDOWN_MS);
-      table.timers.push(t);
-    }
 
     return { tableId: table.id, table: tableState(table, userId) };
   },
 
   async leaveTable(userId: string, currency: Currency) {
-    queues[currency] = queues[currency].filter((id) => id !== userId);
     for (const table of tables.values()) {
       if (table.currency !== currency) continue;
       const seat = seatOf(table, userId);
       if (!seat) continue;
 
-      if (table.phase === 'betting' && seat.active && !seat.folded) {
-        // Fold before leaving mid-round
-        const idx = table.seats.indexOf(seat);
-        seat.folded = true;
-        seat.active = false;
-        await persistFolded(table, seat);
-        await afterAction(table, idx, 'fold');
-      } else if (table.phase === 'betting' && seat.roundContributed > 0 && seat.folded) {
-        // Already folded this round — they leave after contribution is locked
-      } else {
-        // Lobby/countdown → remove seat and refund nothing owed (no money committed yet)
-        table.seats = table.seats.filter((s) => s.userId !== userId);
-        if (table.seats.length === 0) {
-          clearTimers(table);
-          tables.delete(table.id);
-        }
-        emitTable(table);
-        emitLobby(currency);
+      table.seats = table.seats.filter((s) => s.userId !== userId);
+      const hasHuman = table.seats.some((s) => s.connected && !s.isBot);
+      if (!hasHuman) {
+        clearTimers(table);
+        tables.delete(table.id);
       }
+      emitTable(table);
+      emitLobby(currency);
     }
   },
 
-  async playerAction(userId: string, tableId: string, action: Action, amount?: number) {
+  async playerAction(userId: string, tableId: string, action: Action, _amount?: number) {
     const table = getTable(tableId);
     if (!table) throw new AppError('Table not found', 404);
     const seat = seatOf(table, userId);
     if (!seat) throw new AppError('You are not at this table', 400);
 
-    if (table.phase === 'lobby') {
-      // They sat but round hasn't started — nothing to do
-      return { ok: true };
+    // Reset action: Immediately seat fresh Bangladeshi players and reset table
+    if (action === 'reset') {
+      await withTable(table, async () => {
+        resetTableForNextRound(table);
+      });
+      return { ok: true, action: 'reset' };
     }
-    if (table.phase === 'countdown') {
-      return { ok: true };
+
+    // See cards peek
+    if (action === 'see') {
+      seat.seen = true;
+      emitTable(table);
+      return { ok: true, action: 'see' };
     }
-    if (table.phase !== 'betting') throw new AppError('Betting is closed for this round', 400);
-    if (!seat.active || seat.folded) throw new AppError('You are no longer in this hand', 400);
-    if (table.turnIndex !== table.seats.indexOf(seat)) throw new AppError('It is not your turn', 400);
 
-    let result: any = { ok: true };
+    // Primary Bet Action: Place Diamond Bet -> Deal Cards -> Showdown -> 2X Payout
+    if (action === 'bet' || action === 'call') {
+      const betAmount = Math.max(MIN_BET, Math.floor(_amount || table.stake || 10));
 
-    await withTable(table, async () => {
-      if (table.phase !== 'betting') return;
-      if (!seat.active || seat.folded) return;
-      if (table.turnIndex !== table.seats.indexOf(seat)) return;
-
-      clearTurnTimer(table);
-
-      switch (action) {
-        case 'fold': {
-          seat.folded = true;
-          seat.active = false;
-          await persistFolded(table, seat);
-          result = { action: 'fold', contributed: seat.roundContributed };
-          break;
-        }
-        case 'see': {
-          if (seat.seen) throw new AppError('You already saw your cards', 400);
-          seat.seen = true;
-          // Blind → now plays at full stake
-          result = { action: 'see' };
-          break;
-        }
-        case 'call': {
-          const toPay = table.stake - seat.roundContributed;
-          if (toPay <= 0) {
-            result = { action: 'call', paid: 0 };
-            break;
-          }
-          const callQuery = table.currency === 'diamond'
-            ? { _id: userId, diamonds: { $gte: toPay } }
-            : { _id: userId, coins: { $gte: toPay } };
-          const callInc = table.currency === 'diamond' ? { diamonds: -toPay } : { coins: -toPay };
-          const updated = await User.findOneAndUpdate(callQuery, { $inc: callInc }, { new: true });
-          if (!updated) throw new AppError('Your balance is not enough', 400);
-          seat.roundContributed += toPay;
-          seat.sessionContributed += toPay;
-          table.pot += toPay;
-          table.roundContributed = Math.max(table.roundContributed, seat.roundContributed);
-          await persistContribution(table, seat, toPay);
-          pushBalance(userId, table.currency, table.currency === 'diamond' ? updated.diamonds : updated.coins);
-          result = { action: 'call', paid: toPay, contributed: seat.roundContributed };
-          break;
-        }
-        case 'raise': {
-          const target = Math.min(seat.seen ? table.stake * RAISE_MULT : Math.ceil(table.stake * RAISE_MULT / 2) * 2, MAX_BET);
-          const toPay = target - seat.roundContributed;
-          if (toPay <= 0) throw new AppError('Raise is too small', 400);
-          if (table.raises >= MAX_RAISES) throw new AppError('Maximum raises reached for this round', 400);
-          const raiseQuery = table.currency === 'diamond'
-            ? { _id: userId, diamonds: { $gte: toPay } }
-            : { _id: userId, coins: { $gte: toPay } };
-          const raiseInc = table.currency === 'diamond' ? { diamonds: -toPay } : { coins: -toPay };
-          const updated = await User.findOneAndUpdate(raiseQuery, { $inc: raiseInc }, { new: true });
-          if (!updated) throw new AppError('Your balance is not enough', 400);
-          seat.roundContributed += toPay;
-          seat.sessionContributed += toPay;
-          table.pot += toPay;
-          table.stake = target;
-          table.roundContributed = seat.roundContributed;
-          table.raises += 1;
-          await persistContribution(table, seat, toPay);
-          pushBalance(userId, table.currency, table.currency === 'diamond' ? updated.diamonds : updated.coins);
-          result = { action: 'raise', paid: toPay, stake: table.stake, contributed: seat.roundContributed };
-          break;
-        }
-        default:
-          throw new AppError('Invalid action', 400);
+      const user = await User.findById(userId).select('diamonds');
+      if (!user || (user.diamonds ?? 0) < betAmount) {
+        throw new AppError('Insufficient diamonds balance', 400);
       }
 
-      await afterAction(table, table.seats.indexOf(seat), action);
-      emitTable(table);
-    });
+      // Deduct bet amount in Diamonds
+      const updated = await User.findByIdAndUpdate(
+        userId,
+        { $inc: { diamonds: -betAmount } },
+        { new: true }
+      );
+      if (updated) {
+        pushBalance(userId, 'diamond', updated.diamonds);
+      }
 
-    return result;
+      await withTable(table, async () => {
+        await executeBetRound(table, seat, betAmount);
+      });
+
+      return { ok: true, action: 'bet', betAmount };
+    }
+
+    // Fold action
+    if (action === 'fold') {
+      seat.folded = true;
+      seat.active = false;
+      emitTable(table);
+      return { ok: true, action: 'fold' };
+    }
+
+    return { ok: true };
+  },
+
+  getState(tableId: string, userId?: string) {
+    const table = getTable(tableId);
+    if (!table) return null;
+    return tableState(table, userId, table.phase === 'showdown');
   },
 
   getLobbyState(currency: Currency) {
     return lobbyState(currency);
   },
 
-  getState(tableId: string, userId?: string) {
-    const table = getTable(tableId);
-    if (!table) return null;
-    return tableState(table, userId);
-  },
-
-  async getUserHistory(userId: string, page: number, limit: number) {
-    const total = await TeenPattiBet.countDocuments({ userId });
-    const data = await TeenPattiBet.find({ userId })
-      .populate('roundId', 'roundNumber pot winnerId endedAt houseCut currency')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
+  async getUserHistory(userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      TeenPattiBet.find({ userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('roundId', 'roundNumber pot winnerId endedAt houseCut currency')
+        .lean(),
+      TeenPattiBet.countDocuments({ userId }),
+    ]);
     return { data, total };
   },
 
   async getStats() {
-    const [totalBets, totalWins, rounds] = await Promise.all([
-      TeenPattiBet.countDocuments(),
-      TeenPattiBet.countDocuments({ status: 'won' }),
-      TeenPattiRound.countDocuments(),
+    const [totalRounds, totalBets, totalWins] = await Promise.all([
+      TeenPattiRound.countDocuments({ status: 'ended' }),
+      TeenPattiBet.aggregate([
+        { $group: { _id: null, total: { $sum: '$totalBet' }, count: { $sum: 1 } } },
+      ]),
+      TeenPattiBet.aggregate([
+        { $match: { status: 'won' } },
+        { $group: { _id: null, total: { $sum: '$winAmount' }, count: { $sum: 1 } } },
+      ]),
     ]);
-    return { totalBets, totalWins, rounds };
+    return {
+      totalRounds,
+      totalBetAmount: totalBets[0]?.total || 0,
+      totalWinAmount: totalWins[0]?.total || 0,
+      totalBetsPlaced: totalBets[0]?.count || 0,
+    };
   },
 };

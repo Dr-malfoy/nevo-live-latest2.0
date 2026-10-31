@@ -404,6 +404,7 @@ export const PublicProfile = () => {
                 nickname={profile.nickname}
                 size="2xl"
                 online={Boolean(profile.online)}
+                frame={profile.equippedFrame || (profile as any).equipped?.avatar_frame}
               />
               <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full pointer-events-none">
                 <ExpandIcon className="w-5 h-5 drop-shadow" />
@@ -487,7 +488,7 @@ export const PublicProfile = () => {
               <HostBadge badge={profile.hostBadge} size="sm" />
             )}
 
-            {((profile as any).sellerType === 'diamond_seller' || (profile as any).isDiamondSeller || (profile as any).diamondSellerBadge) && (
+            {((profile as any).sellerType === 'diamond_seller' || (profile as any).isDiamondSeller || (profile as any).diamondSellerBadge || profile.role === 'diamond_seller') && (
               <SellerBadge sellerType="diamond_seller" showLabel={true} />
             )}
 

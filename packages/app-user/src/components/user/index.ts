@@ -14,4 +14,5 @@ export { EditProfileSheet } from './EditProfileSheet';
 export { ProfileStatsRow } from './ProfileStatsRow';
 export { HostBadge, type HostBadgeType, type HostBadgeProps } from './HostBadge';
 export { EquippedBadge, type EquippedBadgeData } from './EquippedBadge';
+export { AvatarFrame, type AvatarFrameData } from './AvatarFrame';
 export { GenderSelectionModal } from './GenderSelectionModal';

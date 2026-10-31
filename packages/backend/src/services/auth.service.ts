@@ -26,7 +26,7 @@ const ensureAgentRole = async (user: any) => {
 
   // If user is an agency owner, they must be role 'agent' and not a host of their own agency
   const ownsAgency = await Agency.exists({ agentId: user._id });
-  if (ownsAgency && user.role !== 'agent') {
+  if (ownsAgency && user.role !== 'agent' && user.role !== 'admin' && user.role !== 'diamond_seller') {
     console.warn(`[Auth] User ${user.uid} is an agency owner but role is '${user.role}' — correcting to 'agent'`);
     user.role = 'agent';
     changed = true;

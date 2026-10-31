@@ -7,7 +7,7 @@ export interface TPCard {
   rank: number; // 2-14 (Ace = 14)
 }
 
-export type TPPhase = 'lobby' | 'countdown' | 'betting' | 'showdown';
+export type TPPhase = 'lobby' | 'countdown' | 'betting' | 'dealing' | 'showdown';
 
 export interface TPSeat {
   userId: string;
@@ -21,6 +21,8 @@ export interface TPSeat {
   sessionContributed: number;
   cards: (TPCard | { back: true })[];
   isYou: boolean;
+  isBot?: boolean;
+  handRankName?: string;
 }
 
 export interface TPTableState {
@@ -55,6 +57,7 @@ export interface TPWinnerInfo {
   nickname: string;
   handName: string;
   cards: TPCard[];
+  isBot?: boolean;
 }
 
 export interface TPHandInfo {
@@ -63,6 +66,8 @@ export interface TPHandInfo {
   handName: string;
   cards: TPCard[];
   folded: boolean;
+  isBot?: boolean;
+  isWinner?: boolean;
 }
 
 export interface TPResult {

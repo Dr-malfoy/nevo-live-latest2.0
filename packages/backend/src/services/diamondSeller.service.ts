@@ -246,7 +246,17 @@ export const diamondSellerService = {
       await app.save();
 
       // Automatically upgrade user to Diamond Seller role, badge, and sellerType
-      await User.findByIdAndUpdate(app.userId, {
+      const targetUserId = (app.userId as any)?._id || app.userId;
+      const userDoc = await User.findById(targetUserId);
+      if (userDoc) {
+        userDoc.role = 'diamond_seller';
+        userDoc.sellerType = 'diamond_seller';
+        userDoc.isDiamondSeller = true;
+        userDoc.diamondSellerBadge = true;
+        userDoc.isAgent = true;
+        await userDoc.save();
+      }
+      await User.findByIdAndUpdate(targetUserId, {
         $set: {
           role: 'diamond_seller',
           sellerType: 'diamond_seller',

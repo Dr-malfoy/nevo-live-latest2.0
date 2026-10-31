@@ -22,4 +22,13 @@ export const aviatorController = {
       next(error);
     }
   },
+
+  async getRecentRounds(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const rounds = await aviatorService.getHistoryNumbers();
+      sendSuccess(res, rounds);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

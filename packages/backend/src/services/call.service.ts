@@ -177,7 +177,7 @@ export const callService = {
     const token = generateAgoraToken(channel, 0, 'publisher');
     const callId = call._id.toString();
 
-    const initiatorProfile = await User.findById(initiatorId).select('nickname avatar').lean() as any;
+    const initiatorProfile = await User.findById(initiatorId).select('nickname avatar equippedFrame equipped').lean() as any;
     const invite = {
       callId,
       channel,
@@ -185,7 +185,13 @@ export const callService = {
       callSource: source,
       initiatorId,
       token,
-      initiator: initiatorProfile ? { nickname: initiatorProfile.nickname, avatar: initiatorProfile.avatar } : undefined,
+      initiator: initiatorProfile
+        ? {
+            nickname: initiatorProfile.nickname,
+            avatar: initiatorProfile.avatar,
+            equippedFrame: initiatorProfile.equippedFrame || initiatorProfile.equipped?.avatar_frame || null,
+          }
+        : undefined,
       participantCount: participants.length,
       maxParticipants: MAX_CALL_PARTICIPANTS,
       coinsPerMinute,

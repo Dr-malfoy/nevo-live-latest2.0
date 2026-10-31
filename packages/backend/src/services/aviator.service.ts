@@ -42,6 +42,7 @@ let phaseStartedAt = 0;
 let multiplier = 0;
 let currentRound: { roundId: string; roundNumber: number; crashPoint: number } | null = null;
 let liveBets: LiveBet[] = [];
+let cashedOutBets: any[] = [];
 let roundNumber = 0;
 let roundTimer: NodeJS.Timeout | null = null;
 
@@ -58,10 +59,14 @@ function broadcast(event: string, data: any) {
 
 function pushBalance(userId: string, currency: Currency, amount: number) {
   try {
-    getIO().to(`user:${userId}`).emit('balance:update', {
+    const payload = {
       coins: currency === 'coin' ? amount : undefined,
       diamonds: currency === 'diamond' ? amount : undefined,
-    });
+    };
+    getIO().to(`user:${userId}`).emit('balance:update', payload);
+    try {
+      getIO().of('/aviator').to(`user:${userId}`).emit('balance:update', payload);
+    } catch {}
   } catch {
     // socket not initialized
   }
@@ -119,11 +124,12 @@ async function startRound() {
   // Mark the previous round's active bets as lost
   if (liveBets.length > 0) {
     await AviatorBet.updateMany(
-      { _id: { $in: liveBets.filter((b) => b.target).map((b) => b._id) }, status: 'active' },
+      { _id: { $in: liveBets.map((b) => b._id) }, status: 'active' },
       { $set: { status: 'lost' } }
     );
   }
   liveBets = [];
+  cashedOutBets = [];
 
   phase = 'BET';
   multiplier = 0;
@@ -151,21 +157,37 @@ async function fly() {
 
 // Settle a bet at a given multiplier (atomic win credit)
 async function settleBet(bet: LiveBet, at: number) {
-  const win = Number((bet.betAmount * at).toFixed(2));
+  // Pure integer win diamonds (no decimal / dot values)
+  const win = Math.floor(bet.betAmount * at);
   await AviatorBet.updateOne(
     { _id: bet._id },
     { $set: { status: 'cashed_out', cashOutAt: at, winAmount: win } }
   );
-  await User.updateOne({ _id: bet.userId }, { $inc: { [bet.currency]: win } });
+  const updated = await User.findOneAndUpdate(
+    { _id: bet.userId },
+    { $inc: { diamonds: win } },
+    { new: true }
+  );
   await Transaction.create({
     userId: bet.userId,
     type: 'game_win',
     amount: win,
-    currency: bet.currency,
+    currency: 'diamond',
     status: 'completed',
-    description: `Aviator cash-out at ${at}x (bet ${bet.betAmount} ${bet.currency})`,
+    description: `Fly High cash-out at ${at}x (bet ${bet.betAmount} diamonds)`,
   });
-  pushBalance(bet.userId, bet.currency, 0);
+  if (updated) {
+    pushBalance(bet.userId, 'diamond', updated.diamonds);
+  }
+  cashedOutBets.push({
+    betId: bet._id,
+    userId: bet.userId,
+    betAmount: bet.betAmount,
+    status: 'cashed_out',
+    cashOutAt: at,
+    winAmount: win,
+  });
+  return updated;
 }
 
 // Auto cash-out when the multiplier reaches each bet's target
@@ -195,7 +217,7 @@ async function crash() {
   multiplier = currentRound?.crashPoint ?? MIN_CRASH;
 
   // Remaining active bets lose
-  const losers = liveBets.filter((b) => b.target > 0);
+  const losers = [...liveBets];
   if (losers.length > 0) {
     await AviatorBet.updateMany(
       { _id: { $in: losers.map((b) => b._id) }, status: 'active' },
@@ -209,7 +231,10 @@ async function crash() {
   broadcast('aviator:result', {
     roundNumber: currentRound?.roundNumber ?? 0,
     crashPoint: multiplier,
-    results: losers.map((b) => ({ betId: b._id, userId: b.userId, betAmount: b.betAmount, status: 'lost' })),
+    results: [
+      ...cashedOutBets,
+      ...losers.map((b) => ({ betId: b._id, userId: b.userId, betAmount: b.betAmount, status: 'lost' })),
+    ],
   });
 
   // Broadcast fresh history AFTER the round has crashed and saved to history
@@ -250,7 +275,7 @@ async function tick() {
 async function getHistoryNumbers() {
   const rounds = await AviatorRound.find({ status: 'crashed' })
     .sort({ roundNumber: -1 })
-    .limit(15)
+    .limit(25)
     .select('roundNumber crashPoint');
   return rounds.map((r) => ({
     roundNumber: r.roundNumber,
@@ -294,46 +319,44 @@ export const aviatorService = {
   },
 
   async placeBet(userId: string, data: { betAmount?: number; target?: number; currency?: Currency }) {
-    const { betAmount: rawAmount, target: rawTarget, currency = 'diamond' } = data;
+    const { betAmount: rawAmount, target: rawTarget } = data;
 
     if (phase !== 'BET' || !currentRound) {
       throw new AppError('Bets are closed for this round', 400);
     }
-    const betAmount = Number(rawAmount);
+    // Strictly integer bet amount in diamonds (no dot / decimals)
+    const betAmount = Math.floor(Number(rawAmount));
     if (!betAmount || betAmount < MIN_BET || betAmount > MAX_BET) {
-      throw new AppError(`Bet must be between ${MIN_BET} and ${MAX_BET}`, 400);
+      throw new AppError(`Bet must be between ${MIN_BET} and ${MAX_BET} diamonds`, 400);
     }
-    let target = Number(rawTarget);
-    if (!target || target < 1.01) target = 1.01;
+    // Manual cash-out by default (target = 0). Do NOT auto cash out at 1.01x!
+    let target = Number(rawTarget) || 0;
     if (target > MAX_CRASH) target = MAX_CRASH; // max 30x
-    if (currency !== 'diamond' && currency !== 'coin') {
-      throw new AppError('Invalid currency', 400);
-    }
+    const currency: Currency = 'diamond';
 
-    // Atomic balance check + deduct (race-safe, mirrors Roulette/TeenPatti)
-    const field = currency === 'diamond' ? 'diamonds' : 'coins';
+    // Atomic diamond balance check + deduct
     const updated = await User.findOneAndUpdate(
-      { _id: userId, [field]: { $gte: betAmount } },
-      { $inc: { [field]: -betAmount } },
+      { _id: userId, diamonds: { $gte: betAmount } },
+      { $inc: { diamonds: -betAmount } },
       { new: true }
     );
     if (!updated) {
-      throw new AppError('Your balance is not enough', 400);
+      throw new AppError('Your diamond balance is not enough', 400);
     }
 
     await Transaction.create({
       userId,
       type: 'game_bet',
       amount: betAmount,
-      currency,
+      currency: 'diamond',
       status: 'completed',
-      description: `Aviator bet (${betAmount} ${currency})`,
+      description: `Fly High bet (${betAmount} diamonds)`,
     });
 
     const bet = await AviatorBet.create({
       userId,
       roundId: currentRound.roundId,
-      currency,
+      currency: 'diamond',
       betAmount,
       target,
       status: 'active',
@@ -342,37 +365,43 @@ export const aviatorService = {
     liveBets.push({
       _id: String(bet._id),
       userId,
-      currency,
+      currency: 'diamond',
       betAmount,
       target,
     });
-    pushBalance(userId, currency, field === 'diamonds' ? updated.diamonds : updated.coins);
+    pushBalance(userId, 'diamond', updated.diamonds);
 
-    return { success: true, betId: String(bet._id), balance: field === 'diamonds' ? updated.diamonds : updated.coins };
+    return { success: true, betId: String(bet._id), balance: updated.diamonds };
   },
 
-  async cashOut(userId: string) {
+  async cashOut(userId: string, betId?: string) {
     if (phase !== 'PLAYING') {
       throw new AppError('Game is not flying', 400);
     }
 
-    const bet = liveBets.find(
-      (b) => b.userId === userId && b.target > 0
-    );
+    const bet = betId
+      ? liveBets.find((b) => b.userId === userId && b._id === betId)
+      : liveBets.find((b) => b.userId === userId);
+
     if (!bet) throw new AppError('No active bet found', 404);
 
     const at = multiplier;
-    await settleBet(bet, at);
+    const updated = await settleBet(bet, at);
     liveBets = liveBets.filter((b) => b._id !== bet._id);
     broadcastState();
 
-    return { betId: bet._id, cashOutAt: at, winAmount: Number((bet.betAmount * at).toFixed(2)) };
+    return {
+      betId: bet._id,
+      cashOutAt: at,
+      winAmount: Math.floor(bet.betAmount * at),
+      balance: updated?.diamonds,
+    };
   },
 
   async getUserHistory(userId: string, page: number, limit: number) {
     const total = await AviatorBet.countDocuments({ userId });
     const data = await AviatorBet.find({ userId })
-      .populate('roundId', 'crashPoint roundNumber')
+      .populate('roundId', 'crashPoint roundNumber status')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);

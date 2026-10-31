@@ -194,7 +194,7 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
     key: 'daily_games_arcade',
     title: 'Daily Games & Lucky Arcade',
     tagline: 'Play daily games, spin the wheel and collect coins!',
-    description: 'Test your luck with daily mini-games! Spin the Lucky Wheel, play Aviator, Roulette or Teen Patti to complete daily gaming milestones and collect coins!',
+    description: 'Test your luck with daily mini-games! Spin the Lucky Wheel, play Fly High, Roulette or Teen Patti to complete daily gaming milestones and collect coins!',
     banner: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=1200&auto=format&fit=crop&q=80',
     badge: 'DAILY GAMES',
     prizePool: 600000,
@@ -207,8 +207,8 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
     completedTasksCount: 0,
     claimableCoins: 0,
     tasks: [
-      { key: 'act_play_1_game_round', label: 'Play 1 round of any mini game', note: 'Play Lucky Spin, Roulette, Teen Patti or Aviator', metric: 'game_rounds', target: 1, unit: 'round', reward: { currency: 'coins', amount: 800 }, goTo: '/game', actionLabel: 'Play Games', order: 1, progress: 0, state: 'todo' },
-      { key: 'act_play_3_game_rounds', label: 'Play 3 rounds in Diamond games', note: 'Enjoy thrilling rounds in Aviator or Roulette', metric: 'game_rounds', target: 3, unit: 'rounds', reward: { currency: 'coins', amount: 1500 }, goTo: '/game', actionLabel: 'Play Games', order: 2, progress: 0, state: 'todo' },
+      { key: 'act_play_1_game_round', label: 'Play 1 round of any mini game', note: 'Play Lucky Spin, Roulette, Teen Patti or Fly High', metric: 'game_rounds', target: 1, unit: 'round', reward: { currency: 'coins', amount: 800 }, goTo: '/game', actionLabel: 'Play Games', order: 1, progress: 0, state: 'todo' },
+      { key: 'act_play_3_game_rounds', label: 'Play 3 rounds in Diamond games', note: 'Enjoy thrilling rounds in Fly High or Roulette', metric: 'game_rounds', target: 3, unit: 'rounds', reward: { currency: 'coins', amount: 1500 }, goTo: '/game', actionLabel: 'Play Games', order: 2, progress: 0, state: 'todo' },
     ],
     prizes: [
       { rankFrom: 1, rankTo: 1, amount: 120000, title: 'Arcade Master' },

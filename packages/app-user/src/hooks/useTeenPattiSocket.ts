@@ -29,7 +29,12 @@ export const useTeenPattiSocket = () => {
   useEffect(() => {
     if (!socket || !connected || !token) return;
 
-    const onTable = (t: TPTableState) => setTableState(t);
+    const onTable = (t: TPTableState) => {
+      setTableState(t);
+      if (t.phase === 'betting' || t.phase === 'dealing') {
+        setResult(null);
+      }
+    };
     const onCards = (c: TPCardsPayload) => setMyCards(c);
     const onLobby = (l: TPLobbyState) => setLobby(l);
     const onResult = (r: TPResult) => setResult(r);
@@ -81,7 +86,7 @@ export const useTeenPattiSocket = () => {
     socket?.emit('teenpatti:leave');
   };
 
-  const act = (action: 'fold' | 'call' | 'raise' | 'see', amount?: number) => {
+  const act = (action: 'fold' | 'call' | 'raise' | 'see' | 'show' | 'bet' | 'reset', amount?: number) => {
     if (!tableState) return;
     setBusy(true);
     socket?.emit('teenpatti:action', { action, tableId: tableState.tableId, amount }, (res: any) => {
@@ -108,5 +113,6 @@ export const useTeenPattiSocket = () => {
     join,
     leave,
     act,
+    clearResult: () => setResult(null),
   };
 };

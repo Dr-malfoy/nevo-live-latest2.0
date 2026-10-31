@@ -2,10 +2,10 @@ import { Server, Socket } from 'socket.io';
 import { teenPattiService } from '../services/teenpatti.service';
 import { verifyToken } from '../utils/jwt';
 
-const MAX_ACTIONS_PER_WINDOW = 5;
-const ACTION_WINDOW_MS = 5000;
+const MAX_ACTIONS_PER_WINDOW = 10;
+const ACTION_WINDOW_MS = 3000;
 
-// Per-socket abuse throttle: max 5 game actions per 5 seconds
+// Per-socket abuse throttle: max 10 game actions per 3 seconds
 function makeThrottle() {
   let timestamps: number[] = [];
   return () => {
@@ -30,7 +30,7 @@ export const registerTeenPattiSocket = (socket: Socket): void => {
       teenPattiService.bindSocket(socket, userId);
       const result = await teenPattiService.joinQueue(userId, currency);
       socket.join(`teenpatti:${result.tableId}`);
-      // Re-emit lobby + table to this socket (in case the broadcast missed it)
+      // Re-emit lobby + table to this socket
       socket.emit('teenpatti:lobby', teenPattiService.getLobbyState(currency));
       const tableState = teenPattiService.getState(result.tableId, userId);
       if (tableState) socket.emit('teenpatti:table', tableState);
@@ -47,7 +47,6 @@ export const registerTeenPattiSocket = (socket: Socket): void => {
     try {
       const userId = socket.data.user?.userId;
       if (!userId) return;
-      // Leave both currencies defensively
       await teenPattiService.leaveTable(userId, 'diamond');
       await teenPattiService.leaveTable(userId, 'coin');
       teenPattiService.unbindSocket(socket, userId);
@@ -59,6 +58,23 @@ export const registerTeenPattiSocket = (socket: Socket): void => {
     }
   });
 
+  socket.on('teenpatti:bet', async (data: any, ack?: any) => {
+    try {
+      const userId = socket.data.user?.userId;
+      if (!userId) return;
+      if (!allow()) throw new Error('Too many actions, slow down');
+      const tableId = data?.tableId;
+      if (!tableId) throw new Error('Missing tableId');
+      const amount = data?.amount || 10;
+      const result = await teenPattiService.playerAction(userId, tableId, 'bet', amount);
+      if (typeof ack === 'function') ack({ success: true, ...result });
+    } catch (err: any) {
+      socket.emit('error', { message: err?.message || 'Bet failed' });
+      if (err?.message?.includes('balance')) socket.emit('recharge');
+      if (typeof ack === 'function') ack({ success: false, error: err?.message });
+    }
+  });
+
   socket.on('teenpatti:action', async (data: any, ack?: any) => {
     try {
       const userId = socket.data.user?.userId;
@@ -66,10 +82,12 @@ export const registerTeenPattiSocket = (socket: Socket): void => {
       if (!allow()) {
         throw new Error('Too many actions, slow down');
       }
-      const action = data?.action as 'fold' | 'call' | 'raise' | 'see';
+      const action = data?.action as 'fold' | 'call' | 'raise' | 'see' | 'show' | 'bet' | 'reset';
       const tableId = data?.tableId;
       if (!tableId) throw new Error('Missing tableId');
-      if (!['fold', 'call', 'raise', 'see'].includes(action)) throw new Error('Invalid action');
+      if (!['fold', 'call', 'raise', 'see', 'show', 'bet', 'reset'].includes(action)) {
+        throw new Error('Invalid action');
+      }
 
       const result = await teenPattiService.playerAction(userId, tableId, action, data?.amount);
       socket.emit('success', 'Action sent');
@@ -98,13 +116,6 @@ export const registerTeenPattiHandlers = (io: Server): void => {
   });
 
   nsp.on('connection', (socket: Socket) => {
-    console.log(`[TeenPatti] Socket connected: ${socket.data.user?.uid || 'anonymous'}`);
     registerTeenPattiSocket(socket);
-
-    socket.on('disconnect', () => {
-      const userId = socket.data.user?.userId;
-      if (userId) teenPattiService.unbindSocket(socket, userId);
-      console.log(`[TeenPatti] Socket disconnected: ${socket.data.user?.uid || 'anonymous'}`);
-    });
   });
 };

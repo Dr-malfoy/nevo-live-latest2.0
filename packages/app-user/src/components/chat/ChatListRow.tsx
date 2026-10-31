@@ -50,6 +50,9 @@ export interface ChatRow {
     storyCount?: number;
     hasUnviewedStory?: boolean;
     note?: { text: string; emoji?: string } | null;
+    equippedFrame?: any;
+    equippedBadge?: any;
+    equipped?: any;
   };
   lastMessage?: string;
   lastMessageType?: 'text' | 'voice' | 'gift' | 'image';
@@ -343,6 +346,7 @@ export const ChatListRow = ({
                   src={other.avatar}
                   nickname={other.nickname || '?'}
                   size="md"
+                  frame={other.equippedFrame || (other as any).equipped?.avatar_frame}
                   online={other.online}
                   className="ring-2 ring-white"
                 />
@@ -364,6 +368,7 @@ export const ChatListRow = ({
                 src={other.avatar}
                 nickname={other.nickname || '?'}
                 size="md"
+                frame={other.equippedFrame || (other as any).equipped?.avatar_frame}
                 online={other.online}
                 className="ring-2 ring-white"
               />
@@ -373,6 +378,7 @@ export const ChatListRow = ({
               src={other.avatar}
               nickname={other.nickname || '?'}
               size="md"
+              frame={other.equippedFrame || (other as any).equipped?.avatar_frame}
               online={other.online}
               className="ring-1 ring-black/5"
             />

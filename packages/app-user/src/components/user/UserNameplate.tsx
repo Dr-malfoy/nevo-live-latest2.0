@@ -80,7 +80,7 @@ export const UserNameplate = ({
           <HostBadge badge={user.hostBadge} size={badgeSize === 'md' ? 'sm' : 'xs'} />
         )}
 
-        {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge) ? (
+        {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge || user.role === 'diamond_seller') ? (
           <SellerBadge sellerType="diamond_seller" showLabel={size === 'lg'} />
         ) : (
           user.sellerType && user.sellerType !== 'none' ? (

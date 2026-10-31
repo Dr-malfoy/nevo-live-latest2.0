@@ -56,7 +56,7 @@ export const HostBadge: React.FC<HostBadgeProps> = ({
     return (
       <span
         title="ALPHA HOST • Premium Host Badge (+5% Earning Bonus)"
-        className={`badge-alpha-3d inline-flex items-center select-none shadow-md cursor-default text-white shrink-0 ${cfg.container} ${className}`}
+        className={`badge-alpha-3d inline-flex items-center select-none shadow-md cursor-default text-white shrink-0 whitespace-nowrap ${cfg.container} ${className}`}
       >
         {/* α symbol with metallic gradient text */}
         <span
@@ -73,7 +73,7 @@ export const HostBadge: React.FC<HostBadgeProps> = ({
         />
 
         {showLabel && (
-          <span className={`${cfg.label} text-yellow-100 uppercase drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]`}>
+          <span className={`${cfg.label} text-yellow-100 uppercase drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)] whitespace-nowrap`}>
             ALPHA HOST
           </span>
         )}
@@ -85,7 +85,7 @@ export const HostBadge: React.FC<HostBadgeProps> = ({
     return (
       <span
         title="AURORA HOST • Premium Host Badge (+5% Earning Bonus)"
-        className={`badge-aurora-3d inline-flex items-center select-none shadow-md cursor-default text-white shrink-0 ${cfg.container} ${className}`}
+        className={`badge-aurora-3d inline-flex items-center select-none shadow-md cursor-default text-white shrink-0 whitespace-nowrap ${cfg.container} ${className}`}
       >
         {/* Northern Light Sparkle Icon */}
         <Sparkle
@@ -100,7 +100,7 @@ export const HostBadge: React.FC<HostBadgeProps> = ({
         />
 
         {showLabel && (
-          <span className={`${cfg.label} text-pink-50 uppercase drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]`}>
+          <span className={`${cfg.label} text-pink-50 uppercase drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] whitespace-nowrap`}>
             AURORA HOST
           </span>
         )}

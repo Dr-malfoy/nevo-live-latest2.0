@@ -24,12 +24,9 @@ export const registerAviatorSocket = (socket: Socket): void => {
 
   socket.on('aviator:join', async (_data: any, ack?: any) => {
     try {
-      const userId = socket.data.user?.userId;
-      if (!userId) return;
       socket.join('aviator:room');
       socket.emit('aviator:state', aviatorService.getState());
       socket.emit('aviator:history', await aviatorService.getHistoryNumbers());
-      socket.emit('success', 'Joined Aviator');
       if (typeof ack === 'function') ack({ success: true });
     } catch (err: any) {
       socket.emit('error', { message: err?.message || 'Failed to join' });
@@ -60,7 +57,10 @@ export const registerAviatorSocket = (socket: Socket): void => {
         currency: data?.currency,
       });
       socket.emit('success', 'Bet placed');
-      if (typeof ack === 'function') ack({ ...result });
+      if (typeof result.balance === 'number') {
+        socket.emit('balance:update', { diamonds: result.balance });
+      }
+      if (typeof ack === 'function') ack({ ...result, success: true });
     } catch (err: any) {
       socket.emit('error', { message: err?.message || 'Bet failed' });
       if (err?.message?.includes('balance')) socket.emit('recharge');
@@ -68,15 +68,19 @@ export const registerAviatorSocket = (socket: Socket): void => {
     }
   });
 
-  socket.on('aviator:cashOut', async (_data: any, ack?: any) => {
+  socket.on('aviator:cashOut', async (data: any, ack?: any) => {
     try {
       const userId = socket.data.user?.userId;
       if (!userId) return;
       if (!allow()) {
         throw new Error('Too many actions, slow down');
       }
-      const result = await aviatorService.cashOut(userId);
-      socket.emit('success', `Cashed out at ${result.cashOutAt}x — won ${result.winAmount}`);
+      const betId = data?.betId;
+      const result = await aviatorService.cashOut(userId, betId);
+      socket.emit('success', `Cashed out at ${result.cashOutAt}x — won ${result.winAmount} 💎`);
+      if (typeof result.balance === 'number') {
+        socket.emit('balance:update', { diamonds: result.balance });
+      }
       if (typeof ack === 'function') ack({ ...result, success: true });
     } catch (err: any) {
       socket.emit('error', { message: err?.message || 'Cash-out failed' });
@@ -102,6 +106,9 @@ export const registerAviatorHandlers = (io: Server): void => {
 
   nsp.on('connection', (socket: Socket) => {
     console.log(`[Aviator] Socket connected: ${socket.data.user?.uid || 'anonymous'}`);
+    if (socket.data.user?.userId) {
+      socket.join(`user:${socket.data.user.userId}`);
+    }
     registerAviatorSocket(socket);
 
     socket.on('disconnect', () => {

@@ -56,7 +56,7 @@ function isSequence(ranks: number[]): boolean {
   const sorted = [...ranks].sort((a, b) => a - b);
   // Straight: consecutive. A-2-3 counts as the HIGHEST sequence in Teen Patti.
   if (sorted[0] === 2 && sorted[1] === 3 && sorted[2] === 14) return true;
-  return sorted[2] - sorted[0] === 2;
+  return sorted[1] - sorted[0] === 1 && sorted[2] - sorted[1] === 1;
 }
 
 // Return the "high" value of a sequence: A-2-3 → 15 (beats K-Q-J = 14), else max rank

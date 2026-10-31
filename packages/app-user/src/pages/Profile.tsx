@@ -37,7 +37,7 @@ import {
   PiArrowsOutSimpleBold as ExpandIcon,
 } from 'react-icons/pi';
 import { useAuthStore, useSocketStore } from '../stores';
-import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge, SellerBadge } from '../components/user';
+import { Avatar, EditProfileSheet, ProfileStatsRow, UserNameplate, LiveLevelPill, WealthLevelPill, VipCapsule, LevelDetailSheet, HostBadge, EquippedBadge, SellerBadge, RoleTags } from '../components/user';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { ImageLightboxModal } from '../components/ui';
 import { ContactUsModal } from '../components/contact/ContactUsModal';
@@ -369,7 +369,13 @@ export const Profile = () => {
               aria-label="View Profile Picture"
               title="Click to view picture in original ratio"
             >
-              <Avatar src={user.avatar} nickname={user.nickname} size="xl" online />
+              <Avatar
+                src={user.avatar}
+                nickname={user.nickname}
+                size="xl"
+                online
+                frame={user.equippedFrame || (user as any).equipped?.avatar_frame}
+              />
               <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity rounded-full pointer-events-none">
                 <ExpandIcon className="w-5 h-5 drop-shadow" />
               </div>
@@ -387,7 +393,7 @@ export const Profile = () => {
                 {user.hostBadge && user.hostBadge !== 'none' && (
                   <HostBadge badge={user.hostBadge} size="sm" />
                 )}
-                {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge) && (
+                {((user as any).sellerType === 'diamond_seller' || (user as any).isDiamondSeller || (user as any).diamondSellerBadge || user.role === 'diamond_seller') && (
                   <SellerBadge sellerType="diamond_seller" showLabel={true} />
                 )}
                 {user.equippedBadge && (
@@ -408,6 +414,11 @@ export const Profile = () => {
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FF2D55] shrink-0 animate-pulse shadow-sm" />
                 <ChevronRight className="w-5 h-5 text-ink-muted group-hover:text-ink transition-colors" />
               </button>
+            </div>
+
+            {/* Role Tags (SYSTEM DEVELOPER, OFFICIAL, AGENT...) */}
+            <div className="mt-1">
+              <RoleTags user={user as any} size="sm" />
             </div>
 
             {/* Row 2: Live Level + Wealth Level + ID */}

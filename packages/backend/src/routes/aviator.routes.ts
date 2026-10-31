@@ -8,6 +8,9 @@ const router = Router();
 // User — own bet history
 router.get('/history', authenticate, aviatorController.getMyHistory);
 
+// Public — recent crashed rounds multiplier history
+router.get('/rounds', aviatorController.getRecentRounds);
+
 // Admin — game stats
 router.get('/stats', authenticate, requireAdmin, aviatorController.getStats);
 

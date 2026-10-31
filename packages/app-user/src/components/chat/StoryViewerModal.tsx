@@ -210,6 +210,7 @@ export const StoryViewerModal = ({
                 src={currentGroup.user.avatar}
                 nickname={currentGroup.user.nickname}
                 size="sm"
+                frame={(currentGroup.user as any)?.equippedFrame || (currentGroup.user as any)?.equipped?.avatar_frame}
                 className="w-full h-full"
               />
             </div>

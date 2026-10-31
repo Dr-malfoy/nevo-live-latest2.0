@@ -65,7 +65,6 @@ const TYPE_TO_SOURCE: Record<string, IncomeSource['key']> = {
   transfer: 'transfer',
   transfer_in: 'transfer',
   daily_reward: 'platform_rewards',
-  game_win: 'platform_rewards',
   task_reward: 'platform_rewards',
   signin_reward: 'platform_rewards',
   activity_reward: 'platform_rewards',
@@ -73,6 +72,8 @@ const TYPE_TO_SOURCE: Record<string, IncomeSource['key']> = {
   creator_reward: 'platform_rewards',
   ranking_prize: 'platform_rewards',
   referral_bonus: 'platform_rewards',
+  host_bonus: 'platform_rewards',
+  platform_rewards: 'platform_rewards',
 };
 
 const rangeStart = (range: IncomeRange): number => {
@@ -124,12 +125,26 @@ export const Income = () => {
       for (const row of rows) {
         if (new Date(row.createdAt).getTime() < since) continue;
         if (row.amount <= 0) continue;
+        if (row.currency && row.currency !== 'coin') continue; // only count Coins
 
         if (row.status === 'pending') {
           unconfirmed += row.amount;
           continue;
         }
         if (row.status !== 'completed') continue;
+
+        // Check if admin/system transfer
+        const isSystemTransfer = row.type === 'transfer' && /admin|system/i.test(row.description || '');
+        if (isSystemTransfer) {
+          totals['platform_rewards'] = (totals['platform_rewards'] || 0) + row.amount;
+          continue;
+        }
+
+        if (row.type === 'commission') {
+          totals['commission'] = (totals['commission'] || 0) + row.amount;
+          totals['platform_rewards'] = (totals['platform_rewards'] || 0) + row.amount;
+          continue;
+        }
 
         const key = TYPE_TO_SOURCE[row.type];
         if (!key) continue;

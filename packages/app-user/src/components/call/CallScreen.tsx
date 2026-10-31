@@ -952,6 +952,7 @@ export const CallScreen = ({
                   src={other?.avatar}
                   nickname={other?.nickname || '?'}
                   size="xl"
+                  frame={(other as any)?.equippedFrame || (other as any)?.equipped?.avatar_frame}
                   className="w-32 h-32 sm:w-40 sm:h-40 text-4xl font-black shadow-inner"
                 />
               </div>
@@ -1193,6 +1194,7 @@ export const CallScreen = ({
                 src={msg.sender.avatar}
                 nickname={msg.sender.nickname}
                 size="xs"
+                frame={(msg.sender as any)?.equippedFrame || (msg.sender as any)?.equipped?.avatar_frame || (msg.sender._id === currentUser?._id ? ((currentUser as any)?.equippedFrame || (currentUser as any)?.equipped?.avatar_frame) : undefined)}
                 className="shrink-0 mt-0.5"
               />
               <div className="min-w-0 flex-1">
@@ -1308,6 +1310,7 @@ export const CallScreen = ({
                           src={msg.sender.avatar}
                           nickname={msg.sender.nickname}
                           size="xs"
+                          frame={(msg.sender as any)?.equippedFrame || (msg.sender as any)?.equipped?.avatar_frame}
                           className="shrink-0 mb-1"
                         />
                       )}
@@ -1325,6 +1328,15 @@ export const CallScreen = ({
                         )}
                         <p className="break-words leading-relaxed font-medium">{msg.text}</p>
                       </div>
+                      {isMe && (
+                        <Avatar
+                          src={currentUser?.avatar}
+                          nickname={currentUser?.nickname || 'You'}
+                          size="xs"
+                          frame={(currentUser as any)?.equippedFrame || (currentUser as any)?.equipped?.avatar_frame}
+                          className="shrink-0 mb-1"
+                        />
+                      )}
                     </div>
                   );
                 })

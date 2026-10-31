@@ -41,4 +41,5 @@ export { default as videoRoutes } from './video.routes';
 export { default as historyRoutes } from './history.routes';
 export { default as achievementRoutes } from './achievement.routes';
 export { default as diamondSellerRoutes } from './diamondSeller.routes';
+export { default as luckySpinRoutes } from './luckySpin.routes';
 

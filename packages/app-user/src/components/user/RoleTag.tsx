@@ -1,9 +1,11 @@
-import { PiSealCheckFill as BadgeCheck, PiCoinsFill as Coins, PiMicrophoneFill as Mic, PiUsersFill as Users } from 'react-icons/pi';
+import { PiSealCheckFill as BadgeCheck, PiCoinsFill as Coins, PiMicrophoneFill as Mic, PiUsersFill as Users, PiCodeBold as CodeIcon } from 'react-icons/pi';
 import { IoDiamond } from 'react-icons/io5';
 import type { UserPublic, User } from '../../types';
 
-type RoleSource = Pick<UserPublic, 'role' | 'isAgent' | 'sellerType' | 'verification'> &
-  Partial<Pick<User, 'isAdmin' | 'isDiamondSeller'>>;
+type RoleSource = Partial<UserPublic> & Partial<User> & {
+  uid?: string;
+  isDeveloper?: boolean;
+};
 
 interface RoleTagsProps {
   user?: RoleSource | null;
@@ -17,16 +19,17 @@ interface TagSpec {
   key: string;
   label: string;
   className: string;
-  Icon: typeof Mic;
+  Icon: any;
 }
 
 /**
  * Requirement #3B — the role tag under the nickname.
  *
+ *   DEVELOPER   cyan/emerald neon
+ *   OFFICIAL    blue tick ✅
  *   HOST        red
  *   AGENT       blue
  *   COIN SELLER gold
- *   OFFICIAL    blue tick ✅
  *
  * A user can hold several at once (an agent who is also a coin seller), so
  * this returns a list rather than a single tag.
@@ -35,7 +38,25 @@ export function resolveRoleTags(user?: RoleSource | null): TagSpec[] {
   if (!user) return [];
   const tags: TagSpec[] = [];
 
-  // OFFICIAL outranks the rest — it goes first.
+  const isUser168012 = (user as any).uid === '168012';
+
+  // SYSTEM DEVELOPER: creator role. If user 168012 has their custom equipped developer badge,
+  // do not duplicate with a text role tag.
+  const hasEquippedDevBadge = Boolean(
+    (user as any).equippedBadge?.name?.toLowerCase()?.includes('dev') ||
+    isUser168012
+  );
+
+  if ((user as any).isDeveloper && !hasEquippedDevBadge) {
+    tags.push({
+      key: 'developer',
+      label: 'SYSTEM DEVELOPER',
+      className: 'relative overflow-hidden bg-gradient-to-r from-cyan-950 via-slate-900 to-emerald-950 text-cyan-300 border border-cyan-400/80 shadow-[0_0_8px_rgba(6,182,212,0.5)] font-black tracking-wider animate-pulse',
+      Icon: CodeIcon,
+    });
+  }
+
+  // OFFICIAL outranks the rest — it goes next.
   if (user.isAdmin || user.role === 'admin' || user.sellerType === 'official') {
     tags.push({
       key: 'official',
@@ -54,14 +75,16 @@ export function resolveRoleTags(user?: RoleSource | null): TagSpec[] {
     });
   }
 
-  if (user.role === 'diamond_seller' || user.sellerType === 'diamond_seller' || (user as any).isDiamondSeller) {
-    tags.push({
-      key: 'diamond_seller',
-      label: 'DIAMOND SELLER',
-      className: 'relative overflow-hidden bg-gradient-to-r from-cyan-950 via-slate-900 to-cyan-950 text-cyan-300 border border-cyan-400/60 shadow-[0_0_8px_rgba(6,182,212,0.4)] animate-diamond-glow font-black tracking-wide',
-      Icon: IoDiamond as any,
-    });
-  } else if (user.role === 'agent' || user.isAgent) {
+  // Diamond Seller has the official 3D animated SellerBadge next to their name/badge row.
+  // We do NOT duplicate it as a text role tag here to prevent double badge display.
+  const isDiamondSeller = Boolean(
+    user.role === 'diamond_seller' ||
+    user.sellerType === 'diamond_seller' ||
+    (user as any).isDiamondSeller ||
+    (user as any).diamondSellerBadge
+  );
+
+  if (!isDiamondSeller && (user.role === 'agent' || user.isAgent)) {
     tags.push({
       key: 'agent',
       label: 'AGENT',

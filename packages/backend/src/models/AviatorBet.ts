@@ -17,9 +17,9 @@ const aviatorBetSchema = new Schema<IAviatorBetDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     roundId: { type: Schema.Types.ObjectId, ref: 'AviatorRound', required: true, index: true },
-    currency: { type: String, enum: ['diamond', 'coin'], required: true },
-    betAmount: { type: Number, required: true, min: 0.01 },
-    target: { type: Number, default: 2.0, min: 1.01, max: 2.5 },
+    currency: { type: String, enum: ['diamond', 'coin'], default: 'diamond' },
+    betAmount: { type: Number, required: true, min: 1 },
+    target: { type: Number, default: 0 },
     cashOutAt: { type: Number },
     status: { type: String, enum: ['active', 'cashed_out', 'lost'], default: 'active' },
     winAmount: { type: Number, default: 0 },

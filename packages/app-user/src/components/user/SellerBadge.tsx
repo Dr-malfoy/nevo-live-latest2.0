@@ -5,6 +5,7 @@ export type SellerType = 'none' | 'official' | 'paylor' | 'diamond_seller';
 
 interface SellerBadgeProps {
   sellerType?: SellerType | string;
+  isDiamondSeller?: boolean;
   className?: string;
   showLabel?: boolean;
   size?: 'xs' | 'sm' | 'md' | 'lg';
@@ -100,13 +101,15 @@ export const AnimatedDiamondEmblem = ({ className = 'w-4 h-4' }: { className?: s
  */
 export const SellerBadge = ({
   sellerType,
+  isDiamondSeller = false,
   className = '',
   showLabel = false,
   size = 'sm',
 }: SellerBadgeProps) => {
-  if (!sellerType || sellerType === 'none') return null;
+  const isDiamond = isDiamondSeller || sellerType === 'diamond_seller';
+  if (!isDiamond && (!sellerType || sellerType === 'none')) return null;
 
-  if (sellerType === 'diamond_seller') {
+  if (isDiamond) {
     const emblemSize =
       size === 'xs' ? 'w-3.5 h-3.5' : size === 'lg' ? 'w-5 h-5' : 'w-4 h-4';
     const textPad =

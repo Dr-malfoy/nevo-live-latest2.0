@@ -34,7 +34,7 @@ export const GameHub = () => {
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 inline-block mb-1">
                 HOT 🚀
               </span>
-              <p className="text-base font-bold leading-tight drop-shadow-sm">Aviator</p>
+              <p className="text-base font-bold leading-tight drop-shadow-sm">Fly High</p>
               <p className="text-[11px] text-white/80 mt-0.5">Crash Game</p>
             </div>
             <div className="flex items-center justify-between z-10">

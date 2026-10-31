@@ -117,12 +117,20 @@ export interface IUserDocument extends Document {
     preview?: string;
     rarity?: string;
   };
+  equippedFrame?: {
+    _id?: Schema.Types.ObjectId | string;
+    name?: string;
+    image?: string;
+    preview?: string;
+    rarity?: string;
+  };
   noble?: INoble;
   isVip?: boolean;
   hasPurchasedDiamonds?: boolean;
   role: 'admin' | 'agent' | 'host' | 'user' | 'diamond_seller';
   isAgent: boolean;
   isAdmin: boolean;
+  isDeveloper?: boolean;
   isDiamondSeller?: boolean;
   diamondSellerBadge?: boolean;
   agencyId?: Schema.Types.ObjectId;
@@ -246,13 +254,8 @@ const userSchema = new Schema<IUserDocument>(
     guardians: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     guardedBy: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     equipped: { type: Schema.Types.Mixed, default: {} },
-    equippedBadge: {
-      _id: { type: Schema.Types.ObjectId, ref: 'StoreItem' },
-      name: { type: String },
-      image: { type: String },
-      preview: { type: String },
-      rarity: { type: String },
-    },
+    equippedBadge: { type: Schema.Types.Mixed, default: null },
+    equippedFrame: { type: Schema.Types.Mixed, default: null },
     noble: {
       type: { type: String, enum: ['silver', 'gold', 'platinum', 'diamond'] },
       expiry: Date,
@@ -265,6 +268,7 @@ const userSchema = new Schema<IUserDocument>(
     },
     isAgent: { type: Boolean, default: false },
     isAdmin: { type: Boolean, default: false },
+    isDeveloper: { type: Boolean, default: false },
     isDiamondSeller: { type: Boolean, default: false },
     diamondSellerBadge: { type: Boolean, default: false },
     isVip: { type: Boolean, default: false },
@@ -361,11 +365,14 @@ const userSchema = new Schema<IUserDocument>(
 // Derive boolean flags from role and diamond holdings/purchases
 userSchema.pre('save', function (next) {
   this.isAdmin = this.role === 'admin';
-  this.isAgent = this.role === 'agent' || this.role === 'diamond_seller';
-  if (this.role === 'diamond_seller' || this.sellerType === 'diamond_seller') {
+  if (this.role === 'diamond_seller' || this.sellerType === 'diamond_seller' || this.isDiamondSeller) {
+    this.role = 'diamond_seller';
+    this.sellerType = 'diamond_seller';
     this.isDiamondSeller = true;
     this.diamondSellerBadge = true;
+    this.isAgent = true;
   }
+  this.isAgent = this.role === 'agent' || this.role === 'diamond_seller';
   if ((this.diamonds && this.diamonds > 0) || this.hasPurchasedDiamonds || this.noble) {
     this.isVip = true;
   }

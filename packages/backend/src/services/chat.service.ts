@@ -4,6 +4,8 @@ import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
 import { pushNotificationService } from './pushNotification.service';
 
+const CHAT_USER_FIELDS = 'uid nickname avatar level sellerType verification country role isAgent agencyId callPricePerMinute lastActiveAt equippedFrame equipped equippedBadge';
+
 export const chatService = {
   async getOrCreateChat(userId: string, otherUserId: string) {
     if (userId === otherUserId) throw new AppError('Cannot chat with yourself', 400);
@@ -16,11 +18,11 @@ export const chatService = {
 
     let chat = await Chat.findOne({
       participants: { $all: pair },
-    }).populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
+    }).populate('participants', CHAT_USER_FIELDS);
 
     if (!chat) {
       chat = await Chat.create({ participants: pair });
-      chat = await Chat.populate(chat, { path: 'participants', select: 'uid nickname avatar level sellerType verification country callPricePerMinute role' });
+      chat = await Chat.populate(chat, { path: 'participants', select: CHAT_USER_FIELDS });
     }
 
     const otherDoc = (chat.participants as any[]).find((p: any) => p._id.toString() !== userId);
@@ -31,6 +33,8 @@ export const chatService = {
         .lean();
       otherData = {
         ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+        equippedFrame: otherDoc.equippedFrame || (otherDoc as any).equipped?.avatar_frame || null,
+        equippedBadge: otherDoc.equippedBadge || (otherDoc as any).equipped?.badge || null,
         isLive: Boolean(activeStream),
         liveStreamId: activeStream ? activeStream._id.toString() : null,
         liveStream: activeStream || null,
@@ -91,7 +95,7 @@ export const chatService = {
     });
 
     const populated = await Chat.findById(chat._id)
-      .populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
+      .populate('participants', CHAT_USER_FIELDS);
 
     try {
       const io = getIO();
@@ -143,7 +147,7 @@ export const chatService = {
     });
 
     const populated = await Chat.findById(chat._id)
-      .populate('participants', 'uid nickname avatar level sellerType verification country callPricePerMinute role');
+      .populate('participants', CHAT_USER_FIELDS);
 
     try {
       const io = getIO();
@@ -191,7 +195,7 @@ export const chatService = {
     }
 
     const populated = await Chat.findById(chat._id)
-      .populate('participants', 'uid nickname avatar level sellerType verification country lastActiveAt callPricePerMinute role');
+      .populate('participants', CHAT_USER_FIELDS);
 
     const formatted = {
       ...(populated ? populated.toObject() : {}),
@@ -224,7 +228,7 @@ export const chatService = {
 
   async getChatById(chatId: string, userId: string): Promise<any> {
     const chat = await Chat.findOne({ _id: chatId, participants: userId })
-      .populate('participants', 'uid nickname avatar level sellerType verification country lastActiveAt callPricePerMinute role');
+      .populate('participants', CHAT_USER_FIELDS);
     if (!chat) throw new AppError('Chat not found', 404);
 
     const isGroup = chat.type === 'group';
@@ -248,6 +252,8 @@ export const chatService = {
           .lean();
         otherData = {
           ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+          equippedFrame: otherDoc.equippedFrame || (otherDoc as any).equipped?.avatar_frame || null,
+          equippedBadge: otherDoc.equippedBadge || (otherDoc as any).equipped?.badge || null,
           isLive: Boolean(activeStream),
           liveStreamId: activeStream ? activeStream._id.toString() : null,
           liveStream: activeStream || null,
@@ -268,7 +274,7 @@ export const chatService = {
 
     const total = await Chat.countDocuments({ participants: userId });
     let chats = await Chat.find({ participants: userId })
-      .populate('participants', 'uid nickname avatar level sellerType verification country role isAgent agencyId callPricePerMinute')
+      .populate('participants', CHAT_USER_FIELDS)
       .populate('lastMessageBy', 'uid nickname')
       .sort({ lastMessageAt: -1 })
       .skip((page - 1) * limit)
@@ -353,6 +359,8 @@ export const chatService = {
         } else if (otherDoc) {
           other = {
             ...(otherDoc.toObject ? otherDoc.toObject() : otherDoc),
+            equippedFrame: otherDoc.equippedFrame || (otherDoc as any).equipped?.avatar_frame || null,
+            equippedBadge: otherDoc.equippedBadge || (otherDoc as any).equipped?.badge || null,
             isFriend,
             isFollowing,
             isAgency,
@@ -603,7 +611,7 @@ export const chatService = {
 
     if (otherParticipants.length > 0) {
       try {
-        const senderDoc = await User.findById(senderId).select('nickname avatar uid').lean();
+        const senderDoc = await User.findById(senderId).select('nickname avatar uid equippedFrame equipped equippedBadge').lean();
         const senderName = senderDoc?.nickname || 'Someone';
 
         for (const p of otherParticipants) {
@@ -616,6 +624,8 @@ export const chatService = {
               senderInfo: {
                 nickname: senderName,
                 avatar: senderDoc?.avatar,
+                equippedFrame: senderDoc?.equippedFrame || (senderDoc as any)?.equipped?.avatar_frame || null,
+                equippedBadge: senderDoc?.equippedBadge || (senderDoc as any)?.equipped?.badge || null,
               },
             });
           } catch {
@@ -741,7 +751,7 @@ export const chatService = {
       const fallbackUsers = await User.find({ _id: { $ne: userId } })
         .sort({ lastActiveAt: -1, level: -1 })
         .limit(15)
-        .select('uid nickname avatar level country lastActiveAt')
+        .select('uid nickname avatar level country lastActiveAt equippedFrame equipped equippedBadge')
         .lean();
 
       return fallbackUsers.map((u: any) => ({
@@ -751,13 +761,15 @@ export const chatService = {
         avatar: u.avatar,
         level: u.level,
         country: u.country,
+        equippedFrame: u.equippedFrame || u.equipped?.avatar_frame || null,
+        equippedBadge: u.equippedBadge || u.equipped?.badge || null,
         online: u.lastActiveAt ? Date.now() - new Date(u.lastActiveAt).getTime() < 10 * 60_000 : false,
         relationship: 'suggested',
       }));
     }
 
     const userDocs = await User.find({ _id: { $in: idsArray } })
-      .select('uid nickname avatar level country lastActiveAt settings')
+      .select('uid nickname avatar level country lastActiveAt settings equippedFrame equipped equippedBadge')
       .lean();
 
     let io: any = null;
@@ -800,6 +812,8 @@ export const chatService = {
         avatar: u.avatar,
         level: u.level,
         country: u.country,
+        equippedFrame: u.equippedFrame || u.equipped?.avatar_frame || null,
+        equippedBadge: u.equippedBadge || u.equipped?.badge || null,
         online,
         liveStreamId,
         relationship,

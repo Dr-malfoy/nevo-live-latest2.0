@@ -258,6 +258,68 @@ export const FleurEmblem = ({ className = 'w-4 h-4' }: { className?: string }) =
   </svg>
 );
 
+export const DeveloperEmblem = ({ className = 'w-4 h-4' }: { className?: string }) => (
+  <svg viewBox="0 0 32 32" className={`shrink-0 drop-shadow-[0_1px_4px_rgba(0,240,255,0.85)] ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="devHexGrad" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#00F0FF" />
+        <stop offset="50%" stopColor="#0080FF" />
+        <stop offset="100%" stopColor="#7000FF" />
+      </linearGradient>
+      <linearGradient id="devCodeGrad" x1="8" y1="8" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FFFFFF" />
+        <stop offset="50%" stopColor="#7DF9FF" />
+        <stop offset="100%" stopColor="#00F0FF" />
+      </linearGradient>
+    </defs>
+    {/* Cyber Hexagon Plate */}
+    <polygon points="16,2 29,9 29,23 16,30 3,23 3,9" fill="#031122" stroke="url(#devHexGrad)" strokeWidth="1.5" />
+    {/* Inner Microchip Core */}
+    <polygon points="16,6 25,11 25,21 16,26 7,21 7,11" fill="url(#devHexGrad)" opacity="0.35" />
+    {/* Circuit lines */}
+    <line x1="3" y1="16" x2="7" y2="16" stroke="#00F0FF" strokeWidth="1" />
+    <line x1="25" y1="16" x2="29" y2="16" stroke="#00F0FF" strokeWidth="1" />
+    <line x1="16" y1="2" x2="16" y2="6" stroke="#00F0FF" strokeWidth="1" />
+    <line x1="16" y1="26" x2="16" y2="30" stroke="#00F0FF" strokeWidth="1" />
+    {/* Glowing Code Brackets < / > */}
+    <path d="M11 12L7 16L11 20" stroke="url(#devCodeGrad)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M21 12L25 16L21 20" stroke="url(#devCodeGrad)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="18" y1="11" x2="14" y2="21" stroke="#00F0FF" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+
+export const SovereignEmblem = ({ className = 'w-4 h-4' }: { className?: string }) => (
+  <svg viewBox="0 0 32 32" className={`shrink-0 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sovGold" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FFF9C4" />
+        <stop offset="25%" stopColor="#FFD54F" />
+        <stop offset="60%" stopColor="#FFA000" />
+        <stop offset="100%" stopColor="#E65100" />
+      </linearGradient>
+      <linearGradient id="sovRuby" x1="12" y1="10" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FF5252" />
+        <stop offset="50%" stopColor="#D50000" />
+        <stop offset="100%" stopColor="#880E4F" />
+      </linearGradient>
+      <linearGradient id="sovWing" x1="0" y1="8" x2="32" y2="24" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FFE082" />
+        <stop offset="50%" stopColor="#FFB300" />
+        <stop offset="100%" stopColor="#FF6F00" />
+      </linearGradient>
+    </defs>
+    {/* Imperial Angelic/Dragon Wings */}
+    <path d="M16 14C11 7 4 8 1 12C0 17 6 22 13 21C11 23 9 26 12 28C14 26 15 23 16 19C17 23 18 26 20 28C23 26 21 23 19 21C26 22 32 17 31 12C28 8 21 7 16 14Z" fill="url(#sovWing)" />
+    {/* Imperial Crown Core */}
+    <path d="M7 11L11 23H21L25 11L19 16L16 6L13 16L7 11Z" fill="url(#sovGold)" stroke="#FFF9C4" strokeWidth="0.8" strokeLinejoin="round" />
+    {/* Center Mythic Ruby Gem */}
+    <polygon points="16,13 19,18 16,23 13,18" fill="url(#sovRuby)" stroke="#FFFFFF" strokeWidth="0.6" />
+    <circle cx="16" cy="6" r="2.2" fill="#FFFFFF" />
+    <circle cx="7" cy="11" r="1.5" fill="#00E5FF" />
+    <circle cx="25" cy="11" r="1.5" fill="#00E5FF" />
+  </svg>
+);
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * Emblem Resolver: Resolves matching 3D emblem by name / keyword
  * ───────────────────────────────────────────────────────────────────────────── */
@@ -265,6 +327,10 @@ export const FleurEmblem = ({ className = 'w-4 h-4' }: { className?: string }) =
 function renderBadgeEmblem(name: string, rawIcon: string, iconClass: string) {
   const norm = (name + ' ' + rawIcon).toLowerCase();
 
+  if (norm.includes('dev') || norm.includes('developer') || norm.includes('programmer') || norm.includes('coder') || norm.includes('architect')) {
+    return <DeveloperEmblem className={iconClass} />;
+  }
+  if (norm.includes('sovereign') || norm.includes('imperator') || norm.includes('monarch supreme')) return <SovereignEmblem className={iconClass} />;
   if (norm.includes('dragon')) return <DragonEmblem className={iconClass} />;
   if (norm.includes('crown') || norm.includes('monarch') || norm.includes('king') || norm.includes('queen')) return <CrownEmblem className={iconClass} />;
   if (norm.includes('diamond') || norm.includes('vip elite') || norm.includes('gem') || norm.includes('crystal')) return <DiamondEmblem className={iconClass} />;
@@ -298,6 +364,32 @@ interface BadgeThemeConfig {
 
 function resolveBadgeTheme(name: string, rarity: string): BadgeThemeConfig {
   const norm = (name + ' ' + rarity).toLowerCase();
+
+  // -1. System Developer Theme (Unique Cyber Core)
+  if (norm.includes('dev') || norm.includes('developer') || norm.includes('coder') || norm.includes('architect')) {
+    return {
+      capsuleBg: 'bg-gradient-to-r from-[#031525] via-[#04283E] to-[#02131F]',
+      capsuleBorder: 'border-[#00F0FF]',
+      textStyle: 'text-transparent bg-clip-text bg-gradient-to-r from-[#FFFFFF] via-[#7DF9FF] to-[#00F0FF]',
+      glowShadow: 'shadow-[0_1px_6px_rgba(0,0,0,0.4),0_0_10px_rgba(0,240,255,0.65),0_0_18px_rgba(59,130,246,0.4),inset_0_0.5px_0.8px_rgba(255,255,255,0.6)]',
+      glowColor: 'rgba(0, 240, 255, 0.75)',
+      sparkleColor: '#7DF9FF',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(180, 245, 255, 0.98) 50%, transparent 100%)',
+    };
+  }
+
+  // 0. Sovereign Mythic / Imperator / Supreme Monarch (Unique for ID 168012)
+  if (norm.includes('sovereign') || norm.includes('imperator') || norm.includes('monarch supreme') || norm.includes('mythic')) {
+    return {
+      capsuleBg: 'bg-gradient-to-r from-[#20053B] via-[#451A03] to-[#1A0330]',
+      capsuleBorder: 'border-[#F59E0B]',
+      textStyle: 'text-transparent bg-clip-text bg-gradient-to-r from-[#FFFFFF] via-[#FDE047] to-[#F59E0B]',
+      glowShadow: 'shadow-[0_1px_6px_rgba(0,0,0,0.35),0_0_8px_rgba(245,158,11,0.55),0_0_14px_rgba(168,85,247,0.4),inset_0_0.5px_0.8px_rgba(255,255,255,0.5)]',
+      glowColor: 'rgba(245, 158, 11, 0.65)',
+      sparkleColor: '#FFFBEB',
+      shimmerBeam: 'linear-gradient(90deg, transparent 0%, rgba(255, 250, 190, 0.98) 50%, transparent 100%)',
+    };
+  }
 
   // 1. Dragon / Imperial Obsidian Gold
   if (norm.includes('dragon') || norm.includes('emperor') || norm.includes('imperial')) {

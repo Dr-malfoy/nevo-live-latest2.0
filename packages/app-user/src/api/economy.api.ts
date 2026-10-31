@@ -87,12 +87,16 @@ export interface LuckySpinState {
   freeSpinAvailable: boolean;
   nextFreeSpinAt?: string | null;
   extraSpinCostCoins?: number;
+  extraSpinCostDiamonds?: number;
 }
 
 export interface SpinResult {
   sliceIndex: number;
   reward: { amount: number; currency: string };
   balances?: { coins?: number; diamonds?: number; tickets?: number };
+  freeSpinAvailable?: boolean;
+  nextFreeSpinAt?: string | null;
+  extraSpinCostDiamonds?: number;
 }
 
 export interface ActivityTask {

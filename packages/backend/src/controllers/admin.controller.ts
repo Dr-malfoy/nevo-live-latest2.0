@@ -113,20 +113,27 @@ export const adminController = {
   async setSellerType(req: Request, res: Response, next: NextFunction) {
     try {
       const { sellerType } = req.body;
-      if (!['none', 'official', 'paylor'].includes(sellerType)) {
+      if (!['none', 'official', 'paylor', 'diamond_seller'].includes(sellerType)) {
         res.status(400).json({ success: false, error: 'Invalid seller type' });
         return;
       }
+      const updateData: Record<string, any> = { sellerType };
+      if (sellerType === 'diamond_seller') {
+        updateData.role = 'diamond_seller';
+        updateData.isDiamondSeller = true;
+        updateData.diamondSellerBadge = true;
+        updateData.isAgent = true;
+      }
       const user = await User.findByIdAndUpdate(
         req.params.id,
-        { $set: { sellerType } },
+        { $set: updateData },
         { new: true }
       );
       if (!user) {
         res.status(404).json({ success: false, error: 'User not found' });
         return;
       }
-      sendSuccess(res, { sellerType: user.sellerType }, 'Seller type updated');
+      sendSuccess(res, { sellerType: user.sellerType, role: user.role }, 'Seller type updated');
     } catch (error) {
       next(error);
     }

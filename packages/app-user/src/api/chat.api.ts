@@ -25,6 +25,9 @@ export interface ActiveChatUser {
   liveStreamId?: string | null;
   roomId?: string | null;
   relationship?: 'friend' | 'follower' | 'following' | 'recent' | 'suggested';
+  equippedFrame?: any;
+  equippedBadge?: any;
+  equipped?: any;
 }
 
 export interface ChatStreak {

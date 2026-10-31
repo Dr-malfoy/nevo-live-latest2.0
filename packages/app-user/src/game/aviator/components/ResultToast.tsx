@@ -12,18 +12,19 @@ export const ResultToast: React.FC<{ result: AviatorResult | null; userId?: stri
   const crashed = result.results.length === 0 || result.results.some((r) => r.status === 'lost');
 
   return (
-    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-xl bg-dark-800/95 border border-dark-700 shadow-xl text-center">
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 rounded-2xl bg-black/95 border border-white/20 shadow-2xl text-center backdrop-blur-md">
       {mine ? (
-        <p className="text-sm font-black text-emerald-400">
-          Cashed out at {mine.cashOutAt?.toFixed(2)}x — won {mine.winAmount?.toLocaleString()}!
+        <p className="text-sm font-black text-emerald-400 flex items-center gap-1.5 justify-center">
+          <span>🎉</span>
+          <span>Cashed out at {mine.cashOutAt?.toFixed(2)}x — won {Math.floor(mine.winAmount || 0).toLocaleString()} 💎!</span>
         </p>
       ) : crashed ? (
-        <p className="text-sm font-black text-red-400">
-          Plane crashed at {result.crashPoint.toFixed(2)}x
+        <p className="text-sm font-black text-rose-500">
+          💥 Plane flew away at {result.crashPoint.toFixed(2)}x
         </p>
       ) : (
         <p className="text-sm font-black text-dark-200">
-          Round {result.roundNumber} — crashed at {result.crashPoint.toFixed(2)}x
+          Round #{result.roundNumber} — ended at {result.crashPoint.toFixed(2)}x
         </p>
       )}
     </div>

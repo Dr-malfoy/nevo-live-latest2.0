@@ -132,6 +132,7 @@ export const CreateNoteModal = ({
                 src={currentUser?.avatar}
                 nickname={currentUser?.nickname || 'You'}
                 size="lg"
+                frame={(currentUser as any)?.equippedFrame || (currentUser as any)?.equipped?.avatar_frame}
                 className="ring-4 ring-indigo-50"
               />
             </div>

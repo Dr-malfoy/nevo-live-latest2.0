@@ -283,14 +283,14 @@ export const HostApplicationPage = () => {
               <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-cyan-400/15 rounded-full blur-2xl pointer-events-none" />
 
               <div className="relative z-10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <HostBadge badge={activeBadgeType} size="sm" />
-                    <div>
-                      <h2 className="text-sm font-black tracking-tight text-white flex items-center gap-1.5">
-                        {activeBadgeType === 'alpha' ? 'Alpha Host (Male ♂️)' : 'Aurora Host (Female ♀️)'}
+                    <div className="min-w-0">
+                      <h2 className="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-1.5 truncate">
+                        {activeBadgeType === 'alpha' ? 'Alpha Host ♂️' : 'Aurora Host ♀️'}
                       </h2>
-                      <p className="text-[10px] text-white/70">
+                      <p className="text-[10px] text-white/70 truncate">
                         Cycle #{currentCycle?.cycleNumber || 1} · 7-Day Performance Window
                       </p>
                     </div>
@@ -300,7 +300,7 @@ export const HostApplicationPage = () => {
                     onClick={refreshBonus}
                     disabled={refreshingBonus}
                     title="Refresh bonus progress"
-                    className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white/90"
+                    className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white/90 shrink-0"
                   >
                     <RefreshIcon className={`w-4 h-4 ${refreshingBonus ? 'animate-spin' : ''}`} />
                   </button>
@@ -720,43 +720,93 @@ export const HostApplicationPage = () => {
                 </p>
 
                 {/* Badges preview row */}
-                <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-white/10">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-4 pt-3 border-t border-white/10">
                   {/* Alpha Host (Male) */}
                   <div
                     onClick={() => !isPending && !isApprovedHost && setHostType('alpha')}
-                    className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                    className={`relative overflow-hidden p-3 rounded-2xl border transition-all ${
+                      !isPending && !isApprovedHost ? 'cursor-pointer active:scale-[0.98]' : 'cursor-default'
+                    } ${
                       hostType === 'alpha'
-                        ? 'bg-blue-950/60 border-blue-400/80 shadow-md ring-1 ring-blue-400'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                        ? 'bg-blue-950/80 border-blue-400 shadow-lg shadow-blue-950/60 ring-2 ring-blue-400/80'
+                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <HostBadge badge="alpha" size="sm" />
-                      <span className="text-[10px] font-bold text-blue-300 px-1.5 py-0.5 rounded bg-blue-500/20">
-                        Male ♂️
+                    {/* Top row: Gender pill & selection indicator */}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-bold text-blue-300 px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 whitespace-nowrap inline-flex items-center gap-1">
+                        <span>♂️</span>
+                        <span>Male</span>
                       </span>
+                      {hostType === 'alpha' ? (
+                        <span className="w-4 h-4 rounded-full bg-blue-400 flex items-center justify-center text-slate-950 shadow-xs">
+                          <CheckIcon className="w-3 h-3 text-slate-950" />
+                        </span>
+                      ) : (
+                        <span className="w-4 h-4 rounded-full border border-white/20" />
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-white mt-2">Alpha Host</p>
-                    <p className="text-[10px] text-white/60">Bonus: 200k 💎 / 7 days</p>
+
+                    {/* Middle: 3D Badge Centerpiece */}
+                    <div className="my-2.5 py-0.5 flex items-center justify-center">
+                      <HostBadge badge="alpha" size="sm" />
+                    </div>
+
+                    {/* Bottom: Weekly Bonus Info */}
+                    <div className="pt-2 border-t border-white/10 text-center">
+                      <p className="text-[9.5px] uppercase tracking-wider text-white/60 font-semibold">
+                        Weekly Bonus
+                      </p>
+                      <p className="text-xs font-black text-amber-300 mt-0.5 inline-flex items-center justify-center gap-1">
+                        <span>200k</span>
+                        <DiamondIcon className="w-3.5 h-3.5 text-cyan-300" />
+                        <span className="text-[10px] font-semibold text-white/50">/ 7d</span>
+                      </p>
+                    </div>
                   </div>
 
                   {/* Aurora Host (Female) */}
                   <div
                     onClick={() => !isPending && !isApprovedHost && setHostType('aurora')}
-                    className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                    className={`relative overflow-hidden p-3 rounded-2xl border transition-all ${
+                      !isPending && !isApprovedHost ? 'cursor-pointer active:scale-[0.98]' : 'cursor-default'
+                    } ${
                       hostType === 'aurora'
-                        ? 'bg-rose-950/60 border-rose-400/80 shadow-md ring-1 ring-rose-400'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                        ? 'bg-rose-950/80 border-rose-400 shadow-lg shadow-rose-950/60 ring-2 ring-rose-400/80'
+                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <HostBadge badge="aurora" size="sm" />
-                      <span className="text-[10px] font-bold text-rose-300 px-1.5 py-0.5 rounded bg-rose-500/20">
-                        Female ♀️
+                    {/* Top row: Gender pill & selection indicator */}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-bold text-rose-300 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/30 whitespace-nowrap inline-flex items-center gap-1">
+                        <span>♀️</span>
+                        <span>Female</span>
                       </span>
+                      {hostType === 'aurora' ? (
+                        <span className="w-4 h-4 rounded-full bg-rose-400 flex items-center justify-center text-slate-950 shadow-xs">
+                          <CheckIcon className="w-3 h-3 text-slate-950" />
+                        </span>
+                      ) : (
+                        <span className="w-4 h-4 rounded-full border border-white/20" />
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-white mt-2">Aurora Host</p>
-                    <p className="text-[10px] text-white/60">Bonus: 300k 💎 / 7 days</p>
+
+                    {/* Middle: 3D Badge Centerpiece */}
+                    <div className="my-2.5 py-0.5 flex items-center justify-center">
+                      <HostBadge badge="aurora" size="sm" />
+                    </div>
+
+                    {/* Bottom: Weekly Bonus Info */}
+                    <div className="pt-2 border-t border-white/10 text-center">
+                      <p className="text-[9.5px] uppercase tracking-wider text-white/60 font-semibold">
+                        Weekly Bonus
+                      </p>
+                      <p className="text-xs font-black text-amber-300 mt-0.5 inline-flex items-center justify-center gap-1">
+                        <span>300k</span>
+                        <DiamondIcon className="w-3.5 h-3.5 text-cyan-300" />
+                        <span className="text-[10px] font-semibold text-white/50">/ 7d</span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -991,17 +1041,21 @@ export const HostApplicationPage = () => {
                         onClick={() => setHostType('alpha')}
                         className={`p-3 rounded-2xl text-left border transition-all ${
                           hostType === 'alpha'
-                            ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
-                            : 'bg-gray-50 border-gray-200 text-gray-700'
+                            ? 'bg-blue-50/80 border-blue-500 text-blue-950 shadow-xs ring-1 ring-blue-500'
+                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100/70'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black">Alpha Host</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-                            Male ♂️
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-black whitespace-nowrap">Alpha Host</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap">
+                            ♂️ Male
                           </span>
                         </div>
-                        <p className="text-[10px] text-gray-500 mt-1">200k 💎 weekly bonus</p>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 font-medium">
+                          <span>200k</span>
+                          <DiamondIcon className="w-3 h-3 text-cyan-600 inline" />
+                          <span>/ 7 days</span>
+                        </p>
                       </button>
 
                       <button
@@ -1010,17 +1064,21 @@ export const HostApplicationPage = () => {
                         onClick={() => setHostType('aurora')}
                         className={`p-3 rounded-2xl text-left border transition-all ${
                           hostType === 'aurora'
-                            ? 'bg-pink-50 border-pink-500 text-pink-900 shadow-xs'
-                            : 'bg-gray-50 border-gray-200 text-gray-700'
+                            ? 'bg-rose-50/80 border-rose-500 text-rose-950 shadow-xs ring-1 ring-rose-500'
+                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100/70'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black">Aurora Host</span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-100 text-pink-700">
-                            Female ♀️
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-black whitespace-nowrap">Aurora Host</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 whitespace-nowrap">
+                            ♀️ Female
                           </span>
                         </div>
-                        <p className="text-[10px] text-gray-500 mt-1">300k 💎 weekly bonus</p>
+                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 font-medium">
+                          <span>300k</span>
+                          <DiamondIcon className="w-3 h-3 text-cyan-600 inline" />
+                          <span>/ 7 days</span>
+                        </p>
                       </button>
                     </div>
                   </div>

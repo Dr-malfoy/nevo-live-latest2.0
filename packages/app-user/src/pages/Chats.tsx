@@ -296,6 +296,8 @@ export const Chats = () => {
           nickname: c.other.nickname || 'User',
           avatar: c.other.avatar,
           level: c.other.level,
+          equippedFrame: c.other.equippedFrame,
+          equipped: c.other.equipped,
         });
       }
     }
@@ -308,6 +310,8 @@ export const Chats = () => {
           _id: u._id,
           nickname: u.nickname || 'User',
           avatar: u.avatar,
+          equippedFrame: (u as any).equippedFrame,
+          equipped: (u as any).equipped,
         });
       }
     }
@@ -950,6 +954,7 @@ export const Chats = () => {
                               src={u.avatar}
                               nickname={u.nickname || '?'}
                               size="md"
+                              frame={(u as any).equippedFrame || (u as any)?.equipped?.avatar_frame}
                               online={u.online}
                               className="ring-1 ring-black/5"
                             />
@@ -1122,6 +1127,7 @@ export const Chats = () => {
                 src={selectedChatForActions.other?.avatar}
                 nickname={selectedChatForActions.other?.nickname || 'Conversation'}
                 size="md"
+                frame={selectedChatForActions.other?.equippedFrame || (selectedChatForActions.other as any)?.equipped?.avatar_frame}
                 online={selectedChatForActions.other?.online}
               />
               <div className="flex-1 min-w-0">

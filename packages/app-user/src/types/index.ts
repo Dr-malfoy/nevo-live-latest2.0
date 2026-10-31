@@ -80,6 +80,7 @@ export interface User {
   role?: 'admin' | 'agent' | 'host' | 'user' | 'diamond_seller';
   isAgent: boolean;
   isAdmin: boolean;
+  isDeveloper?: boolean;
   isDiamondSeller?: boolean;
   diamondSellerBadge?: boolean;
   agencyId?: string;
@@ -89,6 +90,7 @@ export interface User {
   hostBadgeAssignedAt?: string;
   hostBadgeExpiresAt?: string;
   equippedBadge?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
+  equippedFrame?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
   matchSubscription?: {
     active: boolean;
     startDate?: string;
@@ -125,6 +127,8 @@ export interface UserPublic {
   liveStreamSeconds?: number;
   liveStreamMinutes?: number;
   isAgent: boolean;
+  isAdmin?: boolean;
+  isDeveloper?: boolean;
   isDiamondSeller?: boolean;
   diamondSellerBadge?: boolean;
   role?: 'admin' | 'agent' | 'host' | 'user' | 'diamond_seller';
@@ -137,6 +141,7 @@ export interface UserPublic {
   hostBadgeAssignedAt?: string;
   hostBadgeExpiresAt?: string;
   equippedBadge?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
+  equippedFrame?: { _id?: string; name?: string; image?: string; preview?: string; rarity?: string };
   verification?: VerificationState;
   coins?: number;
   diamonds?: number;

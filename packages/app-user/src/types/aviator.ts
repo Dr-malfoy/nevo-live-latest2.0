@@ -28,3 +28,19 @@ export interface AviatorResult {
   crashPoint: number;
   results: AviatorBetResult[];
 }
+
+export interface UserAviatorBet {
+  _id: string;
+  roundId?: {
+    _id: string;
+    roundNumber: number;
+    crashPoint?: number;
+    status?: string;
+  };
+  currency: 'diamond';
+  betAmount: number;
+  cashOutAt?: number;
+  status: 'active' | 'cashed_out' | 'lost';
+  winAmount: number;
+  createdAt: string;
+}

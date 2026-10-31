@@ -105,7 +105,7 @@ const DEFAULT_TASKS = [
     sectionKey: 'daily_routine',
     sectionTitle: 'Daily Missions',
     label: 'Play 1 round of any game',
-    note: 'Play Lucky Spin, Roulette, Teen Patti or Aviator',
+    note: 'Play Lucky Spin, Roulette, Teen Patti or Fly High',
     target: 1,
     metric: 'game_rounds',
     reward: { currency: 'coins' as const, amount: 400 },

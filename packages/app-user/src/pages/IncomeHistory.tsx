@@ -64,11 +64,11 @@ const SOURCE_META: Record<IncomeSourceKey, SourceMeta> = {
   },
   platform_rewards: {
     title: 'Platform Rewards',
-    subtitle: 'Daily check-ins, tasks, games & official platform incentives',
+    subtitle: 'System coin rewards, daily check-ins, tasks & agency commission',
     icon: RewardIcon,
     gradient: 'from-amber-500/10 via-yellow-500/10 to-transparent',
     badgeBg: 'bg-yellow-50 text-amber-800 border-yellow-200',
-    badgeText: 'Rewards',
+    badgeText: 'System Coin Rewards',
   },
 };
 
@@ -79,6 +79,86 @@ const RANGES: { key: string; label: string; days: number }[] = [
   { key: '24h', label: 'Last 24 Hours', days: 1 },
   { key: 'all', label: 'All Time', days: 0 },
 ];
+
+const getRewardInfo = (entry: IncomeEntry) => {
+  const type = entry.type || '';
+  const desc = entry.description || '';
+  if (type === 'commission') {
+    return {
+      title: 'Agency Commission',
+      tag: 'Agency Commission',
+      tagCls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    };
+  }
+  if (type === 'daily_reward') {
+    return {
+      title: 'Daily Live Reward',
+      tag: 'Daily Reward',
+      tagCls: 'bg-amber-50 text-amber-800 border-amber-200',
+    };
+  }
+  if (type === 'signin_reward') {
+    return {
+      title: 'Sign-in Reward',
+      tag: 'Daily Check-in',
+      tagCls: 'bg-yellow-50 text-amber-900 border-yellow-300',
+    };
+  }
+  if (type === 'task_reward') {
+    return {
+      title: 'Task Reward',
+      tag: 'Task Reward',
+      tagCls: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+  }
+  if (type === 'activity_reward') {
+    return {
+      title: 'Activity Reward',
+      tag: 'Activity Bonus',
+      tagCls: 'bg-teal-50 text-teal-700 border-teal-200',
+    };
+  }
+  if (type === 'ranking_prize') {
+    return {
+      title: 'Ranking Prize',
+      tag: 'Ranking Prize',
+      tagCls: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    };
+  }
+  if (type === 'referral_bonus') {
+    return {
+      title: 'Referral Bonus',
+      tag: 'Referral Bonus',
+      tagCls: 'bg-purple-50 text-purple-700 border-purple-200',
+    };
+  }
+  if (type === 'host_bonus') {
+    return {
+      title: 'Host Performance Bonus',
+      tag: 'Host Bonus',
+      tagCls: 'bg-rose-50 text-rose-700 border-rose-200',
+    };
+  }
+  if (type === 'spin_reward') {
+    return {
+      title: 'Lucky Spin Coin Reward',
+      tag: 'Spin Reward',
+      tagCls: 'bg-orange-50 text-orange-700 border-orange-200',
+    };
+  }
+  if (/admin|system/i.test(desc) || type === 'transfer') {
+    return {
+      title: 'System Coin Gift',
+      tag: 'System Gift',
+      tagCls: 'bg-violet-50 text-violet-700 border-violet-200',
+    };
+  }
+  return {
+    title: 'Platform Reward',
+    tag: 'Platform Reward',
+    tagCls: 'bg-amber-50 text-amber-700 border-amber-200',
+  };
+};
 
 export const IncomeHistory = () => {
   const { source } = useParams<{ source: string }>();
@@ -92,6 +172,7 @@ export const IncomeHistory = () => {
   const meta = SOURCE_META[validKey];
 
   const [range, setRange] = useState<string>('1y'); // Default: 1 year history
+  const [rewardTab, setRewardTab] = useState<'all' | 'daily' | 'commission' | 'system'>('all');
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [totalEarnings, setTotalEarnings] = useState<number>(0);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -148,18 +229,24 @@ export const IncomeHistory = () => {
             return tx.type === 'gift_receive' && tx.sourceType === 'party';
           }
           if (validKey === 'commission') {
-            return tx.type === 'commission';
+            return tx.type === 'commission' && (!tx.currency || tx.currency === 'coin');
           }
           if (validKey === 'transfer') {
+            const isSystemTransfer = /admin|system/i.test(tx.description || '');
+            if (isSystemTransfer) return false;
             return (
               tx.type === 'transfer_in' ||
               (tx.type === 'transfer' && (!tx.description || !/^Transferred /i.test(tx.description)))
             );
           }
           if (validKey === 'platform_rewards') {
+            // Strictly Coin rewards from system, daily rewards, tasks, ranking prizes, host bonus, and agency commission
+            if (tx.currency && tx.currency !== 'coin') return false;
+            if (tx.amount <= 0) return false;
+            if (tx.type === 'commission') return true;
+            if (tx.type === 'transfer' && /admin|system/i.test(tx.description || '')) return true;
             return [
               'daily_reward',
-              'game_win',
               'task_reward',
               'signin_reward',
               'activity_reward',
@@ -167,6 +254,7 @@ export const IncomeHistory = () => {
               'creator_reward',
               'ranking_prize',
               'referral_bonus',
+              'host_bonus',
               'platform_rewards',
             ].includes(tx.type);
           }
@@ -224,6 +312,41 @@ export const IncomeHistory = () => {
   };
 
   const IconComponent = meta.icon;
+
+  const displayedEntries = useMemo(() => {
+    if (validKey !== 'platform_rewards' || rewardTab === 'all') return entries;
+    return entries.filter((e) => {
+      const type = e.type || '';
+      const desc = e.description || '';
+      if (rewardTab === 'daily') {
+        return ['daily_reward', 'signin_reward', 'task_reward', 'activity_reward'].includes(type);
+      }
+      if (rewardTab === 'commission') {
+        return type === 'commission';
+      }
+      if (rewardTab === 'system') {
+        return (
+          type === 'ranking_prize' ||
+          type === 'host_bonus' ||
+          type === 'referral_bonus' ||
+          type === 'spin_reward' ||
+          type === 'platform_rewards' ||
+          (type === 'transfer' && /admin|system/i.test(desc))
+        );
+      }
+      return true;
+    });
+  }, [entries, validKey, rewardTab]);
+
+  const displayedTotal = useMemo(() => {
+    if (validKey !== 'platform_rewards' || rewardTab === 'all') return totalEarnings;
+    return displayedEntries.reduce((s, r) => s + (r.points || 0), 0);
+  }, [displayedEntries, totalEarnings, validKey, rewardTab]);
+
+  const displayedCount = useMemo(() => {
+    if (validKey !== 'platform_rewards' || rewardTab === 'all') return totalCount;
+    return displayedEntries.length;
+  }, [displayedEntries, totalCount, validKey, rewardTab]);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -317,7 +440,7 @@ export const IncomeHistory = () => {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <CoinIcon className="w-6 h-6 text-amber-500" />
                 <span className="text-2xl font-extrabold text-slate-900 tabular-nums">
-                  {totalEarnings.toLocaleString()}
+                  {displayedTotal.toLocaleString()}
                 </span>
                 <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full ml-1">
                   Coins
@@ -326,11 +449,39 @@ export const IncomeHistory = () => {
             </div>
             <div className="text-right">
               <span className="text-xs font-bold text-slate-700 tabular-nums">
-                {totalCount} {totalCount === 1 ? 'record' : 'records'}
+                {displayedCount} {displayedCount === 1 ? 'record' : 'records'}
               </span>
             </div>
           </div>
         </div>
+
+        {/* ── Sub-category Filter Tabs (Platform Rewards Only) ── */}
+        {validKey === 'platform_rewards' && (
+          <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-slate-200 overflow-x-auto no-scrollbar shadow-xs">
+            {[
+              { key: 'all', label: 'All Rewards' },
+              { key: 'daily', label: 'Daily & Tasks' },
+              { key: 'commission', label: 'Agency Commission' },
+              { key: 'system', label: 'System Gifts' },
+            ].map((tab) => {
+              const active = rewardTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setRewardTab(tab.key as any)}
+                  className={`flex-1 min-w-[90px] py-1.5 px-2 rounded-lg text-xs font-bold text-center transition-all ${
+                    active
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── Section Title ───────────────────────────────────── */}
         <div className="flex items-center justify-between px-1">
@@ -348,7 +499,7 @@ export const IncomeHistory = () => {
           <div className="pt-16 pb-12 flex justify-center">
             <Loading size="lg" />
           </div>
-        ) : entries.length === 0 ? (
+        ) : displayedEntries.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3 shadow-sm">
             <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
               <IconComponent className="w-7 h-7" />
@@ -370,9 +521,10 @@ export const IncomeHistory = () => {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {entries.map((entry) => {
+            {displayedEntries.map((entry) => {
               const displayTxId = entry.txId || entry._id;
               const isCopied = copiedId === displayTxId;
+              const rewardInfo = validKey === 'platform_rewards' ? getRewardInfo(entry) : null;
 
               return (
                 <div
@@ -385,7 +537,7 @@ export const IncomeHistory = () => {
                       {entry.from?.avatar ? (
                         <Avatar
                           src={entry.from.avatar}
-                          alt={entry.from.nickname}
+                          nickname={entry.from.nickname || 'User'}
                           size="md"
                           className="shrink-0"
                         />
@@ -395,16 +547,23 @@ export const IncomeHistory = () => {
                         </div>
                       )}
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">
-                          {entry.from?.nickname
-                            ? `${entry.from.nickname}`
-                            : entry.giftName || meta.title}
-                        </p>
-                        {entry.from?.uid && (
-                          <p className="text-[11px] text-slate-400">UID: {entry.from.uid}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-bold text-slate-900 truncate">
+                            {rewardInfo ? rewardInfo.title : (entry.from?.nickname || entry.giftName || meta.title)}
+                          </p>
+                          {rewardInfo && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${rewardInfo.tagCls}`}>
+                              {rewardInfo.tag}
+                            </span>
+                          )}
+                        </div>
+                        {entry.from?.nickname && entry.type === 'commission' && (
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            From: {entry.from.nickname} {entry.from.uid ? `(UID: ${entry.from.uid})` : ''}
+                          </p>
                         )}
                         <p className="text-xs text-slate-500 truncate mt-0.5">
-                          {entry.description || entry.giftName || 'Earning credit'}
+                          {entry.description || entry.giftName || 'Reward credit'}
                         </p>
                       </div>
                     </div>
