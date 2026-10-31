@@ -65,9 +65,6 @@ const TeenPattiScreen = () => {
           <h1 className="text-base font-black tracking-wider bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 bg-clip-text text-transparent drop-shadow">
             TEEN PATTI 🎴
           </h1>
-          <span className="text-[10px] text-cyan-400 font-extrabold tracking-widest uppercase">
-            Bangladeshi Live Table 🇧🇩
-          </span>
         </div>
 
         {/* Live Diamond Balance Display (Strictly Diamonds & Integer) */}
