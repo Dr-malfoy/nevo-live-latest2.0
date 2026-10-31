@@ -142,11 +142,18 @@ export const LiveRoom = ({
   const applyVideoMirror = useCallback((mirror: boolean) => {
     const videoArea = document.getElementById('agora-video-area');
     if (videoArea) {
+      if (mirror) {
+        videoArea.classList.add('mirror-active');
+      } else {
+        videoArea.classList.remove('mirror-active');
+      }
       const elements = videoArea.querySelectorAll('video');
       elements.forEach((el: any) => {
         const val = mirror ? 'scaleX(-1)' : 'none';
-        el.style.setProperty('transform', val, 'important');
-        el.style.setProperty('-webkit-transform', val, 'important');
+        if (el.style.transform !== val) {
+          el.style.setProperty('transform', val, 'important');
+          el.style.setProperty('-webkit-transform', val, 'important');
+        }
       });
     }
 
@@ -158,8 +165,10 @@ export const LiveRoom = ({
         const elements = el.querySelectorAll('video');
         elements.forEach((v: any) => {
           const val = isLocalSide && mirror ? 'scaleX(-1)' : 'none';
-          v.style.setProperty('transform', val, 'important');
-          v.style.setProperty('-webkit-transform', val, 'important');
+          if (v.style.transform !== val) {
+            v.style.setProperty('transform', val, 'important');
+            v.style.setProperty('-webkit-transform', val, 'important');
+          }
         });
       }
     });
@@ -176,35 +185,23 @@ export const LiveRoom = ({
     });
   }, [showToast, onSetMirror, isHost, applyVideoMirror, facingMode]);
 
+  const isSwitchingCameraRef = useRef(false);
   const handleSwitchCamera = useCallback(async () => {
+    if (isSwitchingCameraRef.current) return;
+    isSwitchingCameraRef.current = true;
     try {
       await onSwitchCamera?.();
     } finally {
-      const shouldMirror = isHost && mirrorOn && facingMode === 'user';
-      applyVideoMirror(shouldMirror);
-      setTimeout(() => applyVideoMirror(shouldMirror), 150);
-      setTimeout(() => applyVideoMirror(shouldMirror), 350);
-      setTimeout(() => applyVideoMirror(shouldMirror), 700);
-      setTimeout(() => applyVideoMirror(shouldMirror), 1200);
+      setTimeout(() => {
+        isSwitchingCameraRef.current = false;
+      }, 400);
     }
-  }, [onSwitchCamera, isHost, mirrorOn, facingMode, applyVideoMirror]);
+  }, [onSwitchCamera]);
 
   useEffect(() => {
     const shouldMirror = isHost && mirrorOn && facingMode === 'user';
     onSetMirror?.(mirrorOn);
     applyVideoMirror(shouldMirror);
-
-    const t1 = setTimeout(() => applyVideoMirror(shouldMirror), 150);
-    const t2 = setTimeout(() => applyVideoMirror(shouldMirror), 350);
-    const t3 = setTimeout(() => applyVideoMirror(shouldMirror), 700);
-    const t4 = setTimeout(() => applyVideoMirror(shouldMirror), 1200);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
   }, [mirrorOn, facingMode, isHost, isSideA, onSetMirror, applyVideoMirror]);
 
   // Observer to ensure newly attached video elements (e.g. after camera switch) inherit mirror state immediately
@@ -215,7 +212,7 @@ export const LiveRoom = ({
       const shouldMirror = isHost && mirrorOn && facingMode === 'user';
       applyVideoMirror(shouldMirror);
     });
-    observer.observe(videoArea, { childList: true, subtree: true });
+    observer.observe(videoArea, { childList: true });
     return () => observer.disconnect();
   }, [isHost, mirrorOn, facingMode, applyVideoMirror]);
 
@@ -507,7 +504,9 @@ export const LiveRoom = ({
       {/* Agora / WebRTC video renders here — SINGLE DOM NODE, NEVER UNMOUNTS */}
       <div
         id="agora-video-area"
-        className="absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black/40"
+        className={`absolute inset-0 w-full h-full z-0 overflow-hidden flex items-center justify-center bg-black/40 ${
+          isHost && mirrorOn && facingMode === 'user' ? 'mirror-active' : ''
+        } ${cameraFitMode === 'contain' ? 'video-fit-contain' : 'video-fit-cover'}`}
         style={{ filter: combinedFilterCss || filterCss || undefined }}
       />
 

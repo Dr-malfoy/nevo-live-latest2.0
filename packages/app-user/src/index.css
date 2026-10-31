@@ -59,6 +59,32 @@
     transform: none !important;
     -webkit-transform: none !important;
   }
+
+  /* Agora Live Streaming Video Area: Mirroring & Aspect Scaling */
+  #agora-video-area video {
+    width: 100% !important;
+    height: 100% !important;
+    transition: transform 0.1s ease-out;
+  }
+
+  #agora-video-area.mirror-active video {
+    transform: scaleX(-1) !important;
+    -webkit-transform: scaleX(-1) !important;
+  }
+
+  #agora-video-area:not(.mirror-active) video {
+    transform: none !important;
+    -webkit-transform: none !important;
+  }
+
+  #agora-video-area.video-fit-contain video {
+    object-fit: contain !important;
+  }
+
+  #agora-video-area.video-fit-cover video,
+  #agora-video-area:not(.video-fit-contain) video {
+    object-fit: cover !important;
+  }
 }
 
 @layer components {
