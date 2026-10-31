@@ -179,29 +179,15 @@ export const GoLive: React.FC = () => {
 
         const targetCameraId = await getOptimalCameraId(facingMode);
 
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
-              facingMode,
-              width: { ideal: 1080, max: 1920 },
-              height: { ideal: 1920, max: 1920 },
-              aspectRatio: { ideal: 9 / 16 },
-            },
-            audio: false, // local preview only, prevent feedback loop
-          });
-        } catch {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode,
-              width: { ideal: 720 },
-              height: { ideal: 1280 },
-              aspectRatio: { ideal: 9 / 16 },
-            },
-            audio: false,
-          });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: targetCameraId ? { ideal: targetCameraId } : undefined,
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false, // local preview only, prevent feedback loop
+        });
 
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
@@ -477,7 +463,7 @@ export const GoLive: React.FC = () => {
             </div>
           ) : (
             /* Video / Game Camera Feed Viewport */
-            <div className="relative aspect-[3/4] sm:aspect-[9/16] max-h-[460px] mx-auto bg-black overflow-hidden group rounded-2xl">
+            <div className="relative aspect-[16/10] sm:aspect-[16/9] bg-black overflow-hidden group">
               {cameraActive && hasCameraAccess !== false ? (
                 <video
                   ref={videoRef}

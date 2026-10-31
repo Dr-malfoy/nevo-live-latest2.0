@@ -336,9 +336,8 @@ export const useAgora = () => {
             video: (role === 'host' && videoEnabled) ? {
               deviceId: targetDeviceId ? { ideal: targetDeviceId } : undefined,
               facingMode: 'user',
-              width: { ideal: 720, max: 1080 },
-              height: { ideal: 1280, max: 1920 },
-              aspectRatio: { ideal: 9 / 16 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             } : false,
             audio: shouldMicOn,
           });
@@ -491,13 +490,7 @@ export const useAgora = () => {
           const videoTrack = await AgoraRTC.createCameraVideoTrack({
             facingMode: 'user',
             cameraId: targetDeviceId,
-            encoderConfig: {
-              width: 720,
-              height: 1280,
-              frameRate: 30,
-              bitrateMin: 800,
-              bitrateMax: 2000,
-            },
+            encoderConfig: { width: 640, height: 480, frameRate: 30 },
             optimizationMode: 'motion',
           });
           localVideoRef.current = videoTrack;
@@ -746,9 +739,8 @@ export const useAgora = () => {
             video: {
               deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
               facingMode: targetFacing,
-              width: { ideal: 720, max: 1080 },
-              height: { ideal: 1280, max: 1920 },
-              aspectRatio: { ideal: 9 / 16 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
             audio: false,
           });
@@ -757,9 +749,8 @@ export const useAgora = () => {
             newStream = await navigator.mediaDevices.getUserMedia({
               video: {
                 facingMode: targetFacing,
-                width: { ideal: 720, max: 1080 },
-                height: { ideal: 1280, max: 1920 },
-                aspectRatio: { ideal: 9 / 16 },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
               },
               audio: false,
             });
@@ -776,9 +767,8 @@ export const useAgora = () => {
             newStream = await navigator.mediaDevices.getUserMedia({
               video: {
                 facingMode: targetFacing,
-                width: { ideal: 720, max: 1080 },
-                height: { ideal: 1280, max: 1920 },
-                aspectRatio: { ideal: 9 / 16 },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
               },
               audio: false,
             });
@@ -828,13 +818,7 @@ export const useAgora = () => {
           const newTrack = await AgoraRTC.createCameraVideoTrack({
             facingMode: targetFacing,
             cameraId: targetDeviceId,
-            encoderConfig: {
-              width: 720,
-              height: 1280,
-              frameRate: 30,
-              bitrateMin: 800,
-              bitrateMax: 2000,
-            },
+            encoderConfig: { width: 640, height: 480, frameRate: 30 },
             optimizationMode: 'motion',
           });
 
@@ -1028,8 +1012,8 @@ export const useAgora = () => {
 
 export function getScreenCaptureResolution() {
   return {
-    width: 720,
-    height: 1280,
+    width: 640,
+    height: 480,
     aspectRatio: 9 / 16,
     screenRatio: 16 / 9,
     isPortrait: true,
