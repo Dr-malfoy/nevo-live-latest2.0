@@ -178,12 +178,12 @@ export const LiveRoom = ({
     setMirrorOn((m) => {
       const next = !m;
       onSetMirror?.(next);
-      const shouldMirror = isHost && next && facingMode === 'user';
+      const shouldMirror = isHost && next;
       applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast, onSetMirror, isHost, applyVideoMirror, facingMode]);
+  }, [showToast, onSetMirror, isHost, applyVideoMirror]);
 
   const isSwitchingCameraRef = useRef(false);
   const handleSwitchCamera = useCallback(async () => {
@@ -199,22 +199,22 @@ export const LiveRoom = ({
   }, [onSwitchCamera]);
 
   useEffect(() => {
-    const shouldMirror = isHost && mirrorOn && facingMode === 'user';
+    const shouldMirror = isHost && mirrorOn;
     onSetMirror?.(mirrorOn);
     applyVideoMirror(shouldMirror);
-  }, [mirrorOn, facingMode, isHost, isSideA, onSetMirror, applyVideoMirror]);
+  }, [mirrorOn, isHost, isSideA, onSetMirror, applyVideoMirror]);
 
   // Observer to ensure newly attached video elements (e.g. after camera switch) inherit mirror state immediately
   useEffect(() => {
     const videoArea = document.getElementById('agora-video-area');
     if (!videoArea) return;
     const observer = new MutationObserver(() => {
-      const shouldMirror = isHost && mirrorOn && facingMode === 'user';
+      const shouldMirror = isHost && mirrorOn;
       applyVideoMirror(shouldMirror);
     });
     observer.observe(videoArea, { childList: true });
     return () => observer.disconnect();
-  }, [isHost, mirrorOn, facingMode, applyVideoMirror]);
+  }, [isHost, mirrorOn, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
