@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, BadgeCheck, Coins, Send, X, ArrowRight, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { Search, BadgeCheck, Coins, Send, X, ArrowRight, RefreshCw, CheckCircle, AlertCircle, Gem } from 'lucide-react';
 import { adminApi } from '../api';
 import { DataTable } from '../components/DataTable';
 import { DiamondIcon, CoinIcon } from '../components/CurrencyIcon';
@@ -9,6 +9,7 @@ const SELLER_TYPES = [
   { value: 'none', label: 'None', icon: null },
   { value: 'official', label: 'Official', icon: BadgeCheck, cls: 'text-sky-400' },
   { value: 'paylor', label: 'Paylor', icon: Coins, cls: 'text-amber-400' },
+  { value: 'diamond_seller', label: '💎 Diamond Seller', icon: Gem, cls: 'text-cyan-400' },
 ];
 
 const HOST_BADGES = [
@@ -55,7 +56,7 @@ export const Users = () => {
     load(1, search);
   };
 
-  const handleSellerType = async (id: string, sellerType: 'none' | 'official' | 'paylor') => {
+  const handleSellerType = async (id: string, sellerType: 'none' | 'official' | 'paylor' | 'diamond_seller') => {
     await adminApi.setSellerType(id, sellerType);
     load(page, search);
   };
@@ -147,6 +148,8 @@ export const Users = () => {
               ? 'text-sky-400'
               : r.sellerType === 'paylor'
               ? 'text-amber-400'
+              : r.sellerType === 'diamond_seller'
+              ? 'text-cyan-400 font-bold'
               : 'text-dark-300'
           }`}
           aria-label={`Seller badge for ${r.nickname}`}

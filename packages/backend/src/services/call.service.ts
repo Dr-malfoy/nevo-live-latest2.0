@@ -160,6 +160,8 @@ export const callService = {
 
     const channel = `call_${crypto.randomUUID().slice(0, 8)}_${Date.now()}`;
     const participants = [initiatorId, ...recipients];
+    const isGroup = recipients.length > 1;
+    const maxParticipants = isGroup ? MAX_CALL_PARTICIPANTS : 2;
     const call = await Call.create({
       participants,
       recipientIds: recipients,
@@ -168,7 +170,7 @@ export const callService = {
       type,
       callSource: source,
       status: 'ringing',
-      maxParticipants: MAX_CALL_PARTICIPANTS,
+      maxParticipants,
       isFreeMinuteApplied,
       freeMinuteUsed: false,
       ...(hostId && { hostId, audienceId, coinsPerMinute }),
@@ -961,10 +963,28 @@ export const callService = {
     }
   },
 
-  /** Active, joinable calls for the "Join" lobby (excludes my own). */
+  /** Active, joinable calls for the "Join" lobby (excludes my own and 1:1 calls). */
   async getActiveCalls(userId: string) {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    // Auto-expire calls stuck in active or ringing status for more than 30 minutes without updates
+    await Call.updateMany(
+      {
+        status: { $in: ['active', 'ringing'] },
+        updatedAt: { $lt: thirtyMinutesAgo },
+      },
+      {
+        $set: {
+          status: 'ended',
+          endedAt: new Date(),
+          endReason: 'TIMEOUT',
+        },
+      }
+    ).catch(() => {});
+
+    // Only return TRUE group calls (maxParticipants > 2) where the user is NOT already a participant
     const calls = await Call.find({
       status: 'active',
+      maxParticipants: { $gt: 2 },
       initiatorId: { $ne: userId },
       participants: { $nin: [userId] },
       $expr: { $lt: [{ $size: '$participants' }, '$maxParticipants'] },

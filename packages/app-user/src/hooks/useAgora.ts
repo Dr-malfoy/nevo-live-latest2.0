@@ -44,38 +44,49 @@ export async function getOptimalCameraId(facingMode: 'user' | 'environment'): Pr
     if (videoDevices.length === 0) return undefined;
 
     if (facingMode === 'user') {
-      // 1. Android Camera2 standard front camera is camera2 1
-      const cam1 = videoDevices.find((d) => /camera2?\s*1\b/i.test(d.label || ''));
+      // 1. Android Camera2 standard front camera is strictly camera2 1
+      const cam1 = videoDevices.find((d) =>
+        /camera2?\s*1\b/i.test(d.label || '') ||
+        /(?:^|\D)1\s*,\s*facing\s*front/i.test(d.label || '') ||
+        /front.*camera.*1\b/i.test(d.label || '')
+      );
       if (cam1?.deviceId) return cam1.deviceId;
 
-      // 2. Front / selfie / facetime label
-      const front = videoDevices.find((d) =>
-        /front|user|facetime|selfie|forward/i.test(d.label || '')
-      );
-      if (front?.deviceId) return front.deviceId;
+      // 2. Front / selfie / facetime label, strictly excluding back/rear and auxiliary sensors
+      const frontDevices = videoDevices.filter((d) => {
+        const lbl = (d.label || '').toLowerCase();
+        return (
+          (/front|user|facetime|selfie|forward/i.test(lbl) || /camera2?\s*1\b/i.test(lbl)) &&
+          !/back|rear|environment|world/i.test(lbl) &&
+          !/camera2?\s*[023456789]\b/i.test(lbl) &&
+          !lbl.includes('ir') &&
+          !lbl.includes('infrared') &&
+          !lbl.includes('depth')
+        );
+      });
+      if (frontDevices[0]?.deviceId) return frontDevices[0].deviceId;
 
-      // If multiple front devices exist, select the first
-      const allFront = videoDevices.filter((d) =>
-        /front|user|facetime|selfie|forward/i.test(d.label || '')
-      );
-      if (allFront[0]?.deviceId) return allFront[0].deviceId;
+      const anyFront = videoDevices.find((d) => /front|user|facetime|selfie/i.test(d.label || ''));
+      if (anyFront?.deviceId) return anyFront.deviceId;
 
       return undefined;
     } else {
-      // 1. Android Camera2 standard primary main rear camera is camera2 0
-      const cam0 = videoDevices.find((d) => /camera2?\s*0\b/i.test(d.label || ''));
+      // 1. Android Camera2 standard primary main rear camera is strictly camera2 0 (1x Main)
+      const cam0 = videoDevices.find((d) =>
+        /camera2?\s*0\b/i.test(d.label || '') ||
+        /(?:^|\D)0\s*,\s*facing\s*back/i.test(d.label || '') ||
+        /back.*camera.*0\b/i.test(d.label || '')
+      );
       if (cam0?.deviceId) return cam0.deviceId;
 
-      // 2. Rear devices excluding secondary lenses (telephoto, macro, depth, ultra-wide)
-      const backDevices = videoDevices.filter((d) =>
-        /back|rear|environment|world/i.test(d.label || '') ||
-        /camera2?\s*[02345]\b/i.test(d.label || '')
-      );
-
-      // Select main rear camera, strictly ignoring extra lenses
-      const mainBack = backDevices.find((d) => {
+      // 2. Strict back devices excluding ALL secondary/auxiliary lenses (tele, macro, depth, ultra-wide)
+      const backDevices = videoDevices.filter((d) => {
         const lbl = (d.label || '').toLowerCase();
+        const isBack = /back|rear|environment|world/i.test(lbl) || /camera2?\s*0\b/i.test(lbl);
         const isExcluded =
+          /camera2?\s*[2-9]\b/i.test(lbl) ||
+          /camera\s*[2-9]\b/i.test(lbl) ||
+          /front|user|facetime|selfie/i.test(lbl) ||
           lbl.includes('tele') ||
           lbl.includes('macro') ||
           lbl.includes('depth') ||
@@ -86,12 +97,23 @@ export async function getOptimalCameraId(facingMode: 'user' | 'environment'): Pr
           lbl.includes('wide-angle') ||
           lbl.includes('aux') ||
           lbl.includes('bokeh');
-        return !isExcluded;
+        return isBack && !isExcluded;
       });
-      if (mainBack?.deviceId) return mainBack.deviceId;
-
-      // Fallback: first back device
       if (backDevices[0]?.deviceId) return backDevices[0].deviceId;
+
+      // Fallback: any back device that does not mention secondary lens keywords
+      const fallbackBack = videoDevices.find((d) => {
+        const lbl = (d.label || '').toLowerCase();
+        return (
+          /back|rear|environment/i.test(lbl) &&
+          !/camera2?\s*[2-9]\b/i.test(lbl) &&
+          !lbl.includes('macro') &&
+          !lbl.includes('tele') &&
+          !lbl.includes('ultra') &&
+          !lbl.includes('depth')
+        );
+      });
+      if (fallbackBack?.deviceId) return fallbackBack.deviceId;
 
       return undefined;
     }

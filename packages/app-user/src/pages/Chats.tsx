@@ -334,6 +334,21 @@ export const Chats = () => {
     return () => clearInterval(t);
   }, []);
 
+  // Only show group calls where current user shares a group chat with the participants
+  const relevantActiveCalls = useMemo(() => {
+    if (!activeCalls || activeCalls.length === 0) return [];
+    return activeCalls.filter((c: any) => {
+      // Must strictly be a group call
+      if (c.maxParticipants && c.maxParticipants <= 2) return false;
+      if (!c.callId) return false;
+      const participantIds = new Set((c.participants || []).map((p: any) => p._id || p.toString()));
+      return chats.some((chat) => {
+        if (!chat.isGroup) return false;
+        return (chat.participants || []).some((cp: any) => participantIds.has(cp._id || cp.toString()));
+      });
+    });
+  }, [activeCalls, chats]);
+
   /* ── Calls ─────────────────────────────────────────────────────────── */
   const startGroupCall = async (users: { _id: string; nickname: string; avatar?: string }[]) => {
     setShowPicker(false);
@@ -863,18 +878,18 @@ export const Chats = () => {
           )}
 
           {/* Active group calls banner */}
-          {activeCalls.length > 0 && currentTab !== 'system' && !searchQuery.trim() && (
+          {relevantActiveCalls.length > 0 && currentTab !== 'system' && !searchQuery.trim() && (
             <div className="mt-3 mx-4 rounded-2xl bg-white border border-emerald-100 shadow-sm overflow-hidden">
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-xs font-extrabold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
                   <Video className="w-4 h-4 text-emerald-600" /> Active calls
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black">
-                  {activeCalls.length} LIVE
+                  {relevantActiveCalls.length} LIVE
                 </span>
               </div>
               <div className="divide-y divide-slate-100">
-                {activeCalls.map((c: any) => (
+                {relevantActiveCalls.map((c: any) => (
                   <button
                     key={c.callId}
                     onClick={() => joinCall(c.callId)}

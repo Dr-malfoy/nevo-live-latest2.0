@@ -100,9 +100,9 @@ export const Dashboard = () => {
         <StatsCard label="TP Bets" value={teenPattiStats?.totalBets ?? '...'} icon={<Dices className="w-5 h-5" />} color="text-amber-400" />
         <StatsCard label="TP Wins" value={teenPattiStats?.totalWins ?? '...'} icon={<Dices className="w-5 h-5" />} color="text-lime-400" />
         <StatsCard label="TP Rounds" value={teenPattiStats?.rounds ?? '...'} icon={<Dices className="w-5 h-5" />} color="text-teal-400" />
-        <StatsCard label="Aviator Bets" value={aviatorStats?.totalBets ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-indigo-400" />
-        <StatsCard label="Aviator Wins" value={aviatorStats?.totalWins ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-emerald-400" />
-        <StatsCard label="Aviator Rounds" value={aviatorStats?.rounds ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-fuchsia-400" />
+        <StatsCard label="Fly High Bets" value={aviatorStats?.totalBets ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-indigo-400" />
+        <StatsCard label="Fly High Wins" value={aviatorStats?.totalWins ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-emerald-400" />
+        <StatsCard label="Fly High Rounds" value={aviatorStats?.rounds ?? '...'} icon={<Plane className="w-5 h-5" />} color="text-fuchsia-400" />
         <StatsCard label="Roulette Bets" value={rouletteStats?.totalBets ?? '...'} icon={<CircleDot className="w-5 h-5" />} color="text-rose-400" />
         <StatsCard label="Roulette Wins" value={rouletteStats?.totalWins ?? '...'} icon={<CircleDot className="w-5 h-5" />} color="text-red-400" />
         <StatsCard label="Roulette Rounds" value={rouletteStats?.rounds ?? '...'} icon={<CircleDot className="w-5 h-5" />} color="text-pink-400" />

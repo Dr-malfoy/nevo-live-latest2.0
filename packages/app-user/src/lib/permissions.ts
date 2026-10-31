@@ -22,7 +22,19 @@ export async function requestMediaPermissions(
     stream.getTracks().forEach((t) => t.stop());
     return { granted: true };
   } catch (err: any) {
-    const name = err?.name || '';
+    let name = err?.name || '';
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      // Driver might still be releasing previous call session, wait and retry once
+      await new Promise((r) => setTimeout(r, 250));
+      try {
+        const retryStream = await navigator.mediaDevices.getUserMedia(constraints);
+        retryStream.getTracks().forEach((t) => t.stop());
+        return { granted: true };
+      } catch (retryErr: any) {
+        err = retryErr;
+        name = retryErr?.name || '';
+      }
+    }
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
       return {
         granted: false,
