@@ -167,6 +167,68 @@ export const registerStreamHandlers = (socket: Socket): void => {
         ...currentFilter,
       });
     }
+
+    // If stream is in an active PK battle, send current PK battle state to the newly joined user
+    try {
+      const { PkBattle } = await import('../models/PkBattle');
+      const activeBattle = await PkBattle.findOne({
+        $or: [{ streamIdA: streamId }, { streamIdB: streamId }],
+        status: 'active',
+      }).lean();
+
+      if (activeBattle) {
+        const { generateAgoraToken } = await import('../config/agora');
+        const sA = activeBattle.streamIdA?.toString();
+        const sB = activeBattle.streamIdB?.toString();
+        const streamADoc = sA ? await LiveStream.findById(sA).select('viewerCount agoraChannel hostId').lean() : null;
+        const streamBDoc = sB ? await LiveStream.findById(sB).select('viewerCount agoraChannel hostId').lean() : null;
+        const hostA = await User.findById(activeBattle.teamA[0]).select('nickname avatar level uid').lean();
+        const hostB = await User.findById(activeBattle.teamB[0]).select('nickname avatar level uid').lean();
+
+        const channelA = streamADoc?.agoraChannel || (sA ? `stream_${sA}` : '');
+        const tokenA = channelA ? generateAgoraToken(channelA, 0, 'subscriber') : '';
+        const channelB = streamBDoc?.agoraChannel || (sB ? `stream_${sB}` : '');
+        const tokenB = channelB ? generateAgoraToken(channelB, 0, 'subscriber') : '';
+
+        socket.emit('pk:live:start', {
+          battleId: activeBattle._id,
+          streamIdA: sA,
+          streamIdB: sB,
+          agoraChannelA: channelA,
+          agoraTokenA: tokenA,
+          agoraChannelB: channelB,
+          agoraTokenB: tokenB,
+          durationSeconds: activeBattle.durationSeconds,
+          endsAt: activeBattle.endsAt,
+          scoreA: activeBattle.scoreA,
+          scoreB: activeBattle.scoreB,
+          hostA: {
+            _id: hostA?._id?.toString(),
+            userId: hostA?._id?.toString(),
+            nickname: hostA?.nickname || 'Host A',
+            avatar: hostA?.avatar || '',
+            level: hostA?.level || 1,
+            uid: hostA?.uid || '',
+            viewerCount: streamADoc?.viewerCount || 0,
+            agoraChannel: channelA,
+            agoraToken: tokenA,
+          },
+          hostB: {
+            _id: hostB?._id?.toString(),
+            userId: hostB?._id?.toString(),
+            nickname: hostB?.nickname || 'Host B',
+            avatar: hostB?.avatar || '',
+            level: hostB?.level || 1,
+            uid: hostB?.uid || '',
+            viewerCount: streamBDoc?.viewerCount || 0,
+            agoraChannel: channelB,
+            agoraToken: tokenB,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[stream:join] active PK sync error:', e);
+    }
   });
 
   socket.on('stream:leave', async ({ streamId }) => {

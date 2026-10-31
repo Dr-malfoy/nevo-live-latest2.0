@@ -128,22 +128,30 @@ function createLiveCanvasStream(title: string): MediaStream {
 /** Renders gift icon as image when URL/path is provided, or as emoji/icon */
 function renderGiftIcon(iconStr?: string) {
   if (!iconStr) return <span className="text-sm shrink-0">🎁</span>;
-  const isUrl =
+  const isImage =
     iconStr.startsWith('http://') ||
     iconStr.startsWith('https://') ||
     iconStr.startsWith('/') ||
     iconStr.startsWith('data:') ||
-    /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(iconStr);
+    iconStr.includes('/') ||
+    iconStr.includes('\\') ||
+    /\.(png|jpe?g|webp|gif|svg|avif)/i.test(iconStr);
 
-  if (isUrl) {
+  if (isImage) {
     return (
       <img
         src={getMediaUrl(iconStr)}
         alt="Gift"
         className="w-5 h-5 object-contain shrink-0 rounded"
         onError={(e) => {
-          const target = e.currentTarget;
-          target.style.display = 'none';
+          const parent = e.currentTarget.parentElement;
+          if (parent) {
+            e.currentTarget.style.display = 'none';
+            const fallback = document.createElement('span');
+            fallback.className = 'text-sm shrink-0';
+            fallback.textContent = '🎁';
+            parent.appendChild(fallback);
+          }
         }}
       />
     );
@@ -584,6 +592,8 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   // PK Dual-Video Streaming & Dedicated WebRTC Connection Effect
   useEffect(() => {
     let opponentPc: RTCPeerConnection | null = null;
+    let agoraSubClient: any = null;
+    let isAgoraJoined = false;
     const sendingPcs = new Map<string, RTCPeerConnection>();
 
     const leftContainer = document.getElementById('pk-video-left');
@@ -599,11 +609,17 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         videoEl = document.createElement('video');
         videoEl.autoplay = true;
         videoEl.playsInline = true;
+        videoEl.setAttribute('playsinline', 'true');
+        videoEl.setAttribute('webkit-playsinline', 'true');
         videoEl.style.width = '100%';
         videoEl.style.height = '100%';
         videoEl.style.objectFit = 'cover';
         videoEl.className = 'w-full h-full object-cover';
         container.appendChild(videoEl);
+      } else {
+        videoEl.playsInline = true;
+        videoEl.setAttribute('playsinline', 'true');
+        videoEl.setAttribute('webkit-playsinline', 'true');
       }
       videoEl.muted = isMuted;
       if (!isMuted) {
@@ -652,7 +668,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       const mySide = mySideRef.current;
       const myContainer = mySide === 'left' ? leftContainer : rightContainer;
       const activeStream = getActiveLocalStream();
-      const shouldMute = Boolean(isCurrentHostRef.current);
+      const shouldMute = true; // Always mute local side clone to avoid audio echoing
       if (activeStream && activeStream.getVideoTracks().length > 0) {
         renderStreamInContainer(myContainer, activeStream, shouldMute);
         streamRendered = true;
@@ -669,19 +685,98 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     renderMyStream();
     const intervalCheck = setInterval(renderMyStream, 1500);
 
-    // 2. Connect to the OPPONENT stream via Dedicated PK WebRTC Signaling
+    // 2. Connect to OPPONENT stream via Agora Multi-Channel (Primary - High Performance Edge CDN)
+    const opponentChannel = isSideA
+      ? agoraChannelB || pkBattle?.agoraChannelB || pkBattle?.hostB?.agoraChannel || (streamIdB ? `stream_${streamIdB}` : '')
+      : agoraChannelA || pkBattle?.agoraChannelA || pkBattle?.hostA?.agoraChannel || (streamIdA ? `stream_${streamIdA}` : '');
+
+    const opponentToken = isSideA
+      ? agoraTokenB || pkBattle?.agoraTokenB || pkBattle?.hostB?.agoraToken || ''
+      : agoraTokenA || pkBattle?.agoraTokenA || pkBattle?.hostA?.agoraToken || '';
+
+    const setupAgoraSub = async () => {
+      if (!opponentChannel || !AGORA_APP_ID) return;
+      try {
+        const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
+        agoraSubClient = client;
+        await client.setClientRole('audience');
+
+        client.on('user-published', async (user, mediaType) => {
+          try {
+            if (!agoraSubClient) return;
+            await agoraSubClient.subscribe(user, mediaType);
+            const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+            if (mediaType === 'video' && targetContainer) {
+              user.videoTrack?.play(targetContainer, { fit: 'cover' });
+              const videos = targetContainer.querySelectorAll('video');
+              videos.forEach((v) => {
+                v.playsInline = true;
+                v.setAttribute('playsinline', 'true');
+                v.setAttribute('webkit-playsinline', 'true');
+                v.style.width = '100%';
+                v.style.height = '100%';
+                v.style.objectFit = 'cover';
+              });
+            }
+            if (mediaType === 'audio') {
+              user.audioTrack?.play();
+            }
+          } catch (e) {
+            console.warn('[PKBattleView] Agora subscribe error:', e);
+          }
+        });
+
+        await client.join(
+          AGORA_APP_ID,
+          opponentChannel,
+          opponentToken || null,
+          0
+        );
+        isAgoraJoined = true;
+
+        for (const user of client.remoteUsers) {
+          const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+          if (user.hasVideo && targetContainer) {
+            await client.subscribe(user, 'video');
+            user.videoTrack?.play(targetContainer, { fit: 'cover' });
+            const videos = targetContainer.querySelectorAll('video');
+            videos.forEach((v) => {
+              v.playsInline = true;
+              v.setAttribute('playsinline', 'true');
+              v.setAttribute('webkit-playsinline', 'true');
+              v.style.width = '100%';
+              v.style.height = '100%';
+              v.style.objectFit = 'cover';
+            });
+          }
+          if (user.hasAudio) {
+            await client.subscribe(user, 'audio');
+            user.audioTrack?.play();
+          }
+        }
+      } catch (err) {
+        console.warn('[PKBattleView] Agora subClient connection failed, relying on WebRTC fallback:', err);
+      }
+    };
+
+    setupAgoraSub();
+
+    // 3. Connect to the OPPONENT stream via Dedicated PK WebRTC Signaling (Fallback with TURN)
     const RTC_CONFIG: RTCConfiguration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelay', credential: 'openrelay' },
       ],
     };
 
     if (socket && opponentStreamId) {
       const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
       const senderCandidateQueues = new Map<string, RTCIceCandidateInit[]>();
-      let opponentPc: RTCPeerConnection | null = null;
       let remoteHostSocketId: string | null = null;
 
       const setupReceiverPc = (fromSocketId: string): RTCPeerConnection => {
@@ -894,6 +989,15 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       return () => {
         clearInterval(intervalCheck);
         clearInterval(retryTimer);
+        if (agoraSubClient) {
+          try {
+            agoraSubClient.removeAllListeners();
+            if (isAgoraJoined) {
+              agoraSubClient.leave().catch(() => {});
+            }
+          } catch {}
+          agoraSubClient = null;
+        }
         socket.off('pk:signal:offer', onOpponentOffer);
         socket.off('pk:signal:answer', onPkAnswer);
         socket.off('pk:signal:candidate', onPkCandidate);
@@ -914,10 +1018,19 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
 
     return () => {
       clearInterval(intervalCheck);
+      if (agoraSubClient) {
+        try {
+          agoraSubClient.removeAllListeners();
+          if (isAgoraJoined) {
+            agoraSubClient.leave().catch(() => {});
+          }
+        } catch {}
+        agoraSubClient = null;
+      }
       sendingPcs.forEach((pc) => pc.close());
       sendingPcs.clear();
     };
-  }, [socket, battleId, opponentStreamId]);
+  }, [socket, battleId, opponentStreamId, agoraChannelA, agoraTokenA, agoraChannelB, agoraTokenB]);
 
   // Process and separate received gifts for Host A (Left) and Host B (Right)
   const { leftGifts, rightGifts, leftGiftTotal, rightGiftTotal } = useMemo(() => {

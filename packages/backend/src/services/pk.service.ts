@@ -313,10 +313,13 @@ export const pkService = {
 
     const inviter = await User.findById(inviterId).select('nickname avatar level uid').lean();
 
+    const sIdA = streamAId && mongoose.Types.ObjectId.isValid(streamAId) ? new mongoose.Types.ObjectId(streamAId) : undefined;
+    const sIdB = streamBId && mongoose.Types.ObjectId.isValid(streamBId) ? new mongoose.Types.ObjectId(streamBId) : undefined;
+
     const battle = await PkBattle.create({
       type: 'friend',
-      streamIdA: streamAId,
-      streamIdB: streamBId,
+      streamIdA: sIdA,
+      streamIdB: sIdB,
       teamA: [inviterId as any],
       teamB: [targetHostId as any],
       scoreA: 0,
@@ -415,12 +418,29 @@ export const pkService = {
     const hostA = await User.findById(battle.teamA[0]).select('nickname avatar level uid').lean();
     const hostB = await User.findById(battle.teamB[0]).select('nickname avatar level uid').lean();
 
-    const streamADoc = streamA ? await LiveStream.findById(streamA).select('viewerCount agoraChannel agoraToken').lean() : null;
-    const streamBDoc = streamB ? await LiveStream.findById(streamB).select('viewerCount agoraChannel agoraToken').lean() : null;
+    let streamADoc = streamA && mongoose.Types.ObjectId.isValid(streamA)
+      ? await LiveStream.findById(streamA).select('viewerCount agoraChannel agoraToken hostId').lean()
+      : null;
+    let streamBDoc = streamB && mongoose.Types.ObjectId.isValid(streamB)
+      ? await LiveStream.findById(streamB).select('viewerCount agoraChannel agoraToken hostId').lean()
+      : null;
 
-    const channelA = streamADoc?.agoraChannel || '';
+    if (!streamADoc?.agoraChannel && battle.teamA[0]) {
+      const activeA: any = await LiveStream.findOne({ hostId: battle.teamA[0], status: 'live' })
+        .select('viewerCount agoraChannel agoraToken hostId')
+        .lean();
+      if (activeA?.agoraChannel) streamADoc = activeA;
+    }
+    if (!streamBDoc?.agoraChannel && battle.teamB[0]) {
+      const activeB: any = await LiveStream.findOne({ hostId: battle.teamB[0], status: 'live' })
+        .select('viewerCount agoraChannel agoraToken hostId')
+        .lean();
+      if (activeB?.agoraChannel) streamBDoc = activeB;
+    }
+
+    const channelA = streamADoc?.agoraChannel || (streamA ? `stream_${streamA}` : `stream_${battle.teamA[0] || 'hostA'}_${Date.now()}`);
     const tokenA = channelA ? generateAgoraToken(channelA, 0, 'subscriber') : '';
-    const channelB = streamBDoc?.agoraChannel || '';
+    const channelB = streamBDoc?.agoraChannel || (streamB ? `stream_${streamB}` : `stream_${battle.teamB[0] || 'hostB'}_${Date.now()}`);
     const tokenB = channelB ? generateAgoraToken(channelB, 0, 'subscriber') : '';
 
     const startPayload = {
