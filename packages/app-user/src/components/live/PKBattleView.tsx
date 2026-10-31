@@ -28,10 +28,13 @@ import {
   PiSparkleFill as Sparkle,
   PiTrendUpBold as TrendUp,
 } from 'react-icons/pi';
+import AgoraRTC from 'agora-rtc-sdk-ng';
 import { getMediaUrl } from '../../lib/media';
 import { MicRequestBanner } from './MicRequestBanner';
 import { useUIStore } from '../../stores';
 import type { LiveHost, RoomMessage } from './types';
+
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
 
 /** Creates an animated 30fps canvas stream as fallback when camera hardware is absent or occupied */
 function createLiveCanvasStream(title: string): MediaStream {
@@ -223,6 +226,11 @@ export interface PKBattleViewProps {
   onOpenGift?: () => void;
   onShare?: () => void;
   isMirrored?: boolean;
+  agoraChannelA?: string;
+  agoraTokenA?: string;
+  agoraChannelB?: string;
+  agoraTokenB?: string;
+  pkBattle?: any;
 }
 
 export const PKBattleView: React.FC<PKBattleViewProps> = ({
@@ -239,6 +247,11 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   rightHost,
   isHost,
   isMirrored = false,
+  agoraChannelA,
+  agoraTokenA,
+  agoraChannelB,
+  agoraTokenB,
+  pkBattle,
   currentUserId,
   messages = [],
   onSendMessage,

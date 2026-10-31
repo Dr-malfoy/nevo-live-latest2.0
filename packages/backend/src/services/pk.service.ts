@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { PkBattle, User, LiveStream } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../socket';
+import { generateAgoraToken } from '../config/agora';
 
 export const pkService = {
   /** Available PK type configs — aligned with PkTypeCard */
@@ -414,13 +415,22 @@ export const pkService = {
     const hostA = await User.findById(battle.teamA[0]).select('nickname avatar level uid').lean();
     const hostB = await User.findById(battle.teamB[0]).select('nickname avatar level uid').lean();
 
-    const streamADoc = streamA ? await LiveStream.findById(streamA).select('viewerCount').lean() : null;
-    const streamBDoc = streamB ? await LiveStream.findById(streamB).select('viewerCount').lean() : null;
+    const streamADoc = streamA ? await LiveStream.findById(streamA).select('viewerCount agoraChannel agoraToken').lean() : null;
+    const streamBDoc = streamB ? await LiveStream.findById(streamB).select('viewerCount agoraChannel agoraToken').lean() : null;
+
+    const channelA = streamADoc?.agoraChannel || '';
+    const tokenA = channelA ? generateAgoraToken(channelA, 0, 'subscriber') : '';
+    const channelB = streamBDoc?.agoraChannel || '';
+    const tokenB = channelB ? generateAgoraToken(channelB, 0, 'subscriber') : '';
 
     const startPayload = {
       battleId: battle._id,
       streamIdA: streamA,
       streamIdB: streamB,
+      agoraChannelA: channelA,
+      agoraTokenA: tokenA,
+      agoraChannelB: channelB,
+      agoraTokenB: tokenB,
       durationSeconds,
       endsAt: battle.endsAt,
       scoreA: battle.scoreA,
@@ -433,6 +443,8 @@ export const pkService = {
         level: hostA?.level || 1,
         uid: hostA?.uid || '',
         viewerCount: streamADoc?.viewerCount || 0,
+        agoraChannel: channelA,
+        agoraToken: tokenA,
       },
       hostB: {
         _id: hostB?._id?.toString(),
@@ -442,6 +454,8 @@ export const pkService = {
         level: hostB?.level || 1,
         uid: hostB?.uid || '',
         viewerCount: streamBDoc?.viewerCount || 0,
+        agoraChannel: channelB,
+        agoraToken: tokenB,
       },
     };
 

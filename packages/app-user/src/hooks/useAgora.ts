@@ -278,7 +278,6 @@ export const useAgora = () => {
                 videoEl.style.width = '100%';
                 videoEl.style.height = '100%';
                 videoEl.style.objectFit = 'cover';
-                videoEl.style.transform = 'scaleX(-1)';
                 videoEl.srcObject = remoteStream;
                 container.appendChild(videoEl);
                 remoteVideoElRef.current = videoEl;
@@ -474,7 +473,7 @@ export const useAgora = () => {
               const videoArea = document.getElementById('agora-video-area');
               if (videoArea) videoArea.appendChild(container);
             }
-            user.videoTrack?.play(container, { mirror: true });
+            user.videoTrack?.play(container);
           }
           if (mediaType === 'audio') {
             try {

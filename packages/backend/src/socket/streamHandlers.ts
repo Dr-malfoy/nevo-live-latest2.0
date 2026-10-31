@@ -65,7 +65,6 @@ export interface StreamFilterState {
   smoothness: number;
   whitening: number;
   filterCss?: string;
-  isMirrored?: boolean;
 }
 const streamFiltersMap = new Map<string, StreamFilterState>();
 
@@ -334,13 +333,12 @@ export const registerStreamHandlers = (socket: Socket): void => {
   });
 
   // Real-time synchronization of Beauty & Color Filters across Host and Viewers
-  socket.on('stream:filter:update', ({ streamId, smoothness, whitening, filterCss, isMirrored }) => {
+  socket.on('stream:filter:update', ({ streamId, smoothness, whitening, filterCss }) => {
     if (!streamId) return;
     const filterState: StreamFilterState = {
       smoothness: Number(smoothness) || 0,
       whitening: Number(whitening) || 0,
       filterCss: typeof filterCss === 'string' ? filterCss : '',
-      isMirrored: typeof isMirrored === 'boolean' ? isMirrored : true,
     };
     streamFiltersMap.set(streamId, filterState);
     // Broadcast live to all viewers in the stream room

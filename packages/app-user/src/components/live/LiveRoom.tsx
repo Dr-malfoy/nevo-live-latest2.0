@@ -174,23 +174,16 @@ export const LiveRoom = ({
     });
   }, [isSideA]);
 
-  // Remote filter state synchronized via socket for all room viewers
-  const [remoteSmoothness, setRemoteSmoothness] = useState(0);
-  const [remoteWhitening, setRemoteWhitening] = useState(0);
-  const [remoteFilterCss, setRemoteFilterCss] = useState('');
-  const [remoteIsMirrored, setRemoteIsMirrored] = useState(true);
-
-  const effectiveMirror = isHost ? mirrorOn : remoteIsMirrored;
-
   const handleToggleMirror = useCallback(() => {
     setMirrorOn((m) => {
       const next = !m;
       onSetMirror?.(next);
-      applyVideoMirror(next);
+      const shouldMirror = isHost && next;
+      applyVideoMirror(shouldMirror);
       showToast(next ? 'Camera mirror enabled' : 'Camera mirror disabled', 'info');
       return next;
     });
-  }, [showToast, onSetMirror, applyVideoMirror]);
+  }, [showToast, onSetMirror, isHost, applyVideoMirror]);
 
   const isSwitchingCameraRef = useRef(false);
   const handleSwitchCamera = useCallback(async () => {
@@ -206,20 +199,22 @@ export const LiveRoom = ({
   }, [onSwitchCamera]);
 
   useEffect(() => {
+    const shouldMirror = isHost && mirrorOn;
     onSetMirror?.(mirrorOn);
-    applyVideoMirror(effectiveMirror);
-  }, [effectiveMirror, mirrorOn, isSideA, onSetMirror, applyVideoMirror]);
+    applyVideoMirror(shouldMirror);
+  }, [mirrorOn, isHost, isSideA, onSetMirror, applyVideoMirror]);
 
-  // Observer to ensure newly attached video elements (e.g. after camera switch or remote video attach) inherit mirror state immediately
+  // Observer to ensure newly attached video elements (e.g. after camera switch) inherit mirror state immediately
   useEffect(() => {
     const videoArea = document.getElementById('agora-video-area');
     if (!videoArea) return;
     const observer = new MutationObserver(() => {
-      applyVideoMirror(effectiveMirror);
+      const shouldMirror = isHost && mirrorOn;
+      applyVideoMirror(shouldMirror);
     });
     observer.observe(videoArea, { childList: true });
     return () => observer.disconnect();
-  }, [effectiveMirror, applyVideoMirror]);
+  }, [isHost, mirrorOn, applyVideoMirror]);
 
   // Beauty effect handlers: delegates true skin-smoothing & whitening to Agora GPU processor pipeline
   const handleSmoothnessChange = useCallback((val: number) => {
@@ -238,7 +233,12 @@ export const LiveRoom = ({
     onApplyBeautyEffect?.(0, 0);
   }, [onApplyBeautyEffect]);
 
-  // Host broadcasts their filter, beauty & mirror settings to the room in real-time
+  // Remote filter state synchronized via socket for all room viewers
+  const [remoteSmoothness, setRemoteSmoothness] = useState(0);
+  const [remoteWhitening, setRemoteWhitening] = useState(0);
+  const [remoteFilterCss, setRemoteFilterCss] = useState('');
+
+  // Host broadcasts their filter & beauty settings to the room in real-time
   useEffect(() => {
     if (isHost && socket && stream?._id) {
       socket.emit('stream:filter:update', {
@@ -246,12 +246,11 @@ export const LiveRoom = ({
         smoothness,
         whitening,
         filterCss: filterCss || '',
-        isMirrored: mirrorOn,
       });
     }
-  }, [isHost, socket, stream?._id, smoothness, whitening, filterCss, mirrorOn]);
+  }, [isHost, socket, stream?._id, smoothness, whitening, filterCss]);
 
-  // Viewers listen to the host's filter, beauty & mirror settings
+  // Viewers listen to the host's filter & beauty settings
   useEffect(() => {
     if (!isHost && socket) {
       const handleRemoteFilter = (data: {
@@ -259,13 +258,11 @@ export const LiveRoom = ({
         smoothness?: number;
         whitening?: number;
         filterCss?: string;
-        isMirrored?: boolean;
       }) => {
         if (!data) return;
         if (typeof data.smoothness === 'number') setRemoteSmoothness(data.smoothness);
         if (typeof data.whitening === 'number') setRemoteWhitening(data.whitening);
         if (typeof data.filterCss === 'string') setRemoteFilterCss(data.filterCss);
-        if (typeof data.isMirrored === 'boolean') setRemoteIsMirrored(data.isMirrored);
       };
 
       socket.on('stream:filter:update', handleRemoteFilter);
@@ -962,6 +959,11 @@ export const LiveRoom = ({
           battleId={pkBattle.battleId}
           streamIdA={pkBattle.streamIdA}
           streamIdB={pkBattle.streamIdB}
+          agoraChannelA={pkBattle.agoraChannelA || pkBattle.hostA?.agoraChannel}
+          agoraTokenA={pkBattle.agoraTokenA || pkBattle.hostA?.agoraToken}
+          agoraChannelB={pkBattle.agoraChannelB || pkBattle.hostB?.agoraChannel}
+          agoraTokenB={pkBattle.agoraTokenB || pkBattle.hostB?.agoraToken}
+          pkBattle={pkBattle}
           currentStreamId={currentStreamId || stream?._id}
           socket={socket}
           localMediaStream={localMediaStream}
