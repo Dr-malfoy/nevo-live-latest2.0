@@ -65,6 +65,7 @@ export interface StreamFilterState {
   smoothness: number;
   whitening: number;
   filterCss?: string;
+  isMirrored?: boolean;
 }
 const streamFiltersMap = new Map<string, StreamFilterState>();
 
@@ -239,22 +240,45 @@ export const registerStreamHandlers = (socket: Socket): void => {
   });
 
   // Dedicated PK Battle Dual-Video WebRTC Signaling Relays (Isolated from normal room live streams)
-  socket.on('pk:signal:request-stream', async ({ streamId, battleId }) => {
-    if (!streamId) return;
+  socket.on('pk:signal:request-stream', async ({ streamId, targetHostId, battleId }: { streamId?: string; targetHostId?: string; battleId?: string }) => {
+    if (!streamId && !targetHostId && !battleId) return;
     const payload = {
       peerSocketId: socket.id,
       peerUserId: socket.data.user?.userId,
       streamId,
       battleId,
     };
-    try {
-      const streamDoc = await LiveStream.findById(streamId).select('hostId').lean();
-      let target = getIO().to(`stream:${streamId}`);
-      if (streamDoc?.hostId) {
-        target = target.to(`user:${streamDoc.hostId.toString()}`);
-      }
-      target.emit('pk:signal:peer-joined', payload);
-    } catch {
+
+    let hostUserId = targetHostId;
+
+    if (!hostUserId && battleId) {
+      try {
+        const { PkBattle } = await import('../models/PkBattle');
+        const battle = await PkBattle.findById(battleId).select('teamA teamB streamIdA streamIdB').lean();
+        if (battle) {
+          if (battle.streamIdA?.toString() === streamId) {
+            hostUserId = battle.teamA?.[0]?.toString();
+          } else if (battle.streamIdB?.toString() === streamId) {
+            hostUserId = battle.teamB?.[0]?.toString();
+          }
+        }
+      } catch {}
+    }
+
+    if (!hostUserId && streamId) {
+      try {
+        const streamDoc = await LiveStream.findById(streamId).select('hostId').lean();
+        if (streamDoc?.hostId) {
+          hostUserId = streamDoc.hostId.toString();
+        }
+      } catch {}
+    }
+
+    if (hostUserId) {
+      getIO().to(`user:${hostUserId}`).emit('pk:signal:peer-joined', payload);
+      getIO().to(hostUserId).emit('pk:signal:peer-joined', payload);
+    }
+    if (streamId) {
       getIO().to(`stream:${streamId}`).emit('pk:signal:peer-joined', payload);
     }
   });
@@ -310,12 +334,13 @@ export const registerStreamHandlers = (socket: Socket): void => {
   });
 
   // Real-time synchronization of Beauty & Color Filters across Host and Viewers
-  socket.on('stream:filter:update', ({ streamId, smoothness, whitening, filterCss }) => {
+  socket.on('stream:filter:update', ({ streamId, smoothness, whitening, filterCss, isMirrored }) => {
     if (!streamId) return;
     const filterState: StreamFilterState = {
       smoothness: Number(smoothness) || 0,
       whitening: Number(whitening) || 0,
       filterCss: typeof filterCss === 'string' ? filterCss : '',
+      isMirrored: typeof isMirrored === 'boolean' ? isMirrored : true,
     };
     streamFiltersMap.set(streamId, filterState);
     // Broadcast live to all viewers in the stream room

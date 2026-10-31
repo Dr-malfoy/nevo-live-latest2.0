@@ -150,6 +150,7 @@ export const useAgora = () => {
 
   // Fallback MediaStream and elements
   const fallbackStreamRef = useRef<MediaStream | null>(null);
+  const cachedLocalStreamRef = useRef<MediaStream | null>(null);
   const fallbackVideoElRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoElRef = useRef<HTMLVideoElement | null>(null);
 
@@ -277,6 +278,7 @@ export const useAgora = () => {
                 videoEl.style.width = '100%';
                 videoEl.style.height = '100%';
                 videoEl.style.objectFit = 'cover';
+                videoEl.style.transform = 'scaleX(-1)';
                 videoEl.srcObject = remoteStream;
                 container.appendChild(videoEl);
                 remoteVideoElRef.current = videoEl;
@@ -472,7 +474,7 @@ export const useAgora = () => {
               const videoArea = document.getElementById('agora-video-area');
               if (videoArea) videoArea.appendChild(container);
             }
-            user.videoTrack?.play(container);
+            user.videoTrack?.play(container, { mirror: true });
           }
           if (mediaType === 'audio') {
             try {
@@ -1016,14 +1018,25 @@ export const useAgora = () => {
       const tracks: MediaStreamTrack[] = [];
       try {
         const vTrack = (localVideoRef.current as any)?.getMediaStreamTrack?.();
-        if (vTrack) tracks.push(vTrack);
+        if (vTrack && vTrack.readyState === 'live') tracks.push(vTrack);
       } catch {}
       try {
         const aTrack = (localAudioRef.current as any)?.getMediaStreamTrack?.();
-        if (aTrack) tracks.push(aTrack);
+        if (aTrack && aTrack.readyState === 'live') tracks.push(aTrack);
       } catch {}
       if (tracks.length > 0) {
-        return new MediaStream(tracks);
+        if (!cachedLocalStreamRef.current) {
+          cachedLocalStreamRef.current = new MediaStream(tracks);
+        } else {
+          const currentTracks = cachedLocalStreamRef.current.getTracks();
+          const isSame =
+            currentTracks.length === tracks.length &&
+            currentTracks.every((t, i) => t.id === tracks[i]?.id && t.readyState === 'live');
+          if (!isSame) {
+            cachedLocalStreamRef.current = new MediaStream(tracks);
+          }
+        }
+        return cachedLocalStreamRef.current;
       }
       return null;
     },

@@ -300,6 +300,9 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
   const mySide = isSideA ? 'left' : 'right';
   const opponentSide = isSideA ? 'right' : 'left';
   const opponentStreamId = isSideA ? streamIdB : streamIdA;
+  const opponentHostId = isSideA
+    ? (rightHost.userId || (rightHost as any)._id)
+    : (leftHost.userId || (leftHost as any)._id);
 
   // Direct video mirroring for host's local side on Android WebView
   useEffect(() => {
@@ -348,6 +351,9 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
 
   const opponentSideRef = useRef(opponentSide);
   opponentSideRef.current = opponentSide;
+
+  const opponentHostIdRef = useRef(opponentHostId);
+  opponentHostIdRef.current = opponentHostId;
 
   const currentStreamIdRef = useRef(currentStreamId);
   currentStreamIdRef.current = currentStreamId;
@@ -587,11 +593,12 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         container.appendChild(videoEl);
       }
       videoEl.muted = isMuted;
-      if (videoEl.srcObject === stream) {
-        // Stream already attached — do not reassign to prevent decoder flush / blanking
-        return;
+      if (!isMuted) {
+        videoEl.volume = 1.0;
       }
-      videoEl.srcObject = stream;
+      if (videoEl.srcObject !== stream) {
+        videoEl.srcObject = stream;
+      }
       videoEl.play().catch(() => {
         if (!isMuted) {
           videoEl.muted = true;
@@ -610,9 +617,17 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       }
       if (typeof document !== 'undefined') {
         const agoraAreaEl = document.getElementById('agora-video-area');
-        const existingVideo = agoraAreaEl?.querySelector('video') as HTMLVideoElement;
-        if (existingVideo && existingVideo.srcObject instanceof MediaStream && existingVideo.srcObject.getTracks().length > 0) {
-          return existingVideo.srcObject;
+        if (agoraAreaEl) {
+          const videos = agoraAreaEl.querySelectorAll('video');
+          for (let i = 0; i < videos.length; i++) {
+            const v = videos[i] as HTMLVideoElement;
+            if (
+              v.srcObject instanceof MediaStream &&
+              v.srcObject.getVideoTracks().some((t) => t.readyState === 'live')
+            ) {
+              return v.srcObject;
+            }
+          }
         }
       }
       return null;
@@ -624,8 +639,9 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       const mySide = mySideRef.current;
       const myContainer = mySide === 'left' ? leftContainer : rightContainer;
       const activeStream = getActiveLocalStream();
+      const shouldMute = Boolean(isCurrentHostRef.current);
       if (activeStream && activeStream.getVideoTracks().length > 0) {
-        renderStreamInContainer(myContainer, activeStream, true);
+        renderStreamInContainer(myContainer, activeStream, shouldMute);
         streamRendered = true;
       } else if (!streamRendered) {
         if (!syntheticStreamRef.current) {
@@ -633,7 +649,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             mySide === 'left' ? leftNicknameRef.current : rightNicknameRef.current
           );
         }
-        renderStreamInContainer(myContainer, syntheticStreamRef.current, true);
+        renderStreamInContainer(myContainer, syntheticStreamRef.current, shouldMute);
       }
     };
 
@@ -650,67 +666,73 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     };
 
     if (socket && opponentStreamId) {
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      opponentPc = pc;
+      const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+      const senderCandidateQueues = new Map<string, RTCIceCandidateInit[]>();
+      let opponentPc: RTCPeerConnection | null = null;
+      let remoteHostSocketId: string | null = null;
 
-      // Handle receiving opponent stream tracks
-      pc.ontrack = (event) => {
-        const stream = event.streams[0] || new MediaStream([event.track]);
-        const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
-        // Unmuted so host and viewers can hear the opponent
-        renderStreamInContainer(targetContainer, stream, false);
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && (opponentPc as any)?._remoteSocketId) {
-          socket.emit('pk:signal:candidate', {
-            toSocketId: (opponentPc as any)._remoteSocketId,
-            candidate: event.candidate,
-            battleId,
-            streamId: opponentStreamId,
-          });
+      const setupReceiverPc = (fromSocketId: string): RTCPeerConnection => {
+        if (opponentPc) {
+          try {
+            opponentPc.close();
+          } catch {}
+          opponentPc = null;
         }
+
+        const pc = new RTCPeerConnection(RTC_CONFIG);
+        opponentPc = pc;
+        remoteHostSocketId = fromSocketId;
+
+        try {
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+        } catch {}
+
+        pc.ontrack = (event) => {
+          const stream = event.streams[0] || new MediaStream([event.track]);
+          const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+          renderStreamInContainer(targetContainer, stream, false);
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && remoteHostSocketId) {
+            socket.emit('pk:signal:candidate', {
+              toSocketId: remoteHostSocketId,
+              candidate: event.candidate,
+              battleId,
+              streamId: opponentStreamId,
+            });
+          }
+        };
+
+        return pc;
       };
 
       // Handler when opponent host sends an offer for their stream
-      let isProcessingOffer = false;
       const onOpponentOffer = async ({ fromSocketId, offer }: any) => {
         if (!offer || fromSocketId === socket.id) return;
-        if (isProcessingOffer) return;
-        isProcessingOffer = true;
         try {
-          (pc as any)._remoteSocketId = fromSocketId;
-          if (pc.signalingState === 'have-remote-offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('pk:signal:answer', {
-              toSocketId: fromSocketId,
-              answer,
-              battleId,
-              streamId: opponentStreamId,
-            });
-            return;
-          }
-          if (pc.signalingState !== 'stable') {
-            try {
-              await pc.setLocalDescription({ type: 'rollback' } as any);
-            } catch {}
-          }
+          const pc = setupReceiverPc(fromSocketId);
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          if (pc.signalingState === 'have-remote-offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('pk:signal:answer', {
-              toSocketId: fromSocketId,
-              answer,
-              battleId,
-              streamId: opponentStreamId,
-            });
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit('pk:signal:answer', {
+            toSocketId: fromSocketId,
+            answer,
+            battleId,
+            streamId: opponentStreamId,
+          });
+
+          // Drain any ICE candidates received before remoteDescription was set
+          while (pendingRemoteCandidates.length > 0) {
+            const cand = pendingRemoteCandidates.shift();
+            if (cand) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+            }
           }
         } catch (err) {
           console.warn('[PKBattleView] WebRTC answer error for opponent:', err);
-        } finally {
-          isProcessingOffer = false;
         }
       };
 
@@ -721,7 +743,11 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         if (streamId && myStreamId && streamId !== myStreamId) return;
 
         const existingPc = sendingPcs.get(peerSocketId);
-        if (existingPc && (existingPc.connectionState === 'connected' || existingPc.iceConnectionState === 'connected')) {
+        if (
+          existingPc &&
+          ['connected', 'connecting'].includes(existingPc.connectionState) &&
+          existingPc.signalingState !== 'closed'
+        ) {
           return;
         }
 
@@ -737,9 +763,10 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         if (!streamToShare) return;
 
         try {
-          const oldPc = sendingPcs.get(peerSocketId);
-          if (oldPc) {
-            oldPc.close();
+          if (existingPc) {
+            try {
+              existingPc.close();
+            } catch {}
             sendingPcs.delete(peerSocketId);
           }
 
@@ -778,26 +805,50 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         if (sPc && answer && sPc.signalingState === 'have-local-offer') {
           try {
             await sPc.setRemoteDescription(new RTCSessionDescription(answer));
+
+            const queue = senderCandidateQueues.get(fromSocketId);
+            if (queue) {
+              while (queue.length > 0) {
+                const cand = queue.shift();
+                if (cand) {
+                  await sPc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                }
+              }
+              senderCandidateQueues.delete(fromSocketId);
+            }
           } catch (e) {
             console.warn('[PKBattleView] Failed to set remote description on sender:', e);
           }
         }
       };
 
-      // Bidirectional ICE candidate routing
+      // Bidirectional ICE candidate routing with queueing
       const onPkCandidate = async ({ fromSocketId, candidate }: any) => {
         if (!candidate) return;
-        if (pc && (pc as any)._remoteSocketId === fromSocketId && pc.remoteDescription) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            return;
-          } catch {}
+
+        if (!remoteHostSocketId || remoteHostSocketId === fromSocketId) {
+          if (opponentPc && opponentPc.remoteDescription) {
+            try {
+              await opponentPc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch {}
+          } else {
+            pendingRemoteCandidates.push(candidate);
+          }
+          return;
         }
+
         const sPc = sendingPcs.get(fromSocketId);
-        if (sPc && sPc.remoteDescription) {
-          try {
-            await sPc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch {}
+        if (sPc) {
+          if (sPc.remoteDescription) {
+            try {
+              await sPc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch {}
+          } else {
+            if (!senderCandidateQueues.has(fromSocketId)) {
+              senderCandidateQueues.set(fromSocketId, []);
+            }
+            senderCandidateQueues.get(fromSocketId)!.push(candidate);
+          }
         }
       };
 
@@ -807,16 +858,25 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       socket.on('pk:signal:peer-joined', onPeerJoinedForMe);
 
       // Initial request for opponent's stream
-      socket.emit('pk:signal:request-stream', { streamId: opponentStreamId, battleId });
+      socket.emit('pk:signal:request-stream', {
+        streamId: opponentStreamId,
+        targetHostId: opponentHostIdRef.current,
+        battleId,
+      });
 
-      // Gentle retry if opponent video is not playing after 3 seconds
+      // Retry if opponent video is not playing after 5 seconds
       const retryTimer = setInterval(() => {
         const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
         const video = targetContainer.querySelector('video');
-        if (!video || video.paused || video.readyState < 2) {
-          socket.emit('pk:signal:request-stream', { streamId: opponentStreamId, battleId });
+        const isPlaying = video && !video.paused && video.readyState >= 2;
+        if (!isPlaying) {
+          socket.emit('pk:signal:request-stream', {
+            streamId: opponentStreamId,
+            targetHostId: opponentHostIdRef.current,
+            battleId,
+          });
         }
-      }, 3000);
+      }, 5000);
 
       return () => {
         clearInterval(intervalCheck);
@@ -825,8 +885,16 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         socket.off('pk:signal:answer', onPkAnswer);
         socket.off('pk:signal:candidate', onPkCandidate);
         socket.off('pk:signal:peer-joined', onPeerJoinedForMe);
-        if (opponentPc) opponentPc.close();
-        sendingPcs.forEach((pc) => pc.close());
+        if (opponentPc) {
+          try {
+            opponentPc.close();
+          } catch {}
+        }
+        sendingPcs.forEach((pc) => {
+          try {
+            pc.close();
+          } catch {}
+        });
         sendingPcs.clear();
       };
     }
