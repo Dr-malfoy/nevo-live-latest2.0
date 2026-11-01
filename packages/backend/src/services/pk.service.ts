@@ -563,25 +563,64 @@ export const pkService = {
   },
 
   /** End a live PK battle and emit settlement to both rooms */
-  async endLivePk(battleId: string) {
+  async endLivePk(battleId: string, forfeitedByUserId?: string) {
     const battle = await PkBattle.findById(battleId);
     if (!battle || battle.status === 'ended') return null;
 
-    const winnerSide: 'A' | 'B' | 'draw' =
-      battle.scoreA > battle.scoreB ? 'A'
-      : battle.scoreB > battle.scoreA ? 'B'
-      : 'draw';
+    const userA = battle.teamA[0]?.toString();
+    const userB = battle.teamB[0]?.toString();
+
+    let winnerSide: 'A' | 'B' | 'draw' = 'draw';
+    let bonusPoints = 0;
+    let forfeitedBy: string | undefined = undefined;
+
+    if (forfeitedByUserId) {
+      const forfeitedStr = forfeitedByUserId.toString();
+      if (forfeitedStr === userA) {
+        // Host A left early -> Host B wins + 300 points!
+        winnerSide = 'B';
+        bonusPoints = 300;
+        battle.scoreB = (battle.scoreB || 0) + 300;
+        forfeitedBy = userA;
+      } else if (forfeitedStr === userB) {
+        // Host B left early -> Host A wins + 300 points!
+        winnerSide = 'A';
+        bonusPoints = 300;
+        battle.scoreA = (battle.scoreA || 0) + 300;
+        forfeitedBy = userB;
+      }
+    }
+
+    if (!forfeitedBy) {
+      winnerSide =
+        battle.scoreA > battle.scoreB ? 'A'
+        : battle.scoreB > battle.scoreA ? 'B'
+        : 'draw';
+    }
 
     battle.status = 'ended';
     battle.winnerSide = winnerSide;
     battle.settledAt = new Date();
+    if (forfeitedBy) {
+      battle.forfeitedBy = forfeitedBy as any;
+      battle.bonusPoints = bonusPoints;
+    }
     await battle.save();
+
+    // Fetch nicknames for display
+    const hostADoc = userA ? await User.findById(userA).select('nickname avatar').lean() : null;
+    const hostBDoc = userB ? await User.findById(userB).select('nickname avatar').lean() : null;
 
     const endPayload = {
       battleId,
       winnerSide,
+      winnerNickname: winnerSide === 'A' ? hostADoc?.nickname : winnerSide === 'B' ? hostBDoc?.nickname : 'Tie',
       scoreA: battle.scoreA,
       scoreB: battle.scoreB,
+      forfeit: Boolean(forfeitedBy),
+      forfeitedBy,
+      forfeitedNickname: forfeitedBy === userA ? hostADoc?.nickname : forfeitedBy === userB ? hostBDoc?.nickname : undefined,
+      bonusPoints,
     };
 
     const io = getIO();
@@ -589,6 +628,14 @@ export const pkService = {
     const streamB = battle.streamIdB?.toString();
     if (streamA) io.to(`stream:${streamA}`).emit('pk:live:end', endPayload);
     if (streamB) io.to(`stream:${streamB}`).emit('pk:live:end', endPayload);
+    if (userA) {
+      io.to(userA).emit('pk:live:end', endPayload);
+      io.to(`user:${userA}`).emit('pk:live:end', endPayload);
+    }
+    if (userB) {
+      io.to(userB).emit('pk:live:end', endPayload);
+      io.to(`user:${userB}`).emit('pk:live:end', endPayload);
+    }
 
     return endPayload;
   },

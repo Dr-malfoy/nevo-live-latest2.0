@@ -20,6 +20,8 @@ export interface IPkBattleDocument extends Document {
   endsAt: Date;
   status: 'pending' | 'active' | 'ended';
   winnerSide?: 'A' | 'B' | 'draw' | null;
+  forfeitedBy?: Schema.Types.ObjectId | null;
+  bonusPoints?: number;
   settledAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +47,8 @@ const pkBattleSchema = new Schema<IPkBattleDocument>(
       index: true,
     },
     winnerSide: { type: String, enum: ['A', 'B', 'draw', null], default: null },
+    forfeitedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    bonusPoints: { type: Number, default: 0 },
     settledAt: { type: Date, default: null },
   },
   { timestamps: true }

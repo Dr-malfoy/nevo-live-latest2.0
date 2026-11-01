@@ -135,7 +135,11 @@ export const LiveRoom = ({
   }, [showToast]);
 
   const isSideA = pkBattle
-    ? (pkBattle.hostA?.userId === user?._id || (currentStreamId ? currentStreamId === pkBattle.streamIdA : pkBattle.streamIdA === stream?._id))
+    ? (
+        (pkBattle.hostA?.userId && user?._id && String(pkBattle.hostA.userId) === String(user._id)) ||
+        (currentStreamId && pkBattle.streamIdA && String(currentStreamId) === String(pkBattle.streamIdA)) ||
+        (pkBattle.streamIdA && stream?._id && String(pkBattle.streamIdA) === String(stream._id))
+      )
     : true;
 
   // Directly sets transform: scaleX(-1) on video elements to ensure instant, reliable mirroring on Android WebView & browsers

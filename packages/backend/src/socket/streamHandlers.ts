@@ -236,6 +236,19 @@ export const registerStreamHandlers = (socket: Socket): void => {
     // Idempotent per-viewer decrement so closing/leaving is reflected in the count.
     const userId = socket.data.user?.userId;
     if (userId) {
+      // If a host leaves their stream during an active PK battle, auto-forfeit and award opponent +300 points
+      try {
+        const { PkBattle } = await import('../models/PkBattle');
+        const activePk = await PkBattle.findOne({
+          status: 'active',
+          $or: [{ teamA: userId }, { teamB: userId }],
+        });
+        if (activePk) {
+          const { pkService } = await import('../services/pk.service');
+          await pkService.endLivePk(activePk._id.toString(), userId);
+        }
+      } catch {}
+
       await streamService.leaveStream(streamId, userId).catch(() => {});
       cleanupStreamUser(streamId, userId);
     }
@@ -382,6 +395,22 @@ export const registerStreamHandlers = (socket: Socket): void => {
     try {
       const userId = socket.data.user?.userId;
       if (!userId || !streamId) return;
+
+      // If host ends stream during active PK battle, auto-forfeit and award remaining host +300 points
+      try {
+        const { PkBattle } = await import('../models/PkBattle');
+        const { pkService } = await import('../services/pk.service');
+        const activePk = await PkBattle.findOne({
+          status: 'active',
+          $or: [{ teamA: userId }, { teamB: userId }],
+        });
+        if (activePk) {
+          await pkService.endLivePk(activePk._id.toString(), userId);
+        }
+      } catch (err) {
+        console.warn('[stream:ended PK forfeit error]:', err);
+      }
+
       await streamService.endStream(streamId, userId);
       getIO().to(`stream:${streamId}`).emit('stream:ended', { streamId });
       streamSpeakersMap.delete(streamId);
@@ -926,11 +955,22 @@ export const registerStreamHandlers = (socket: Socket): void => {
     }
   });
 
+  socket.on('pk:live:battle:leave', async (data: any) => {
+    try {
+      const userId = socket.data.user?.userId;
+      if (!data?.battleId || !userId) return;
+      const { pkService } = await import('../services/pk.service');
+      await pkService.endLivePk(data.battleId, userId);
+    } catch (e: any) {
+      console.warn('[streamHandlers] pk leave error:', e);
+    }
+  });
+
   socket.on('pk:live:battle:end', async (data: any) => {
     try {
       if (!data?.battleId) return;
       const { pkService } = await import('../services/pk.service');
-      await pkService.endLivePk(data.battleId);
+      await pkService.endLivePk(data.battleId, data.forfeitedBy);
     } catch (e: any) {
       console.warn('[streamHandlers] pk end error:', e);
     }

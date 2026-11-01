@@ -847,13 +847,37 @@ export const LiveStreamPage = ({
     };
 
     const onPkEnd = (data: any) => {
-      showToast(
-        data.winnerSide === 'tie'
-          ? 'PK Battle Ended: It’s a tie!'
-          : `PK Battle Ended: Host ${data.winnerSide} won!`,
-        'info'
+      const isForfeit = Boolean(data.forfeit);
+      const winnerName = data.winnerNickname || (data.winnerSide === 'A' ? 'Host A' : data.winnerSide === 'B' ? 'Host B' : 'Draw');
+      if (isForfeit) {
+        showToast(
+          `${data.forfeitedNickname || 'Opponent'} left the PK battle! ${winnerName} won (+300 bonus points)! 🏆`,
+          'info'
+        );
+      } else {
+        showToast(
+          data.winnerSide === 'tie' || data.winnerSide === 'draw'
+            ? 'PK Battle Ended: It’s a tie!'
+            : `PK Battle Ended: ${winnerName} won! 🏆`,
+          'info'
+        );
+      }
+      setPkBattle((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              isFinished: true,
+              winner: data.winnerSide,
+              winnerNickname: winnerName,
+              forfeit: isForfeit,
+              forfeitedBy: data.forfeitedBy,
+              forfeitedNickname: data.forfeitedNickname,
+              scoreA: typeof data.scoreA === 'number' ? data.scoreA : prev.scoreA,
+              scoreB: typeof data.scoreB === 'number' ? data.scoreB : prev.scoreB,
+              bonusPoints: data.bonusPoints || (isForfeit ? 300 : 0),
+            }
+          : null
       );
-      setPkBattle((prev: any) => (prev ? { ...prev, isFinished: true, winner: data.winnerSide } : null));
     };
 
     socket.on('pk:live:invite', onPkInvite);
@@ -1242,7 +1266,11 @@ export const LiveStreamPage = ({
     } catch {}
   };
 
-  const handleQuitPkBattle = () => {
+  const handleQuitPkBattle = (battleId?: string) => {
+    const bId = battleId || pkBattle?.battleId;
+    if (bId && !pkBattle?.isFinished && isHost) {
+      socket?.emit('pk:live:battle:leave', { battleId: bId });
+    }
     setPkBattle(null);
   };
 

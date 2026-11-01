@@ -307,23 +307,31 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
 
   const [textInput, setTextInput] = useState('');
 
-  // Determine Host IDs and active sides
-  const hostAId = leftHost.userId || (leftHost as any)._id;
-  const hostBId = rightHost.userId || (rightHost as any)._id;
+  // Determine Host IDs and active sides safely with String conversion for ObjectIds
+  const hostAId = leftHost.userId ? String(leftHost.userId) : (leftHost as any)._id ? String((leftHost as any)._id) : '';
+  const hostBId = rightHost.userId ? String(rightHost.userId) : (rightHost as any)._id ? String((rightHost as any)._id) : '';
+  const currentUidStr = currentUserId ? String(currentUserId) : '';
+  const currentStreamIdStr = currentStreamId ? String(currentStreamId) : '';
+  const streamIdAStr = streamIdA ? String(streamIdA) : '';
+  const streamIdBStr = streamIdB ? String(streamIdB) : '';
 
-  const isCurrentHostA = Boolean(currentUserId && hostAId && currentUserId === hostAId);
-  const isCurrentHostB = Boolean(currentUserId && hostBId && currentUserId === hostBId);
+  const isCurrentHostA = Boolean(currentUidStr && hostAId && currentUidStr === hostAId);
+  const isCurrentHostB = Boolean(currentUidStr && hostBId && currentUidStr === hostBId);
   const isCurrentHost = isHost || isCurrentHostA || isCurrentHostB;
 
   // Which side is this client's primary stream?
   // Left = Host A, Right = Host B
-  const isSideA = isCurrentHostA || (!isCurrentHostB && (currentStreamId ? currentStreamId === streamIdA : true));
+  const isSideA = isCurrentHostA
+    ? true
+    : isCurrentHostB
+    ? false
+    : currentStreamIdStr && streamIdAStr
+    ? currentStreamIdStr === streamIdAStr
+    : true;
   const mySide = isSideA ? 'left' : 'right';
   const opponentSide = isSideA ? 'right' : 'left';
-  const opponentStreamId = isSideA ? streamIdB : streamIdA;
-  const opponentHostId = isSideA
-    ? (rightHost.userId || (rightHost as any)._id)
-    : (leftHost.userId || (leftHost as any)._id);
+  const opponentStreamId = isSideA ? streamIdBStr : streamIdAStr;
+  const opponentHostId = isSideA ? hostBId : hostAId;
 
   // Direct video mirroring for host's local side on Android WebView
   useEffect(() => {
@@ -437,12 +445,73 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     };
   }, [socket, battleId]);
 
+  const [serverWinnerSide, setServerWinnerSide] = useState<'A' | 'B' | 'draw' | null>(
+    (pkBattle as any)?.winner || null
+  );
+  const [isForfeited, setIsForfeited] = useState<boolean>(
+    Boolean((pkBattle as any)?.forfeit)
+  );
+  const [forfeitData, setForfeitData] = useState<{
+    forfeitedBy?: string;
+    forfeitedNickname?: string;
+    winnerNickname?: string;
+    bonusPoints?: number;
+  } | null>(
+    (pkBattle as any)?.forfeit
+      ? {
+          forfeitedBy: (pkBattle as any)?.forfeitedBy,
+          forfeitedNickname: (pkBattle as any)?.forfeitedNickname,
+          winnerNickname: (pkBattle as any)?.winnerNickname,
+          bonusPoints: (pkBattle as any)?.bonusPoints || 300,
+        }
+      : null
+  );
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onPkEnd = (data: any) => {
+      if (data.battleId && battleId && data.battleId !== battleId) return;
+      setIsFinished(true);
+      if (typeof data.scoreA === 'number') {
+        setLiveScoreA((prev) => Math.max(prev, data.scoreA));
+      }
+      if (typeof data.scoreB === 'number') {
+        setLiveScoreB((prev) => Math.max(prev, data.scoreB));
+      }
+      if (data.winnerSide) {
+        setServerWinnerSide(data.winnerSide);
+      }
+      if (data.forfeit) {
+        setIsForfeited(true);
+        setForfeitData({
+          forfeitedBy: data.forfeitedBy,
+          forfeitedNickname: data.forfeitedNickname,
+          winnerNickname: data.winnerNickname,
+          bonusPoints: data.bonusPoints || 300,
+        });
+      }
+    };
+    socket.on('pk:live:end', onPkEnd);
+    return () => {
+      socket.off('pk:live:end', onPkEnd);
+    };
+  }, [socket, battleId]);
+
   const leftScore = liveScoreA;
   const rightScore = liveScoreB;
   const totalScore = leftScore + rightScore;
   const leadDiff = Math.abs(leftScore - rightScore);
   const leadSide = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
-  const winner = leftScore > rightScore ? 'left' : rightScore > leftScore ? 'right' : 'tie';
+  const winner = serverWinnerSide === 'A'
+    ? 'left'
+    : serverWinnerSide === 'B'
+    ? 'right'
+    : leftScore > rightScore
+    ? 'left'
+    : rightScore > leftScore
+    ? 'right'
+    : 'tie';
 
   // Monotonically growing gauge bar:
   // Each host's progress bar ONLY GROWS as their score increases, and NEVER shrinks backwards!
@@ -589,6 +658,21 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     showToast(`+100 PK Points sent to ${targetNickname}! ❤️`, 'success');
   };
 
+  const handleHostQuitClick = () => {
+    if (isFinished) {
+      onQuitPK?.();
+      return;
+    }
+    setShowQuitConfirm(true);
+  };
+
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false);
+    if (socket && battleId) {
+      socket.emit('pk:live:battle:leave', { battleId });
+    }
+  };
+
   // PK Dual-Video Streaming & Dedicated WebRTC Connection Effect
   useEffect(() => {
     let opponentPc: RTCPeerConnection | null = null;
@@ -602,38 +686,62 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
     if (!leftContainer || !rightContainer) return;
 
     // Helper to safely play a MediaStream inside a container without moving existing nodes
-    const renderStreamInContainer = (container: HTMLElement, stream: MediaStream, isMuted: boolean) => {
+    const renderStreamInContainer = (container: HTMLElement, stream: MediaStream, isMuted: boolean = true) => {
       if (!container || !stream) return;
-      let videoEl = container.querySelector('video') as HTMLVideoElement;
+
+      // Never overwrite an active Agora video player with WebRTC or canvas fallback
+      const activeAgoraVideo = container.querySelector('.agora_video_player video') as HTMLVideoElement;
+      if (activeAgoraVideo && activeAgoraVideo.readyState >= 2 && !activeAgoraVideo.paused) {
+        return;
+      }
+
+      let videoEl = container.querySelector('video:not(.agora_video_player video)') as HTMLVideoElement;
       if (!videoEl) {
         videoEl = document.createElement('video');
         videoEl.autoplay = true;
+        videoEl.muted = true;
+        videoEl.defaultMuted = true;
         videoEl.playsInline = true;
+        videoEl.controls = false;
+        videoEl.removeAttribute('controls');
         videoEl.setAttribute('playsinline', 'true');
         videoEl.setAttribute('webkit-playsinline', 'true');
+        videoEl.setAttribute('autoplay', 'true');
         videoEl.style.width = '100%';
         videoEl.style.height = '100%';
         videoEl.style.objectFit = 'cover';
         videoEl.className = 'w-full h-full object-cover';
         container.appendChild(videoEl);
       } else {
+        videoEl.muted = true;
+        videoEl.defaultMuted = true;
         videoEl.playsInline = true;
+        videoEl.controls = false;
+        videoEl.removeAttribute('controls');
         videoEl.setAttribute('playsinline', 'true');
         videoEl.setAttribute('webkit-playsinline', 'true');
       }
-      videoEl.muted = isMuted;
-      if (!isMuted) {
-        videoEl.volume = 1.0;
-      }
+
       if (videoEl.srcObject !== stream) {
         videoEl.srcObject = stream;
       }
       videoEl.play().catch(() => {
-        if (!isMuted) {
-          videoEl.muted = true;
-          videoEl.play().catch(() => {});
-        }
+        videoEl.muted = true;
+        videoEl.play().catch(() => {});
       });
+
+      // Handle unmuted audio via a separate hidden audio element to strictly prevent browser video autoplay blocking
+      if (!isMuted && stream.getAudioTracks().length > 0) {
+        let audioEl = document.getElementById('pk-remote-webrtc-audio') as HTMLAudioElement;
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = 'pk-remote-webrtc-audio';
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+        }
+        audioEl.srcObject = new MediaStream(stream.getAudioTracks());
+        audioEl.play().catch(() => {});
+      }
     };
 
     // Helper to resolve the live local media stream across localMediaStream, Agora DOM video, and tracks
@@ -650,11 +758,13 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
           const videos = agoraAreaEl.querySelectorAll('video');
           for (let i = 0; i < videos.length; i++) {
             const v = videos[i] as HTMLVideoElement;
+            const srcObj = v.srcObject as any;
             if (
-              v.srcObject instanceof MediaStream &&
-              v.srcObject.getVideoTracks().some((t) => t.readyState === 'live')
+              srcObj &&
+              typeof srcObj.getVideoTracks === 'function' &&
+              srcObj.getVideoTracks().some((t: any) => t.readyState === 'live')
             ) {
-              return v.srcObject;
+              return srcObj as MediaStream;
             }
           }
         }
@@ -707,15 +817,25 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             await agoraSubClient.subscribe(user, mediaType);
             const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
             if (mediaType === 'video' && targetContainer) {
+              // Remove any non-Agora fallback videos to prevent overlapping play buttons or frozen layers
+              const nonAgoraVideos = targetContainer.querySelectorAll('video:not(.agora_video_player video)');
+              nonAgoraVideos.forEach((v) => v.remove());
+
               user.videoTrack?.play(targetContainer, { fit: 'cover' });
               const videos = targetContainer.querySelectorAll('video');
               videos.forEach((v) => {
+                v.muted = true;
+                v.defaultMuted = true;
                 v.playsInline = true;
+                v.controls = false;
+                v.removeAttribute('controls');
                 v.setAttribute('playsinline', 'true');
                 v.setAttribute('webkit-playsinline', 'true');
+                v.setAttribute('autoplay', 'true');
                 v.style.width = '100%';
                 v.style.height = '100%';
                 v.style.objectFit = 'cover';
+                v.play().catch(() => {});
               });
             }
             if (mediaType === 'audio') {
@@ -726,27 +846,38 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
           }
         });
 
+        // Use a random positive integer UID for the audience subscriber to avoid conflict with UID 0
+        const subUid = Math.floor(Math.random() * 800000) + 100000;
         await client.join(
           AGORA_APP_ID,
           opponentChannel,
           opponentToken || null,
-          0
+          subUid
         );
         isAgoraJoined = true;
 
         for (const user of client.remoteUsers) {
           const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
           if (user.hasVideo && targetContainer) {
+            const nonAgoraVideos = targetContainer.querySelectorAll('video:not(.agora_video_player video)');
+            nonAgoraVideos.forEach((v) => v.remove());
+
             await client.subscribe(user, 'video');
             user.videoTrack?.play(targetContainer, { fit: 'cover' });
             const videos = targetContainer.querySelectorAll('video');
             videos.forEach((v) => {
+              v.muted = true;
+              v.defaultMuted = true;
               v.playsInline = true;
+              v.controls = false;
+              v.removeAttribute('controls');
               v.setAttribute('playsinline', 'true');
               v.setAttribute('webkit-playsinline', 'true');
+              v.setAttribute('autoplay', 'true');
               v.style.width = '100%';
               v.style.height = '100%';
               v.style.objectFit = 'cover';
+              v.play().catch(() => {});
             });
           }
           if (user.hasAudio) {
@@ -797,8 +928,16 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         } catch {}
 
         pc.ontrack = (event) => {
-          const stream = event.streams[0] || new MediaStream([event.track]);
           const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
+          if (!targetContainer) return;
+
+          // Never overwrite an active Agora video player with WebRTC fallback
+          const activeAgoraVideo = targetContainer.querySelector('.agora_video_player video') as HTMLVideoElement;
+          if (activeAgoraVideo && activeAgoraVideo.readyState >= 2 && !activeAgoraVideo.paused) {
+            return;
+          }
+
+          const stream = event.streams[0] || new MediaStream([event.track]);
           renderStreamInContainer(targetContainer, stream, false);
         };
 
@@ -975,7 +1114,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
       // Retry if opponent video is not playing after 5 seconds
       const retryTimer = setInterval(() => {
         const targetContainer = opponentSideRef.current === 'left' ? leftContainer : rightContainer;
-        const video = targetContainer.querySelector('video');
+        const video = targetContainer?.querySelector('video');
         const isPlaying = video && !video.paused && video.readyState >= 2;
         if (!isPlaying) {
           socket.emit('pk:signal:request-stream', {
@@ -1214,7 +1353,7 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
           {isHost && (
             <button
               type="button"
-              onClick={onQuitPK || onEndPK}
+              onClick={handleHostQuitClick}
               className="w-8 h-8 rounded-full bg-red-600/40 hover:bg-red-600/70 border border-red-500/40 transition-all flex items-center justify-center text-red-200 active:scale-95"
               title="Quit PK"
             >
@@ -1826,6 +1965,49 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
         </div>
       </div>
 
+      {/* 5. QUIT PK CONFIRMATION MODAL */}
+      <AnimatePresence>
+        {showQuitConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-xs rounded-3xl bg-[#140d2b] border border-red-500/40 p-6 shadow-2xl text-center text-white"
+            >
+              <div className="w-14 h-14 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mx-auto mb-3 text-red-400">
+                <X className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-white mb-1.5">Leave PK Battle?</h3>
+              <p className="text-xs text-white/70 mb-5 leading-relaxed">
+                If you leave early, you forfeit this battle. Your opponent will immediately win and be awarded <span className="text-amber-300 font-extrabold">+300 bonus points</span>!
+              </p>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowQuitConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white transition-all active:scale-95"
+                >
+                  Stay
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmQuit}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-xs font-black text-white shadow-lg shadow-red-600/30 active:scale-95 transition-all"
+                >
+                  Quit & Forfeit
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 6. VICTORY / SETTLEMENT OVERLAY AT FINISH */}
       <AnimatePresence>
         {isFinished && (
@@ -1846,12 +2028,20 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
               </div>
 
               <h2 className="text-2xl font-black text-white tracking-wider uppercase mb-1 drop-shadow">
-                {winner === 'tie'
+                {isForfeited
+                  ? `${(winner === 'left' ? leftHost.nickname : rightHost.nickname)} WINS!`
+                  : winner === 'tie'
                   ? 'PK BATTLE TIED!'
                   : winner === 'left'
                   ? `${leftHost.nickname} WINS!`
                   : `${rightHost.nickname} WINS!`}
               </h2>
+
+              {isForfeited && (
+                <div className="mb-3 px-3 py-1.5 rounded-full bg-amber-500/25 border border-amber-400/50 text-amber-300 text-xs font-black shadow-[0_0_15px_rgba(245,158,11,0.3)] animate-pulse">
+                  ⚡ {forfeitData?.forfeitedNickname || (winner === 'left' ? rightHost.nickname : leftHost.nickname)} left early! +{forfeitData?.bonusPoints || 300} Bonus Points Awarded!
+                </div>
+              )}
 
               <p className="text-xs text-purple-300 font-bold mb-6">
                 Final Score: {leftScore.toLocaleString()} vs {rightScore.toLocaleString()}

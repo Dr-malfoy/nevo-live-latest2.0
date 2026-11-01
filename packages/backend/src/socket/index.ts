@@ -92,6 +92,22 @@ export const initSocket = (httpServer: HTTPServer): Server => {
     socket.on('disconnecting', () => {
       console.log(`Socket disconnecting: ${socket.data.user?.uid || 'anonymous'}`);
       const userId = socket.data.user?.userId;
+
+      // If host disconnects during active PK battle, auto-forfeit and award opponent +300 points
+      if (userId) {
+        import('../models/PkBattle').then(({ PkBattle }) => {
+          return PkBattle.findOne({
+            status: 'active',
+            $or: [{ teamA: userId }, { teamB: userId }],
+          }).then((activePk) => {
+            if (activePk) {
+              return import('../services/pk.service').then(({ pkService }) => {
+                return pkService.endLivePk(activePk._id.toString(), userId);
+              });
+            }
+          });
+        }).catch(() => {});
+      }
       for (const room of socket.rooms) {
         if (room.startsWith('stream:')) {
           const streamId = room.slice('stream:'.length);
