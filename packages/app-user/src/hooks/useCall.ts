@@ -7,7 +7,7 @@ try {
   AgoraRTC.setLogLevel(2);
 } catch {}
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a7106ea67a98';
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [

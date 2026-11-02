@@ -49,6 +49,8 @@ const upload = multer({
 
 const router = Router();
 
+router.get('/status', uploadController.getStatus);
+
 router.post(
   '/',
   authenticate,

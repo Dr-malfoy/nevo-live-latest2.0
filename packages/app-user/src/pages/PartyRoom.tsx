@@ -18,7 +18,7 @@ import type { GiftBurst } from '../components/live/GiftOverlay';
 import { compactNumber, initial } from '../lib/time';
 import { useAgora } from '../hooks/useAgora';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a7106ea67a98';
 
 /**
  * Party room — requirements #17 and #18.

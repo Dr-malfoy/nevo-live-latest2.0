@@ -34,7 +34,7 @@ import { MicRequestBanner } from './MicRequestBanner';
 import { useUIStore } from '../../stores';
 import type { LiveHost, RoomMessage } from './types';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a7106ea67a98';
 
 /** Creates an animated 30fps canvas stream as fallback when camera hardware is absent or occupied */
 function createLiveCanvasStream(title: string): MediaStream {

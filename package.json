@@ -27,6 +27,7 @@
     "typecheck:user": "cd packages\\app-user && npx tsc --noEmit",
     "seed": "npm run seed -w packages/backend",
     "migrate": "npm run migrate -w packages/backend",
+    "migrate:cloudinary": "npm run migrate:cloudinary -w packages/backend",
     "lint": "npm run lint -w packages/backend"
   },
   "dependencies": {

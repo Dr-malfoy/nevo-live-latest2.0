@@ -23,15 +23,15 @@ services:
       - key: CLIENT_URL
         value: https://nevo-live-latest.onrender.com
       - key: AGORA_APP_ID
-        value: b0b508017ff54158a6e30f30c7cbea98
+        value: 920b9d6ba006455f84f6a7106ea67a98
       - key: AGORA_APP_CERTIFICATE
-        value: 837b0be08c6e43a0a29d5978252eff62
+        value: 165806a4b538416cab0fbda56e3efb45
       - key: CLOUDINARY_CLOUD_NAME
-        value: dl5u2l3n
+        value: jltglmst
       - key: CLOUDINARY_API_KEY
-        value: "438381728283281"
+        value: "418226389993267"
       - key: CLOUDINARY_API_SECRET
-        value: cctW7msOrjgBs9-lp-BrhH-8SqI
+        value: e__QAD5YSpIID-AI3M3LOGHSO3o
       - key: OTP_DEV_MODE
         value: "true"
       - key: OTP_HMAC_SECRET

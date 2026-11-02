@@ -2,6 +2,7 @@ import http from 'http';
 import app from './app';
 import { env } from './config/env';
 import { connectDB } from './config/db';
+import { verifyCloudinary } from './config/cloudinary';
 import { initSocket, getIO } from './socket';
 import { teenPattiService } from './services/teenpatti.service';
 import { rouletteService } from './services/roulette.service';
@@ -14,6 +15,7 @@ import { startHostBonusWorker } from './services/hostBonus.service';
 
 const start = async (): Promise<void> => {
   await connectDB();
+  await verifyCloudinary();
 
   const httpServer = http.createServer(app);
   initSocket(httpServer);

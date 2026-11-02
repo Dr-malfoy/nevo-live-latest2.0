@@ -18,7 +18,7 @@ import { registerLiveSession, endLiveSession } from '../services/liveSession';
 import { getMediaUrl } from '../lib/media';
 import type { LiveStream, Gift as GiftType } from '../types';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || 'b0b508017ff54158a6e30f30c7cbea98';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a7106ea67a98';
 const NETWORK_GRACE_MS = 30_000; // 30s grace window before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 

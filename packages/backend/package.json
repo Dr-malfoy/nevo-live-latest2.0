@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts",
     "migrate": "tsx src/scripts/migrateRoles.ts",
+    "migrate:cloudinary": "tsx src/scripts/migrateLocalUploadsToCloudinary.ts",
     "backfill:codes": "tsx src/scripts/backfillAgencyCodes.ts"
   },
   "dependencies": {

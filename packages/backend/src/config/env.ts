@@ -1,10 +1,33 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load environment variables from environment or .env file
+// Load environment variables from environment or .env file across potential locations
 dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), 'packages/backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+
+// Parse Cloudinary credentials (supports individual vars OR unified CLOUDINARY_URL)
+let cloudinaryCloudName = (process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+let cloudinaryApiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
+let cloudinaryApiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
+
+if (process.env.CLOUDINARY_URL && (!cloudinaryCloudName || !cloudinaryApiKey || !cloudinaryApiSecret)) {
+  try {
+    const parsed = new URL(process.env.CLOUDINARY_URL);
+    cloudinaryCloudName = parsed.hostname || cloudinaryCloudName;
+    cloudinaryApiKey = decodeURIComponent(parsed.username || '') || cloudinaryApiKey;
+    cloudinaryApiSecret = decodeURIComponent(parsed.password || '') || cloudinaryApiSecret;
+  } catch {
+    const match = process.env.CLOUDINARY_URL.match(/^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/);
+    if (match) {
+      cloudinaryApiKey = match[1];
+      cloudinaryApiSecret = match[2];
+      cloudinaryCloudName = match[3];
+    }
+  }
+}
 
 export const env = {
   port: parseInt(process.env.PORT || '5000', 10),
@@ -23,9 +46,10 @@ export const env = {
   firebaseServiceAccount: process.env.FIREBASE_SERVICE_ACCOUNT || '',
 
   cloudinary: {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
-    apiKey: process.env.CLOUDINARY_API_KEY || '',
-    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+    cloudName: cloudinaryCloudName,
+    apiKey: cloudinaryApiKey,
+    apiSecret: cloudinaryApiSecret,
+    isConfigured: Boolean(cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret),
   },
 } as const;
 

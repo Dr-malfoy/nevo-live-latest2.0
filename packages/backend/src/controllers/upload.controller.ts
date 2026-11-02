@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { uploadService } from '../services/upload.service';
+import cloudinary from '../config/cloudinary';
+import { env } from '../config/env';
 import { sendSuccess, sendError } from '../utils/response';
 
 export const uploadController = {
@@ -28,5 +30,27 @@ export const uploadController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getStatus(_req: Request, res: Response) {
+    const isConfigured = env.cloudinary.isConfigured;
+    let pingStatus = 'untested';
+    if (isConfigured) {
+      try {
+        const ping = await cloudinary.api.ping();
+        pingStatus = ping.status;
+      } catch (e: any) {
+        pingStatus = `failed: ${e.message || e}`;
+      }
+    }
+
+    sendSuccess(res, {
+      provider: 'cloudinary',
+      configured: isConfigured,
+      cloudName: env.cloudinary.cloudName || null,
+      secure: true,
+      ping: pingStatus,
+      environment: env.nodeEnv,
+    }, 'Upload service status');
   },
 };
