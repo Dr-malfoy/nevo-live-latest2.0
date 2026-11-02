@@ -1,4 +1,4 @@
-package com.nevolive.app;
+package com.navolive.app;
 
 import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
@@ -15,7 +15,7 @@ public class IncomingCallActionReceiver extends BroadcastReceiver {
         String callId = intent.getStringExtra("callId");
         Log.d(TAG, "Received call action: " + action + " for callId: " + callId);
 
-        if ("com.nevolive.app.DECLINE_CALL".equals(action)) {
+        if ("com.navolive.app.DECLINE_CALL".equals(action)) {
             // Stop ringtone and vibration immediately
             CallRingtoneManager.stop();
 

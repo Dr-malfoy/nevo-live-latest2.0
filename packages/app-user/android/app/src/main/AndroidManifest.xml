@@ -71,8 +71,8 @@
             android:name=".IncomingCallActionReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.nevolive.app.DECLINE_CALL" />
-                <action android:name="com.nevolive.app.ACCEPT_CALL" />
+                <action android:name="com.navolive.app.DECLINE_CALL" />
+                <action android:name="com.navolive.app.ACCEPT_CALL" />
             </intent-filter>
         </receiver>
     </application>

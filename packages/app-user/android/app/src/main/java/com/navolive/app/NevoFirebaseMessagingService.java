@@ -1,4 +1,4 @@
-package com.nevolive.app;
+package com.navolive.app;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -135,7 +135,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
         // Accept Action Intent
         Intent acceptIntent = new Intent(this, MainActivity.class);
-        acceptIntent.setAction("com.nevolive.app.ACCEPT_CALL");
+        acceptIntent.setAction("com.navolive.app.ACCEPT_CALL");
         acceptIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         acceptIntent.putExtra("isIncomingCall", true);
         acceptIntent.putExtra("callAction", "accept");
@@ -155,7 +155,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
         // Decline Action Intent
         Intent declineIntent = new Intent(this, IncomingCallActionReceiver.class);
-        declineIntent.setAction("com.nevolive.app.DECLINE_CALL");
+        declineIntent.setAction("com.navolive.app.DECLINE_CALL");
         declineIntent.putExtra("callId", callId);
 
         PendingIntent declinePendingIntent = PendingIntent.getBroadcast(

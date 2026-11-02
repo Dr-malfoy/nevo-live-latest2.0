@@ -1,4 +1,4 @@
-package com.nevolive.app;
+package com.navolive.app;
 
 import android.content.Context;
 import android.media.AudioAttributes;

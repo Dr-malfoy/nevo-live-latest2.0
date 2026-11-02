@@ -1,4 +1,4 @@
-package com.nevolive.app;
+package com.navolive.app;
 
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
@@ -149,14 +149,14 @@ public class MainActivity extends BridgeActivity {
 
         boolean isIncomingCall = intent.getBooleanExtra("isIncomingCall", false);
         String action = intent.getAction();
-        if (isIncomingCall || "com.nevolive.app.ACCEPT_CALL".equals(action)) {
+        if (isIncomingCall || "com.navolive.app.ACCEPT_CALL".equals(action)) {
             Bundle bundle = intent.getExtras();
             if (bundle != null) {
                 pendingCallBundle = bundle;
             }
 
             boolean autoAccept = "accept".equals(intent.getStringExtra("callAction")) ||
-                                 "com.nevolive.app.ACCEPT_CALL".equals(action);
+                                 "com.navolive.app.ACCEPT_CALL".equals(action);
 
             // If user explicitly tapped Accept from notification button, stop ringtone and dismiss notification immediately
             if (autoAccept) {
@@ -259,7 +259,7 @@ public class MainActivity extends BridgeActivity {
         String token = pendingCallBundle.getString("token", "");
         String coinsPerMinute = pendingCallBundle.getString("coinsPerMinute", "0");
         String action = pendingCallBundle.getString("callAction", "");
-        boolean autoAccept = "accept".equals(action) || "com.nevolive.app.ACCEPT_CALL".equals(action);
+        boolean autoAccept = "accept".equals(action) || "com.navolive.app.ACCEPT_CALL".equals(action);
 
         String js = String.format(
                 "try {" +
