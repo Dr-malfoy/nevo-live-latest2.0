@@ -55,18 +55,5 @@ services:
       - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
 
-  # Render static site for the Admin Panel (React SPA)
-  - type: static
-    name: nevo-live-app-admin
-    buildCommand: npm install --include=dev && npm run build:shared && npm run build:admin
-    staticPublishPath: ./packages/app-admin/dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        value: https://nevo-live-latest.onrender.com/api
-
 
 
