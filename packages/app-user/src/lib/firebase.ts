@@ -13,15 +13,15 @@ import {
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 
-const GOOGLE_WEB_CLIENT_ID = '240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com';
+const GOOGLE_WEB_CLIENT_ID = '534655553492-3lc1drveiblnpag69spneocjeh7qbks8.apps.googleusercontent.com';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyAGbWH41wBsRN2ZPce5RxyOh2zFN8lSJ1U',
-  authDomain: 'nevo-live-latest.firebaseapp.com',
-  projectId: 'nevo-live-latest',
-  storageBucket: 'nevo-live-latest.firebasestorage.app',
-  messagingSenderId: '240298940237',
-  appId: '1:240298940237:android:4a3f4b7f7904cd0e734904',
+  apiKey: 'AIzaSyAhfcBGRpCSFGFFoPtr6JJlPhnsn249_Qc',
+  authDomain: 'navolive-app.firebaseapp.com',
+  projectId: 'navolive-app',
+  storageBucket: 'navolive-app.firebasestorage.app',
+  messagingSenderId: '534655553492',
+  appId: '1:534655553492:android:5079d2d9e3e128c82b1041',
 };
 
 const app = initializeApp(firebaseConfig);

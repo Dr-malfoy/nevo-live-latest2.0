@@ -43,7 +43,7 @@
 
         <meta-data
             android:name="com.codetrixstudio.capacitor.GoogleAuth.client_id"
-            android:value="240298940237-smbba5g08k46atvtsi4o5idrt82qgc98.apps.googleusercontent.com" />
+            android:value="534655553492-3lc1drveiblnpag69spneocjeh7qbks8.apps.googleusercontent.com" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
