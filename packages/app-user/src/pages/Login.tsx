@@ -241,8 +241,10 @@ export const Login = () => {
     setLocalError(null);
     clearError();
     setIsActionLoading(true);
+    let capturedIdToken: string | null = null;
     try {
       const idToken = await signInWithGoogle();
+      capturedIdToken = idToken;
       if (!agreedToTerms) {
         setPendingSocialAuth({ provider: 'Google', idToken });
         setShowTermsModal(true);
@@ -254,8 +256,8 @@ export const Login = () => {
     } catch (err: any) {
       console.error('Google login error:', err);
       const errMsg = err?.response?.data?.error || err?.response?.data?.message || '';
-      if (errMsg.toLowerCase().includes('country')) {
-        setPendingSocialAuth({ provider: 'Google', idToken: (err as any).idToken });
+      if (errMsg.toLowerCase().includes('country') && capturedIdToken) {
+        setPendingSocialAuth({ provider: 'Google', idToken: capturedIdToken });
         setShowTermsModal(true);
         return;
       }

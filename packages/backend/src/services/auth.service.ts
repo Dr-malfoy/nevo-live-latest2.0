@@ -205,9 +205,9 @@ export const authService = {
     }
 
     if (!user) {
-      const cleanCountry = (country || '').trim().toUpperCase();
+      let cleanCountry = (country || '').trim().toUpperCase();
       if (!cleanCountry || cleanCountry.length !== 2) {
-        throw new AppError('Please select your country to create an account', 400);
+        cleanCountry = 'BD';
       }
       const uid = await generateUid();
       user = await User.create({
@@ -295,9 +295,9 @@ export const authService = {
     });
 
     if (!user) {
-      const cleanCountry = (country || '').trim().toUpperCase();
+      let cleanCountry = (country || '').trim().toUpperCase();
       if (!cleanCountry || cleanCountry.length !== 2) {
-        throw new AppError('Please select your country to create an account', 400);
+        cleanCountry = 'BD';
       }
       const uid = await generateUid();
       user = await User.create({
