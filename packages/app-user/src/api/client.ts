@@ -9,7 +9,7 @@ const isLocalWeb =
 
 const API_BASE = isLocalWeb
   ? '/api'
-  : (import.meta.env.VITE_API_URL || 'https://nevo-live-latest.onrender.com/api');
+  : (import.meta.env.VITE_API_URL || 'https://nevo-live-latest-v98z.onrender.com/api');
 
 const client = axios.create({
   baseURL: API_BASE,

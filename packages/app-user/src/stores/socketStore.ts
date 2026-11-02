@@ -10,7 +10,7 @@ const isLocalWeb =
 
 const SOCKET_URL = isLocalWeb
   ? window.location.origin
-  : (import.meta.env.VITE_SOCKET_URL || 'https://nevo-live-latest.onrender.com');
+  : (import.meta.env.VITE_SOCKET_URL || 'https://nevo-live-latest-v98z.onrender.com');
 
 interface SocketState {
   socket: Socket | null;
