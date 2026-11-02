@@ -36,6 +36,15 @@ android {
             signingConfig signingConfigs.release
         }
     }
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            if (variant.buildType.name == 'release') {
+                output.outputFileName = "Navo Live.apk"
+            } else {
+                output.outputFileName = "Navo Live debug.apk"
+            }
+        }
+    }
 }
 
 repositories {

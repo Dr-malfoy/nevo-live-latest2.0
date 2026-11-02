@@ -1,4 +1,4 @@
-export const BACKEND_PROD_URL = 'https://nevo-live-latest.onrender.com';
+export const BACKEND_PROD_URL = 'https://nevo-live-latest-v98z.onrender.com';
 
 /**
  * Resolves any media URL (image, avatar, document, NID card photo) into a fully accessible URL.
