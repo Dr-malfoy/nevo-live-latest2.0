@@ -5,7 +5,7 @@ services:
   - type: web
     name: nevo-live-latest
     runtime: node
-    plan: starter # Starter plan recommended for persistent WebSocket connections
+    plan: free # Free tier, no credit card required
     region: singapore # Closest region for low latency
     rootDir: .
     buildCommand: npm install --include=dev && npm run build:shared && npm run build:backend
