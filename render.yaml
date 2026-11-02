@@ -17,7 +17,7 @@ services:
       - key: PORT
         value: 5000
       - key: MONGO_URI
-        value: mongodb+srv://rijomkumar_db_user:UqKjjbakeUlEJDjE@cluster0.cw4qnjy.mongodb.net/bogolive?retryWrites=true&w=majority&appName=Cluster0
+        value: mongodb+srv://navolive560_db_user:9jvoeCig7xeWSYNK@navolive-app.xb0ihhc.mongodb.net/bogolive?retryWrites=true&w=majority
       - key: JWT_SECRET
         value: bogolive-jwt-secret-key-development-2026
       - key: CLIENT_URL
