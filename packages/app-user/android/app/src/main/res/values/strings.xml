@@ -5,4 +5,7 @@
     <string name="package_name">com.navolive.app</string>
     <string name="custom_url_scheme">com.navolive.app</string>
     <string name="server_client_id">534655553492-3lc1drveiblnpag69spneocjeh7qbks8.apps.googleusercontent.com</string>
+    <string name="facebook_app_id">40988257380773514</string>
+    <string name="fb_login_protocol_scheme">fb40988257380773514</string>
+    <string name="facebook_client_token">0dccca85ac37f7dbc01583628c27b120</string>
 </resources>
