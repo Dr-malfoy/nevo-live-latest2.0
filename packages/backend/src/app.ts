@@ -61,6 +61,8 @@ const allowedOrigins = [
   "http://localhost",
   "https://localhost",
   "https://nevo-live-latest.onrender.com",
+  "https://nevo-live-latest-v98z.onrender.com",
+  "https://navolive-admin.onrender.com",
   "https://nevo-live.onrender.com",
   "https://nevo-live-app-user.onrender.com",
   "https://nevo-live-app-admin.onrender.com",

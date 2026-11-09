@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { authApi, usersApi } from '../api';
 import type { User } from '../types';
 import { pushNotificationService } from '../services/pushNotification';
+import { signOutAll } from '../lib/firebase';
 
 interface AuthState {
   user: User | null;
@@ -170,6 +171,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        signOutAll().catch(() => {});
         set({
           user: null,
           token: null,

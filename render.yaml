@@ -21,7 +21,7 @@ services:
       - key: JWT_SECRET
         value: bogolive-jwt-secret-key-development-2026
       - key: CLIENT_URL
-        value: https://nevo-live-latest.onrender.com
+        value: https://nevo-live-latest-v98z.onrender.com
       - key: AGORA_APP_ID
         value: 920b9d6ba006455f84f6a7106ea67a98
       - key: AGORA_APP_CERTIFICATE

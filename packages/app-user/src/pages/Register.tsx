@@ -207,7 +207,7 @@ export const Register = () => {
     return true;
   };
 
-  // STEP 1: Handle Send OTP
+  // STEP 1: Handle Direct Account Creation (OTP Verification Hidden)
   const handleInitiateSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
@@ -215,76 +215,31 @@ export const Register = () => {
 
     if (!validateDetails()) return;
 
-    // If signing up with Email only
-    if (contactMethod === 'email') {
-      setIsSendingOtp(true);
-      try {
-        await register({
-          fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          password,
-          dob,
-          birthday: dob,
-          gender,
-          country: selectedCountry.trim().toUpperCase(),
-          inviteCode: inviteCode.trim() || undefined,
-          deviceId: getDeviceId(),
-        });
-        showToast('Account created successfully! Welcome to Navo Live.', 'success');
-        navigate('/', { replace: true });
-      } catch (err: any) {
-        setLocalError(err?.response?.data?.error || err?.message || 'Registration failed.');
-      } finally {
-        setIsSendingOtp(false);
-      }
-      return;
-    }
-
-    // If signing up with Phone: Send OTP (Firebase with automatic fallback to Backend SMS)
     setIsSendingOtp(true);
-    const fullPhone = getFullPhone();
-
     try {
-      // 1. Always pre-check with backend AND trigger system SMS OTP
-      try {
-        await authApi.sendOtp(fullPhone, 'sms', 'signup');
-      } catch (checkErr: any) {
-        if (
-          checkErr.response?.status === 409 ||
-          checkErr.response?.data?.error?.includes('already exists') ||
-          checkErr.response?.data?.error?.includes('already registered')
-        ) {
-          setLocalError('An account with this phone number already exists. Please log in.');
-          setIsSendingOtp(false);
-          return;
-        }
-      }
-
-      // 2. Try Firebase Phone Auth (if enabled in Firebase Console)
-      try {
-        const verifier = setupRecaptcha('recaptcha-container');
-        verifierRef.current = verifier;
-        const confirmation = await sendPhoneOtp(fullPhone, verifier);
-        confirmationResultRef.current = confirmation;
-      } catch (fbErr: any) {
-        console.warn('Firebase Phone Auth OTP skipped/failed, using system SMS OTP fallback:', fbErr);
-        clearRecaptcha();
-        confirmationResultRef.current = null;
-      }
-
-      setStep('otp');
-      setOtpDigits(['', '', '', '', '', '']);
-      setCooldown(60);
-
-      showToast(`Verification code sent to ${fullPhone}`, 'info');
-
-      setTimeout(() => {
-        otpInputRefs.current[0]?.focus();
-      }, 150);
+      const fullPhone = contactMethod === 'phone' ? getFullPhone() : undefined;
+      await register({
+        fullName: fullName.trim(),
+        phone: fullPhone,
+        email: contactMethod === 'email' ? email.trim().toLowerCase() : undefined,
+        password,
+        dob,
+        birthday: dob,
+        gender,
+        country: selectedCountry.trim().toUpperCase(),
+        inviteCode: inviteCode.trim() || undefined,
+        deviceId: getDeviceId(),
+      });
+      showToast('Account created successfully! Welcome to Navo Live.', 'success');
+      navigate('/', { replace: true });
     } catch (err: any) {
-      console.error('Phone Auth OTP send error:', err);
-      const friendlyMsg = mapFirebaseAuthError(err);
-      setLocalError(friendlyMsg || 'Failed to send verification code. Please check your number.');
+      console.error('Registration error:', err);
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Account creation failed. Please check your information and try again.';
+      setLocalError(msg);
     } finally {
       setIsSendingOtp(false);
     }
@@ -418,7 +373,7 @@ export const Register = () => {
       setShowTermsModal(true);
     } catch (err: any) {
       console.error('Google sign up error:', err);
-      if (err?.code !== 'auth/popup-closed-by-user') {
+      if (err?.code !== 'auth/popup-closed-by-user' && !err?.message?.includes('cancelled')) {
         setLocalError(mapFirebaseAuthError(err));
       }
     } finally {
@@ -437,7 +392,7 @@ export const Register = () => {
       setShowTermsModal(true);
     } catch (err: any) {
       console.error('Facebook sign up error:', err);
-      if (err?.code !== 'auth/popup-closed-by-user') {
+      if (err?.code !== 'auth/popup-closed-by-user' && !err?.message?.includes('cancelled')) {
         setLocalError(mapFirebaseAuthError(err));
       }
     } finally {
@@ -777,7 +732,7 @@ export const Register = () => {
                   </label>
                 </div>
 
-                {/* Continue to OTP Verification Button */}
+                {/* Submit / Create Account Button */}
                 <div className="pt-2">
                   <Button
                     type="submit"
@@ -785,7 +740,7 @@ export const Register = () => {
                     loading={isLoading}
                     className="bg-[#4C3BFF] hover:bg-[#3D2DE0] text-white py-3.5 rounded-xl font-bold text-sm shadow-md shadow-[#4C3BFF]/30"
                   >
-                    {contactMethod === 'phone' ? 'Send OTP Verification Code' : 'Create Account'}
+                    Create Account
                   </Button>
                 </div>
               </form>

@@ -562,9 +562,8 @@ export const authService = {
         }
       } else if (code) {
         await otpService.verifyOtp({ rawPhone: normalizedPhone, code, purpose: 'signup' });
-      } else {
-        throw new AppError('Phone verification OTP code is required to create an account.', 400);
       }
+      // Note: If no code or verification token is provided, registration proceeds directly without OTP
     }
 
     // Resolve Inviter / Referral Code if provided

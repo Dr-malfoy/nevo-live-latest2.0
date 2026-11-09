@@ -28,7 +28,7 @@ import {
 } from '../lib/firebase';
 import { ConfirmationResult } from 'firebase/auth';
 
-type LoginMode = 'social' | 'phone' | 'password';
+type LoginMode = 'social' | 'password';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -261,7 +261,7 @@ export const Login = () => {
         setShowTermsModal(true);
         return;
       }
-      if (err?.code !== 'auth/popup-closed-by-user') {
+      if (err?.code !== 'auth/popup-closed-by-user' && !err?.message?.includes('cancelled')) {
         setLocalError(mapFirebaseAuthError(err));
       }
     } finally {
@@ -291,7 +291,7 @@ export const Login = () => {
         setShowTermsModal(true);
         return;
       }
-      if (err?.code !== 'auth/popup-closed-by-user') {
+      if (err?.code !== 'auth/popup-closed-by-user' && !err?.message?.includes('cancelled')) {
         setLocalError(mapFirebaseAuthError(err));
       }
     } finally {
@@ -386,22 +386,8 @@ export const Login = () => {
             <div className="h-px flex-1 bg-white/50"></div>
           </div>
 
-          {/* Manual Method Icons */}
-          <div className="flex items-center justify-center gap-5 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('phone');
-                setStep('input');
-                clearError();
-                setLocalError(null);
-              }}
-              title="Manual Phone OTP"
-              className="w-13 h-13 sm:w-14 sm:h-14 rounded-full border border-white/40 text-white flex flex-col items-center justify-center bg-black/30 backdrop-blur-md active:scale-95 transition-all hover:bg-black/40"
-            >
-              <Phone className="w-6 h-6" />
-            </button>
-
+          {/* Manual Method Button */}
+          <div className="flex items-center justify-center mb-6">
             <button
               type="button"
               onClick={() => {
@@ -410,9 +396,9 @@ export const Login = () => {
                 setLocalError(null);
               }}
               title="Password Login"
-              className="w-13 h-13 sm:w-14 sm:h-14 rounded-full border border-white/40 text-white flex flex-col items-center justify-center bg-black/30 backdrop-blur-md active:scale-95 transition-all hover:bg-black/40"
+              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-full border border-white/40 text-white bg-black/30 backdrop-blur-md active:scale-95 transition-all hover:bg-black/40 text-xs font-bold shadow-md"
             >
-              <Mail className="w-6 h-6" />
+              <Lock className="w-4 h-4" /> Sign in with Password
             </button>
           </div>
 
@@ -477,11 +463,7 @@ export const Login = () => {
             <button
               type="button"
               onClick={() => {
-                if (step === 'otp') {
-                  setStep('input');
-                } else {
-                  setMode('social');
-                }
+                setMode('social');
                 clearError();
                 setLocalError(null);
               }}
@@ -497,12 +479,10 @@ export const Login = () => {
 
           <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full pb-16">
             <h1 className="text-2xl font-black mb-1 text-ink">
-              {step === 'otp' ? 'Enter Verification Code' : 'Manual Sign In'}
+              Sign In
             </h1>
             <p className="text-xs text-ink-muted mb-6">
-              {step === 'otp'
-                ? `6-digit Firebase OTP sent to ${getFullPhone()}`
-                : 'Select your country code and enter phone number'}
+              Enter your mobile phone or email and password
             </p>
 
             {displayError && (
@@ -511,242 +491,106 @@ export const Login = () => {
               </div>
             )}
 
-            {step === 'input' && (
-              <>
-                {/* Method selector tabs */}
-                <div className="flex gap-1.5 mb-5 bg-surface-sunken rounded-xl p-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('phone');
-                      clearError();
-                      setLocalError(null);
-                    }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                      mode === 'phone' ? 'bg-black text-white shadow-sm' : 'text-ink-muted hover:text-ink'
-                    }`}
-                  >
-                    Phone OTP
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('password');
-                      clearError();
-                      setLocalError(null);
-                    }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                      mode === 'password' ? 'bg-black text-white shadow-sm' : 'text-ink-muted hover:text-ink'
-                    }`}
-                  >
-                    Password
-                  </button>
-                </div>
-
-                {/* Mode: Phone OTP */}
-                {mode === 'phone' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleSendOtp();
-                    }}
-                    className="space-y-4"
-                  >
-                    <div>
-                      <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
-                        Mobile Phone Number
-                      </label>
-                      <PhoneInputWithCountry
-                        countryCode={countryCode}
-                        onCountryCodeChange={setCountryCode}
-                        phone={phone}
-                        onPhoneChange={(val) => {
-                          setPhone(val);
-                          if (localError) setLocalError(null);
-                        }}
-                        placeholder="e.g. 1712345678"
-                        autoFocus
-                      />
-                    </div>
-
-                    <Button fullWidth onClick={handleSendOtp} loading={isLoading}>
-                      Send Firebase OTP
-                    </Button>
-                  </form>
-                )}
-
-                {/* Mode: Password Login */}
-                {mode === 'password' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handlePasswordLogin();
-                    }}
-                    className="space-y-4"
-                  >
-                    {/* Switcher: Phone vs Gmail */}
-                    <div className="flex gap-2 p-1 bg-surface-sunken rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPasswordLoginMethod('phone');
-                          if (localError) setLocalError(null);
-                        }}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          passwordLoginMethod === 'phone'
-                            ? 'bg-white text-ink shadow-xs'
-                            : 'text-ink-muted hover:text-ink'
-                        }`}
-                      >
-                        Phone Number
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPasswordLoginMethod('email');
-                          if (localError) setLocalError(null);
-                        }}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          passwordLoginMethod === 'email'
-                            ? 'bg-white text-ink shadow-xs'
-                            : 'text-ink-muted hover:text-ink'
-                        }`}
-                      >
-                        Gmail / Email
-                      </button>
-                    </div>
-
-                    {passwordLoginMethod === 'phone' ? (
-                      <div>
-                        <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
-                          Mobile Phone Number
-                        </label>
-                        <PhoneInputWithCountry
-                          countryCode={countryCode}
-                          onCountryCodeChange={setCountryCode}
-                          phone={phone}
-                          onPhoneChange={(val) => {
-                            setPhone(val);
-                            if (localError) setLocalError(null);
-                          }}
-                          placeholder="e.g. 1712345678"
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
-                          Gmail / Email Address
-                        </label>
-                        <Input
-                          icon={<Mail className="w-4 h-4 text-ink-muted" />}
-                          placeholder="e.g. user@gmail.com"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value);
-                            if (localError) setLocalError(null);
-                          }}
-                          type="email"
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
-                        Password
-                      </label>
-                      <Input
-                        icon={<Lock className="w-4 h-4 text-ink-muted" />}
-                        placeholder="Enter password"
-                        value={password}
-                        onChange={(e) => {
-                          setPassword(e.target.value);
-                          if (localError) setLocalError(null);
-                        }}
-                        type="password"
-                      />
-                    </div>
-
-                    <div className="flex justify-end -mt-1">
-                      <Link to="/forgot-password" className="text-xs font-semibold text-[#4C3BFF] hover:underline">
-                        Forgot Password?
-                      </Link>
-                    </div>
-
-                    <Button fullWidth onClick={handlePasswordLogin} loading={isLoading}>
-                      Sign In
-                    </Button>
-                  </form>
-                )}
-              </>
-            )}
-
-            {/* OTP Entry Step */}
-            {step === 'otp' && (
-              <div className="space-y-5">
-                {/* Phone Preview / Change Phone */}
-                <div className="flex items-center justify-between p-3 rounded-xl bg-surface-sunken border border-line">
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-ink-muted" />
-                    <span className="text-xs font-bold text-ink">{getFullPhone()}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStep('input');
-                      setLocalError(null);
-                    }}
-                    className="text-xs font-semibold text-[#4C3BFF] hover:underline flex items-center gap-1"
-                  >
-                    <EditIcon className="w-3.5 h-3.5" /> Edit
-                  </button>
-                </div>
-
-                {/* 6-Digit OTP Inputs */}
-                <div className="flex justify-between gap-2 max-w-xs mx-auto">
-                  {otpDigits.map((digit, index) => (
-                    <input
-                      key={index}
-                      ref={(el) => {
-                        otpInputRefs.current[index] = el;
-                      }}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={index === 0 ? 6 : 1}
-                      value={digit}
-                      onChange={(e) => handleOtpDigitChange(index, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                      className={`w-11 h-13 text-center text-xl font-bold rounded-xl border transition-all ${
-                        digit
-                          ? 'border-[#4C3BFF] bg-white text-ink shadow-sm'
-                          : 'border-line-strong bg-surface-sunken text-ink focus:border-[#4C3BFF] focus:bg-white'
-                      } focus:outline-none focus:ring-2 focus:ring-[#4C3BFF]/20`}
-                    />
-                  ))}
-                </div>
-
-                <Button fullWidth onClick={() => handleVerifyOtp()} loading={isLoading}>
-                  <ShieldCheck className="w-5 h-5" /> Verify & Log In
-                </Button>
-
-                {/* Resend OTP button */}
-                <div className="text-center pt-2">
-                  <button
-                    type="button"
-                    disabled={cooldown > 0 || isLoading}
-                    onClick={handleResendOtp}
-                    className="text-xs font-bold text-ink-muted hover:text-ink disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <RefreshIcon className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                    {cooldown > 0 ? (
-                      <span>Resend code in <strong className="text-ink">{cooldown}s</strong></span>
-                    ) : (
-                      <span className="text-[#4C3BFF] underline underline-offset-2">Resend Verification Code</span>
-                    )}
-                  </button>
-                </div>
+            {/* Mode: Password Login */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePasswordLogin();
+              }}
+              className="space-y-4"
+            >
+              {/* Switcher: Phone vs Gmail */}
+              <div className="flex gap-2 p-1 bg-surface-sunken rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordLoginMethod('phone');
+                    if (localError) setLocalError(null);
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    passwordLoginMethod === 'phone'
+                      ? 'bg-white text-ink shadow-xs'
+                      : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  Phone Number
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordLoginMethod('email');
+                    if (localError) setLocalError(null);
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    passwordLoginMethod === 'email'
+                      ? 'bg-white text-ink shadow-xs'
+                      : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  Gmail / Email
+                </button>
               </div>
-            )}
+
+              {passwordLoginMethod === 'phone' ? (
+                <div>
+                  <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
+                    Mobile Phone Number
+                  </label>
+                  <PhoneInputWithCountry
+                    countryCode={countryCode}
+                    onCountryCodeChange={setCountryCode}
+                    phone={phone}
+                    onPhoneChange={(val) => {
+                      setPhone(val);
+                      if (localError) setLocalError(null);
+                    }}
+                    placeholder="e.g. 1712345678"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
+                    Gmail / Email Address
+                  </label>
+                  <Input
+                    icon={<Mail className="w-4 h-4 text-ink-muted" />}
+                    placeholder="e.g. user@gmail.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (localError) setLocalError(null);
+                    }}
+                    type="email"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-ink-muted uppercase tracking-wider mb-1.5">
+                  Password
+                </label>
+                <Input
+                  icon={<Lock className="w-4 h-4 text-ink-muted" />}
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (localError) setLocalError(null);
+                  }}
+                  type="password"
+                />
+              </div>
+
+              <div className="flex justify-end -mt-1">
+                <Link to="/forgot-password" className="text-xs font-semibold text-[#4C3BFF] hover:underline">
+                  Forgot Password?
+                </Link>
+              </div>
+
+              <Button fullWidth onClick={handlePasswordLogin} loading={isLoading}>
+                Sign In
+              </Button>
+            </form>
 
             {/* Bottom link to Register */}
             <p className="text-center text-xs text-ink-muted mt-8">

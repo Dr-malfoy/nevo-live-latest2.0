@@ -6,7 +6,7 @@ const isLocal =
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
-  (isLocal ? '/api' : 'https://nevo-live-latest.onrender.com/api');
+  (isLocal ? '/api' : 'https://nevo-live-latest-v98z.onrender.com/api');
 
 const client = axios.create({ baseURL: API_BASE });
 client.interceptors.request.use((c) => {

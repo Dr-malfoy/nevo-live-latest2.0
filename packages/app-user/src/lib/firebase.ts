@@ -113,13 +113,22 @@ export const verifyPhoneOtp = async (
 export const signInWithGoogle = async (): Promise<string> => {
   // Native Android / iOS Google Sign-In sheet
   if (Capacitor.isNativePlatform()) {
+    const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth');
     try {
-      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth');
       await GoogleAuth.initialize({
         clientId: GOOGLE_WEB_CLIENT_ID,
         scopes: ['profile', 'email'],
         grantOfflineAccess: true,
       });
+
+      // Clear any cached / previous Google session so Android Google Play Services
+      // always displays the full Account Chooser dialog (all Gmail accounts on device + add account)
+      try {
+        await GoogleAuth.signOut();
+      } catch {
+        // Safe to ignore if not signed in
+      }
+
       const googleUser = await GoogleAuth.signIn();
       const idToken = googleUser?.authentication?.idToken || (googleUser as any)?.idToken;
       if (idToken) {
@@ -129,10 +138,23 @@ export const signInWithGoogle = async (): Promise<string> => {
       }
       throw new Error('Google Sign-In did not return an identity token.');
     } catch (nativeErr: any) {
+      // Clear sign-in state on error/cancellation as well to prevent getting stuck
+      try {
+        await GoogleAuth.signOut();
+      } catch {}
+
       console.error('Native Google Auth error:', nativeErr);
       const msg = nativeErr?.message || String(nativeErr);
-      if (msg.includes('12501') || msg.includes('cancel') || msg.includes('CANCEL') || nativeErr?.code === '12501') {
-        throw new Error('Google sign-in was cancelled.');
+      if (
+        msg.includes('12501') ||
+        msg.includes('cancel') ||
+        msg.includes('CANCEL') ||
+        nativeErr?.code === '12501' ||
+        nativeErr?.code === 12501
+      ) {
+        const cancelErr: any = new Error('Google sign-in was cancelled.');
+        cancelErr.code = 'auth/popup-closed-by-user';
+        throw cancelErr;
       }
       if (msg.includes('10') || msg.includes('DEVELOPER_ERROR') || msg.includes('12500')) {
         throw new Error(
@@ -147,7 +169,11 @@ export const signInWithGoogle = async (): Promise<string> => {
 
   // Web Browser Popup Flow (Only for Desktop / Chrome Web browsers)
   const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    prompt: 'select_account',
+  });
   try {
+    await auth.signOut().catch(() => {});
     const result = await signInWithPopup(auth, provider);
     const idToken = await result.user.getIdToken();
     return idToken;
@@ -274,6 +300,22 @@ export const mapFirebaseAuthError = (err: any): string => {
   }
 
   return message || 'Authentication failed. Please try again.';
+};
+
+export const signOutAll = async (): Promise<void> => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth');
+      await GoogleAuth.signOut();
+    } catch {}
+    try {
+      const { FacebookLogin } = await import('@capacitor-community/facebook-login');
+      await FacebookLogin.logout();
+    } catch {}
+  }
+  try {
+    await auth.signOut();
+  } catch {}
 };
 
 export { GoogleAuthProvider, FacebookAuthProvider };
