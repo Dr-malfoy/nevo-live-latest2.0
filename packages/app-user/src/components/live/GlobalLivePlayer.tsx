@@ -77,6 +77,9 @@ export const GlobalLivePlayer = () => {
       if (isMinimized) {
         setMinimized(false);
       }
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
     } else {
       closedStreamRef.current = null;
       // User is on a different route (e.g. /, /profile, /chats, etc.)
@@ -90,13 +93,16 @@ export const GlobalLivePlayer = () => {
   if (!activeStreamId) return null;
 
   return (
-    <div className={isMinimized ? 'contents' : 'fixed inset-0 z-40 bg-black'}>
+    <div className={isMinimized ? 'contents' : 'fixed inset-0 z-50 bg-black overflow-hidden'}>
       <LiveStreamPage
         key={activeStreamId}
         streamIdProp={activeStreamId}
         isMinimized={isMinimized}
         onMaximize={() => {
           setMinimized(false);
+          window.scrollTo(0, 0);
+          document.body.scrollTop = 0;
+          document.documentElement.scrollTop = 0;
           navigate(`/live/${activeStreamId}`);
         }}
         onMinimize={() => {

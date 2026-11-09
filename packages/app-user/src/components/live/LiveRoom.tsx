@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import { PiCameraSlashFill as CameraOff, PiCheckBold as Check, PiArrowsOutBold, PiXBold as X, PiSwordBold as Swords } from 'react-icons/pi';
 import { TopToolbar } from './TopToolbar';
 import { CommentOverlay } from './CommentOverlay';
@@ -99,6 +99,20 @@ export const LiveRoom = ({
   const [shared, setShared] = useState(false);
   const { hearts, burst } = useFloatingHearts();
   const { items: reactions, trigger: triggerReaction } = useReactions();
+
+  // Mini player drag coordinates — strictly reset to (0, 0) upon returning to full screen
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
+
+  useEffect(() => {
+    if (!isMinimized) {
+      dragX.set(0);
+      dragY.set(0);
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+    }
+  }, [isMinimized, dragX, dragY]);
 
   // Tools & Modals State
   const [showLiveData, setShowLiveData] = useState(false);
@@ -481,16 +495,19 @@ export const LiveRoom = ({
       drag={isMinimized}
       dragMomentum={false}
       dragConstraints={{
-        left: 10,
-        right: typeof window !== 'undefined' ? window.innerWidth - 150 : 250,
-        top: 60,
-        bottom: typeof window !== 'undefined' ? window.innerHeight - 240 : 500,
+        left: typeof window !== 'undefined' ? -(window.innerWidth - 160) : -300,
+        right: 0,
+        top: typeof window !== 'undefined' ? -(window.innerHeight - 320) : -500,
+        bottom: 10,
       }}
+      style={isMinimized ? { x: dragX, y: dragY } : { x: 0, y: 0 }}
+      animate={isMinimized ? undefined : { x: 0, y: 0 }}
+      transition={{ duration: 0 }}
       onClick={isMinimized ? onMaximize : undefined}
       className={
         isMinimized
           ? "fixed bottom-20 right-3.5 w-36 h-56 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none touch-none"
-          : "relative w-full h-full min-h-[100dvh] overflow-hidden bg-brand-bg"
+          : "fixed inset-0 w-full h-full overflow-hidden bg-brand-bg z-40"
       }
       role="region"
       aria-label="Live stream"

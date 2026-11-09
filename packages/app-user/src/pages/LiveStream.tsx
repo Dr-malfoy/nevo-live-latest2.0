@@ -1191,6 +1191,9 @@ export const LiveStreamPage = ({
   }, [onMinimizeProp, setMinimized, navigate]);
 
   const handleMaximize = useCallback(() => {
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
     if (onMaximizeProp) {
       onMaximizeProp();
     } else {
@@ -1198,6 +1201,17 @@ export const LiveStreamPage = ({
       if (id) navigate(`/live/${id}`);
     }
   }, [onMaximizeProp, setMinimized, id, navigate]);
+
+  // Lock body overflow when full-screen live stream is active to prevent scroll offsets
+  useEffect(() => {
+    if (!isMinimized) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isMinimized]);
 
   // Robust receiver id for gifts: populated hostId → raw string hostId → host fallback.
   const giftReceiverId =
@@ -1379,7 +1393,7 @@ export const LiveStreamPage = ({
   }
 
   return (
-    <div className={isMinimized ? 'contents' : 'w-full h-full min-h-screen bg-black text-white overflow-hidden'}>
+    <div className={isMinimized ? 'contents' : 'fixed inset-0 w-full h-full bg-black text-white overflow-hidden'}>
       <LiveRoom
         stream={stream}
         streamTitle={stream?.title}
