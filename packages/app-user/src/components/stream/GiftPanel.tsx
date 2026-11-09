@@ -45,7 +45,7 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
   const coins = user?.coins ?? 0;
   const diamonds = user?.diamonds ?? 0;
   const totalCost = selected ? selected.priceDiamonds * quantity : 0;
-  const canAfford = selected ? (diamonds >= totalCost || coins >= totalCost) : false;
+  const canAfford = selected ? diamonds >= totalCost : false;
   const needsConfirm = totalCost >= CONFIRM_THRESHOLD;
   const canSend = !!receiverId && !!selected && canAfford && !sending;
 
@@ -142,7 +142,7 @@ export const GiftPanel = ({ receiverId, onSend }: GiftPanelProps) => {
         <p className="text-xs text-yellow-400 mb-2 text-center">Host unavailable — cannot send gifts right now</p>
       )}
       {selected && !canAfford && (
-        <p className="text-xs text-red-400 mb-2 text-center">Insufficient balance — recharge your diamonds</p>
+        <p className="text-xs text-red-400 mb-2 text-center">Insufficient diamonds — please recharge diamonds</p>
       )}
       {error && (
         <p className="text-xs text-red-400 mb-2 text-center">{error}</p>
