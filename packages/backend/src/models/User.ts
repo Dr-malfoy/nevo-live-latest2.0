@@ -99,8 +99,10 @@ export interface IUserDocument extends Document {
   assetPasswordLockedUntil?: Date;
   /** #72 — 1-to-1 call price in coins per minute (minimum 10,000). */
   callPricePerMinute: number;
-  /** #58 — who invited this user. Set once at registration, never editable. */
+  /** #58 — who invited this user. Set once at registration or bind, never editable. */
   invitedBy?: Schema.Types.ObjectId;
+  /** Each user can only redeem one referral code in their lifetime. */
+  hasRedeemedReferral?: boolean;
   /** #44 — notifications / privacy / playback / privilege. */
   settings: IUserSettings;
   /** #44 — users this account has blocked (blacklist). */
@@ -219,6 +221,7 @@ const userSchema = new Schema<IUserDocument>(
     assetPasswordLockedUntil: { type: Date },
     callPricePerMinute: { type: Number, default: 1000, min: 0 },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    hasRedeemedReferral: { type: Boolean, default: false, index: true },
     deviceId: { type: String, index: true },
     hasLifetimeReferralCommission: { type: Boolean, default: false },
     lifetimeReferralCommissionPercent: { type: Number, default: 0 },

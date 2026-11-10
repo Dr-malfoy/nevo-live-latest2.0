@@ -149,8 +149,9 @@ export const referralService = {
       { upsert: true, new: true }
     );
 
-    // Save deviceId and invitedBy on user
+    // Save deviceId, invitedBy, and hasRedeemedReferral on user
     invitee.invitedBy = inviter._id;
+    invitee.hasRedeemedReferral = true;
     if (cleanDeviceId && !invitee.deviceId) {
       invitee.deviceId = cleanDeviceId;
     }
@@ -214,14 +215,25 @@ export const referralService = {
     const user = await User.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
-    // Check if user is already bound to an inviter
-    if (user.invitedBy) {
-      throw new AppError('You have already bound a referral code', 400);
+    // STRICT RULE: Each user can only redeem ONE referral code in their lifetime
+    if (user.invitedBy || user.hasRedeemedReferral) {
+      throw new AppError('You have already redeemed a referral code. Each user can only redeem one referral code.', 400);
     }
 
     const existingRecord = await ReferralRecord.findOne({ inviteeId: user._id });
     if (existingRecord) {
-      throw new AppError('You have already bound a referral code', 400);
+      throw new AppError('You have already redeemed a referral code. Each user can only redeem one referral code.', 400);
+    }
+
+    const existingWelcomeTx = await Transaction.findOne({
+      userId: user._id,
+      type: 'referral_bonus',
+      description: /welcome/i,
+    });
+    if (existingWelcomeTx) {
+      user.hasRedeemedReferral = true;
+      await user.save();
+      throw new AppError('You have already redeemed a referral code. Each user can only redeem one referral code.', 400);
     }
 
     // Find the inviter
@@ -304,6 +316,7 @@ export const referralService = {
     });
 
     user.invitedBy = inviter._id as any;
+    user.hasRedeemedReferral = true;
     if (cleanDeviceId && !user.deviceId) {
       user.deviceId = cleanDeviceId;
     }
@@ -696,7 +709,8 @@ export const referralService = {
       };
     });
 
-    // Check if current user is invited by someone
+    // Check if current user is invited by someone or has redeemed a referral code
+    const existingBound = await ReferralRecord.findOne({ inviteeId: user._id }).populate('inviterId', 'uid nickname avatar');
     let inviterInfo: { _id: string; uid: string; nickname: string; avatar?: string } | null = null;
     if (user.invitedBy) {
       const inv = await User.findById(user.invitedBy).select('uid nickname avatar');
@@ -708,18 +722,26 @@ export const referralService = {
           avatar: inv.avatar,
         };
       }
-    } else {
-      const existingBound = await ReferralRecord.findOne({ inviteeId: user._id }).populate('inviterId', 'uid nickname avatar');
-      if (existingBound && existingBound.inviterId) {
-        const inv = existingBound.inviterId as any;
-        inviterInfo = {
-          _id: inv._id ? inv._id.toString() : '',
-          uid: inv.uid || '',
-          nickname: inv.nickname || '',
-          avatar: inv.avatar || '',
-        };
-      }
     }
+    if (!inviterInfo && existingBound && existingBound.inviterId) {
+      const inv = existingBound.inviterId as any;
+      inviterInfo = {
+        _id: inv._id ? inv._id.toString() : '',
+        uid: inv.uid || existingBound.inviteCode || '',
+        nickname: inv.nickname || 'Inviter',
+        avatar: inv.avatar || '',
+      };
+    }
+    if (!inviterInfo && (user.invitedBy || existingBound || user.hasRedeemedReferral)) {
+      inviterInfo = {
+        _id: String(user.invitedBy || existingBound?.inviterId || ''),
+        uid: existingBound?.inviteCode || 'REDEEMED',
+        nickname: 'Inviter',
+        avatar: '',
+      };
+    }
+
+    const hasRedeemed = Boolean(user.invitedBy || existingBound || user.hasRedeemedReferral || inviterInfo);
 
     return {
       myId: user.uid,
@@ -738,6 +760,7 @@ export const referralService = {
       milestones,
       invitees,
       inviter: inviterInfo,
+      hasRedeemed,
     };
   },
 

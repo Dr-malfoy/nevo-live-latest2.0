@@ -487,8 +487,10 @@ export const LiveStreamPage = ({
       const isSelf = Boolean(userRef.current && msg?.userId === userRef.current._id);
       const giftCount = msg?.count || 1;
       const giftObj = msg?.gift;
+      const giftMsgId = msg?.id || `gift-${Date.now()}-${Math.random()}`;
       const entry: RoomMessage = {
         ...msg,
+        id: giftMsgId,
         isGift: true,
         nickname: msg?.nickname || (isSelf ? (userRef.current?.nickname || 'You') : 'Guest'),
         level: msg?.level || 1,
@@ -499,6 +501,10 @@ export const LiveStreamPage = ({
       // Append to chat if not self (self added optimistically)
       if (!isSelf) {
         setChatMessages((prev) => [...prev, entry]);
+        // Auto-remove gift notification after 5 seconds
+        setTimeout(() => {
+          setChatMessages((prev) => prev.filter((m) => m.id !== giftMsgId));
+        }, 5000);
       }
       const streamHostId = String(streamRef.current?.hostId || hostRef.current?._id || '');
       const isFromHost = Boolean(msg?.isFromHost || (msg?.userId && streamHostId && String(msg.userId) === streamHostId));
@@ -861,9 +867,11 @@ export const LiveStreamPage = ({
       burstTimer.current = setTimeout(() => setGiftBurst(null), 5500);
 
       // Append celebratory message to chat
+      const rewardMsgId = `reward-${Date.now()}-${Math.random()}`;
       setChatMessages((prev) => [
         ...prev,
         {
+          id: rewardMsgId,
           userId: payload.senderId || '',
           nickname: senderName,
           avatar: payload.senderAvatar || '',
@@ -874,6 +882,10 @@ export const LiveStreamPage = ({
           isGift: true,
         } as RoomMessage,
       ]);
+      // Auto-remove reward notification after 5 seconds
+      setTimeout(() => {
+        setChatMessages((prev) => prev.filter((m) => m.id !== rewardMsgId));
+      }, 5000);
     };
     socket.on('stream:reward-received', onReward);
     const onSocketDisconnect = (reason: string) => {
@@ -1110,9 +1122,11 @@ export const LiveStreamPage = ({
       // Optimistic local gift message for the sender
       const currentUser = userRef.current;
       if (currentUser) {
+        const selfGiftId = `gift-self-${Date.now()}-${Math.random()}`;
         setChatMessages((prev) => [
           ...prev,
           {
+            id: selfGiftId,
             userId: currentUser._id,
             nickname: currentUser.nickname,
             avatar: currentUser.avatar,
@@ -1122,6 +1136,10 @@ export const LiveStreamPage = ({
             count: quantity,
           },
         ]);
+        // Auto-remove self gift notification after 5 seconds
+        setTimeout(() => {
+          setChatMessages((prev) => prev.filter((m) => m.id !== selfGiftId));
+        }, 5000);
       }
 
       // Immediately trigger pop-up animation and floating gifts for the sender

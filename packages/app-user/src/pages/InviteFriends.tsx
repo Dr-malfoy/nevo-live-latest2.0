@@ -229,8 +229,19 @@ export const InviteFriends = () => {
     }
   };
 
+  const isAlreadyRedeemed = Boolean(
+    summary?.hasRedeemed ||
+    summary?.inviter ||
+    user?.invitedBy ||
+    (user as any)?.hasRedeemedReferral
+  );
+
   const handleConfirmInviteCode = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isAlreadyRedeemed) {
+      showToast('You have already redeemed a referral code. Only 1 code can be redeemed per account.', 'error');
+      return;
+    }
     const clean = inputCode.trim();
     if (!clean) {
       showToast('Please enter an invitation code', 'error');
@@ -613,33 +624,46 @@ export const InviteFriends = () => {
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
                 <TicketIcon className="w-4 h-4 text-[#FFD277]" />
-                Have an Invite Code?
+                {isAlreadyRedeemed ? 'Referral Code Redeemed' : 'Have an Invite Code?'}
               </span>
-              <span className="text-[10px] text-white/60 font-semibold">
-                {summary?.inviter ? 'Linked' : 'Enter Friend\'s Code'}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                isAlreadyRedeemed
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-white/10 text-white/70'
+              }`}>
+                {isAlreadyRedeemed ? 'Redeemed (1/1)' : 'Enter Code'}
               </span>
             </div>
 
-            {summary?.inviter ? (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
+            {isAlreadyRedeemed ? (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Avatar src={summary.inviter.avatar} nickname={summary.inviter.nickname} size="sm" />
+                  <Avatar
+                    src={summary?.inviter?.avatar}
+                    nickname={summary?.inviter?.nickname || 'Friend'}
+                    size="sm"
+                  />
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate flex items-center gap-1">
-                      <span>Invited by {summary.inviter.nickname}</span>
+                      <span>{summary?.inviter?.nickname ? `Invited by ${summary.inviter.nickname}` : 'Referral Reward Claimed'}</span>
                       <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     </p>
-                    <p className="text-[10px] text-white/60 font-mono">UID: {summary.inviter.uid}</p>
+                    <p className="text-[10px] text-white/60 font-mono">
+                      {summary?.inviter?.uid ? `Code / UID: ${summary.inviter.uid}` : 'Welcome bonus received (+13,000 Coins)'}
+                    </p>
+                    <p className="text-[10px] text-emerald-300 font-medium mt-0.5">
+                      ✓ One-time referral code redeemed. No further codes can be entered.
+                    </p>
                   </div>
                 </div>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full shrink-0">
-                  Bound ✓ (+13,000 Coins)
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-1 rounded-full shrink-0 text-center">
+                  Redeemed ✓
                 </span>
               </div>
             ) : (
               <form onSubmit={handleConfirmInviteCode} className="space-y-2.5">
                 <p className="text-xs text-white/70 leading-relaxed">
-                  Enter your friend&apos;s referral code to confirm and link your account to earn the <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> welcome bonus instantly!
+                  Enter your friend&apos;s referral code to confirm and link your account to earn the <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> welcome bonus instantly! <span className="text-white/50">(Note: Can only be redeemed once per account)</span>
                 </p>
 
                 <div className="flex items-center gap-2">

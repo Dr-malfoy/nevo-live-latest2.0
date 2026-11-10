@@ -52,6 +52,7 @@ export interface ReferralSummary {
   milestones?: ReferralMilestone[];
   invitees?: ReferralInviteeItem[];
   inviter?: { _id?: string; uid: string; nickname: string; avatar?: string } | null;
+  hasRedeemed?: boolean;
 }
 
 export interface ReferralTemplate {

@@ -21,6 +21,21 @@ const CommentBubble = ({
   const nickname = msg.nickname || 'Guest';
   const message = msg.message || '';
   const isJoined = msg.kind === 'join';
+  const isGift = isGiftMsg(msg);
+  const [giftVisible, setGiftVisible] = useState(true);
+
+  useEffect(() => {
+    if (isGift) {
+      const timer = setTimeout(() => {
+        setGiftVisible(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isGift, msg.id]);
+
+  if (isGift && !giftVisible) {
+    return null;
+  }
 
   const handleUserClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -56,7 +71,7 @@ const CommentBubble = ({
       layout
       initial={{ opacity: 0, x: -16, scale: 0.96 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0 }}
+      exit={{ opacity: 0, x: -10, scale: 0.9 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="flex items-start justify-start w-full self-start text-left"
     >
