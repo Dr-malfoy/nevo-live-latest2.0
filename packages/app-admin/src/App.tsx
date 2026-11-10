@@ -71,6 +71,7 @@ export default function App() {
         <Route path="/login" element={<AdminLogin />} />
         <Route element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="users" element={<Users />} />
           <Route path="hosts" element={<Hosts />} />
           <Route path="host-applications" element={<HostApplications />} />
@@ -98,7 +99,9 @@ export default function App() {
           <Route path="official-notifications" element={<OfficialNotifications />} />
           <Route path="verification" element={<Verification />} />
           <Route path="asset-passwords" element={<AssetPasswords />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

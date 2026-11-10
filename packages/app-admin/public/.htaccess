@@ -4,14 +4,15 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+  RewriteRule ^index\.html$ - [L]
 
-  # If the request maps to an existing file (asset, image, favicon), serve it directly.
+  # If the request maps to an existing file or directory, serve it directly.
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
   # Everything else → index.html (client-side routing takes over).
-  RewriteRule ^ index.html [L]
+  RewriteRule . /index.html [L]
 </IfModule>
 
 # Optional: gzip/brotli for static assets if the host supports it.
