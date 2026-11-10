@@ -28,9 +28,10 @@ import {
   PiWaveformBold as Waveform,
   PiSwordBold as Swords,
   PiCornersOutBold as ExpandIcon,
+  PiGameControllerFill,
 } from 'react-icons/pi';
 import { MouthIcon, MouthOffIcon } from './MouthIcons';
-import { useUIStore } from '../../stores';
+import { useUIStore, useLivePlayerStore } from '../../stores';
 import { useNavigate } from 'react-router-dom';
 
 export interface LiveToolsSheetProps {
@@ -74,6 +75,7 @@ export interface LiveToolsSheetProps {
   onOpenVIP?: () => void;
   onOpenLuckyBox?: () => void;
   onOpenAdmins?: () => void;
+  onOpenGames?: () => void;
 }
 
 interface ToolButtonProps {
@@ -169,6 +171,7 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
   onOpenVIP,
   onOpenLuckyBox,
   onOpenAdmins,
+  onOpenGames,
 }) => {
   const showToast = useUIStore((s) => s.showToast);
   const navigate = useNavigate();
@@ -503,6 +506,23 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                   }}
                 />
               )}
+
+              <ToolButton
+                id="games"
+                label="Games"
+                icon={<PiGameControllerFill className="w-6 h-6 text-violet-400" />}
+                badge="HOT"
+                badgeColor="bg-gradient-to-r from-violet-600 to-fuchsia-600"
+                onClick={() => {
+                  onClose();
+                  if (onOpenGames) {
+                    onOpenGames();
+                  } else {
+                    useLivePlayerStore.getState().setMinimized(true);
+                    navigate('/games');
+                  }
+                }}
+              />
 
               <ToolButton
                 id="rank"

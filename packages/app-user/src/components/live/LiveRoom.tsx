@@ -24,7 +24,8 @@ import { PKBattleView } from './PKBattleView';
 import { GiftGalleryModal } from './GiftGalleryModal';
 import { AudienceRewardModal } from './AudienceRewardModal';
 import { ShareModal } from './ShareModal';
-import { useUIStore } from '../../stores';
+import { useUIStore, useLivePlayerStore } from '../../stores';
+import { useNavigate } from 'react-router-dom';
 import type { LiveRoomProps } from './types';
 
 export const LiveRoom = ({
@@ -134,6 +135,7 @@ export const LiveRoom = ({
 
   // Beauty, Mirror, Noise Reduction State
   const showToast = useUIStore((s) => s.showToast);
+  const navigate = useNavigate();
   const [smoothness, setSmoothness] = useState(0);
   const [whitening, setWhitening] = useState(0);
   const [mirrorOn, setMirrorOn] = useState(true);
@@ -818,6 +820,11 @@ export const LiveRoom = ({
         onOpenPKRank={() => setShowPKRank(true)}
         onOpenRewards={() => setShowRewards(true)}
         onOpenGiftGallery={() => setShowGiftGallery(true)}
+        onOpenGames={() => {
+          setToolsOpen(false);
+          useLivePlayerStore.getState().setMinimized(true);
+          navigate('/games');
+        }}
       />
 
       {/* Live Data Analytics Modal */}
