@@ -103,6 +103,8 @@ export const LiveStreamPage = ({
   // would override the profile route the user just opened).
   const navigatingAwayRef = useRef(false);
   const recentJoinsRef = useRef<Map<string, number>>(new Map());
+  const [isClosing, setIsClosing] = useState(false);
+  const isClosingRef = useRef(false);
 
   const {
     joined,
@@ -188,6 +190,15 @@ export const LiveStreamPage = ({
   const fireEnd = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
+    if (networkTimerRef.current) {
+      clearTimeout(networkTimerRef.current);
+      networkTimerRef.current = undefined;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = undefined;
+    }
+    setIsReconnecting(false);
     endLiveSession();
   }, []);
 
@@ -240,6 +251,9 @@ export const LiveStreamPage = ({
 
   // Network grace: 30s grace with reconnect countdown before auto-ending
   const handleNetworkLost = useCallback(() => {
+    if (endedRef.current || isClosingRef.current || streamEndedRecap || streamRef.current?.status === 'ended') {
+      return;
+    }
     if (networkTimerRef.current) return;
 
     setIsReconnecting(true);
@@ -258,10 +272,11 @@ export const LiveStreamPage = ({
     networkTimerRef.current = setTimeout(() => {
       setIsReconnecting(false);
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      showToast('Connection lost — ending live session', 'error');
-      fireEnd();
+      if (!endedRef.current && !isClosingRef.current && !streamEndedRecap && streamRef.current?.status !== 'ended') {
+        fireEnd();
+      }
     }, NETWORK_GRACE_MS);
-  }, [fireEnd, showToast]);
+  }, [fireEnd, streamEndedRecap]);
 
   const handleNetworkRecover = useCallback(() => {
     if (networkTimerRef.current) {
@@ -273,23 +288,27 @@ export const LiveStreamPage = ({
       countdownTimerRef.current = undefined;
     }
     setIsReconnecting(false);
-    showToast('Connection restored!', 'success');
+    if (!endedRef.current && !streamEndedRecap) {
+      showToast('Connection restored!', 'success');
 
-    // Re-verify socket and channel health
-    if (socket && id) {
-      socket.emit('stream:join', { streamId: id });
+      // Re-verify socket and channel health
+      if (socket && id) {
+        socket.emit('stream:join', { streamId: id });
+      }
     }
-  }, [socket, id, showToast]);
+  }, [socket, id, showToast, streamEndedRecap]);
 
   // Window offline/online event detection
   useEffect(() => {
-    if (!joined) return;
+    if (!joined || endedRef.current || streamEndedRecap) return;
 
     const onOffline = () => {
+      if (endedRef.current || streamEndedRecap) return;
       handleNetworkLost();
     };
 
     const onOnline = () => {
+      if (endedRef.current || streamEndedRecap) return;
       handleNetworkRecover();
     };
 
@@ -300,7 +319,7 @@ export const LiveStreamPage = ({
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);
     };
-  }, [joined, handleNetworkLost, handleNetworkRecover]);
+  }, [joined, streamEndedRecap, handleNetworkLost, handleNetworkRecover]);
 
   // Load stream first, then join Agora — ordering ensures isHost is correct before the join effect fires
   useEffect(() => {
@@ -386,6 +405,8 @@ export const LiveStreamPage = ({
       // Clean up timers & Agora tracks on unmount
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (networkTimerRef.current) clearTimeout(networkTimerRef.current);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       // Only fire end cleanup if not host, or if host explicitly confirmed ending stream
       if (tokenRef.current && (!isHostRef.current || endedRef.current)) {
         fireEnd();
@@ -526,6 +547,15 @@ export const LiveStreamPage = ({
     };
     const onEnded = () => {
       endedRef.current = true;
+      if (networkTimerRef.current) {
+        clearTimeout(networkTimerRef.current);
+        networkTimerRef.current = undefined;
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = undefined;
+      }
+      setIsReconnecting(false);
       try {
         if (timerRef.current) clearInterval(timerRef.current);
         leaveChannel();
@@ -535,7 +565,6 @@ export const LiveStreamPage = ({
       if (isMinimized) {
         closeStream();
         onCloseProp?.();
-        showToast('Live stream has ended', 'info');
         return;
       }
 
@@ -1106,13 +1135,21 @@ export const LiveStreamPage = ({
     }
   }, [host]);
 
-  const [isClosing, setIsClosing] = useState(false);
-
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);
+    isClosingRef.current = true;
     setIsClosing(true);
     navigatingAwayRef.current = true;
     endedRef.current = true;
+    if (networkTimerRef.current) {
+      clearTimeout(networkTimerRef.current);
+      networkTimerRef.current = undefined;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = undefined;
+    }
+    setIsReconnecting(false);
     setStreamEndedRecap(null);
     closeStream();
     onCloseProp?.();
@@ -1123,6 +1160,15 @@ export const LiveStreamPage = ({
   const confirmEndStream = useCallback(async () => {
     setShowEndConfirm(false);
     endedRef.current = true;
+    if (networkTimerRef.current) {
+      clearTimeout(networkTimerRef.current);
+      networkTimerRef.current = undefined;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = undefined;
+    }
+    setIsReconnecting(false);
 
     const currentStream = streamRef.current || stream;
     const currentHost = hostRef.current || host || user;
@@ -1145,6 +1191,7 @@ export const LiveStreamPage = ({
 
     // If host was minimized, close player immediately
     if (isMinimized) {
+      isClosingRef.current = true;
       setIsClosing(true);
       closeStream();
       onCloseProp?.();
@@ -1424,6 +1471,8 @@ export const LiveStreamPage = ({
         error={error}
         isReconnecting={isReconnecting}
         reconnectCountdown={reconnectCountdown}
+        ended={endedRef.current || Boolean(streamEndedRecap) || stream?.status === 'ended'}
+        isClosing={isClosing || isClosingRef.current}
         isMinimized={isMinimized}
         onMaximize={handleMaximize}
         onMinimize={handleMinimize}

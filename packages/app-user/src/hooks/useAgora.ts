@@ -167,6 +167,7 @@ export const useAgora = () => {
   const switchingCameraRef = useRef(false);
   const joiningRef = useRef(false);
   const togglingMicRef = useRef(false);
+  const isLeavingRef = useRef(false);
   const networkLostRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
@@ -420,6 +421,9 @@ export const useAgora = () => {
       }
 
       joiningRef.current = true;
+      isLeavingRef.current = false;
+      networkLostRef.current = false;
+      setError('');
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
 
@@ -445,10 +449,11 @@ export const useAgora = () => {
       }
 
       client.on('connection-state-change', (cur, prev) => {
+        if (isLeavingRef.current) return;
         if (cur === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
           if (!networkLostRef.current) {
             networkLostRef.current = true;
-            setError('Connection lost ΓÇö reconnectingΓÇª');
+            setError('Connection lost — reconnecting…');
             onNetworkLost?.();
           }
         } else if (cur === 'CONNECTED') {
@@ -904,6 +909,9 @@ export const useAgora = () => {
   }, []);
 
   const leaveChannel = useCallback(async () => {
+    isLeavingRef.current = true;
+    networkLostRef.current = false;
+    setError('');
     try {
       if (cleanupSignalingRef.current) {
         cleanupSignalingRef.current();
@@ -928,7 +936,10 @@ export const useAgora = () => {
         localAudioRef.current = null;
       }
       if (clientRef.current) {
-        await clientRef.current.leave();
+        try {
+          clientRef.current.removeAllListeners();
+          await clientRef.current.leave();
+        } catch {}
         clientRef.current = null;
       }
       if (fallbackStreamRef.current) {
@@ -958,6 +969,9 @@ export const useAgora = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isLeavingRef.current = true;
+      networkLostRef.current = false;
+      setError('');
       if (cleanupSignalingRef.current) {
         cleanupSignalingRef.current();
         cleanupSignalingRef.current = null;
@@ -973,7 +987,12 @@ export const useAgora = () => {
         localAudioRef.current.stop();
         localAudioRef.current.close();
       }
-      if (clientRef.current) clientRef.current.leave();
+      if (clientRef.current) {
+        try {
+          clientRef.current.removeAllListeners();
+          clientRef.current.leave();
+        } catch {}
+      }
       if (fallbackStreamRef.current) {
         fallbackStreamRef.current.getTracks().forEach((t) => t.stop());
       }

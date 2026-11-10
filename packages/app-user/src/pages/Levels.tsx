@@ -197,7 +197,7 @@ export const Levels = () => {
                 <div className="mt-3.5 space-y-1.5">
                   <div className="flex items-center justify-between text-[11px] font-bold text-white/90">
                     <span>
-                      {state.current.points.toLocaleString()} {kind === 'wealth' ? 'Diamonds spent' : 'Minutes streamed'}
+                      {state.current.points.toLocaleString()} {kind === 'wealth' ? 'Diamonds' : 'Minutes streamed'}
                     </span>
                     <span>{Math.round((state.current.progress || 0) * 100)}%</span>
                   </div>

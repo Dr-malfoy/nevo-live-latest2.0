@@ -11,7 +11,7 @@ const decorateUser = (plain: any) => {
   const raw = typeof plain.toObject === 'function' ? plain.toObject() : { ...plain };
   const diamonds = Math.max(0, raw?.diamonds ?? 0);
   const coins = Math.max(0, raw?.coins ?? 0);
-  const wealthExp = Math.max(raw?.wealthExp || 0, coins + diamonds);
+  const wealthExp = Math.max(raw?.wealthExp || 0, diamonds);
   const wealthLevel = raw?.wealthLevel && raw.wealthLevel > 1 ? raw.wealthLevel : calculateWealthLevel(wealthExp, raw?.level).level;
   const liveStreamSeconds = raw?.liveStreamSeconds || 0;
   const liveStreamMinutes = raw?.liveStreamMinutes || Math.floor(liveStreamSeconds / 60);

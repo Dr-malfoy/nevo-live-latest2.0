@@ -330,7 +330,7 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
               </div>
               {activeTab === 'wealth' ? (
                 <p className="leading-relaxed">
-                  Wealth Level is upgraded by recharging diamonds into your account. As your wealth level increases, you will unlock exclusive prestige medals, animated entrance effects, and luxury status badges across the platform.
+                  Wealth Level is determined solely by your diamond top-up count. Progress smoothly from Level 1 up to Level 100 (Max Level reached at 100 Million Diamonds top-up). As your wealth level increases, you unlock exclusive prestige medals, luxury status badges, and animated entrance effects.
                 </p>
               ) : (
                 <p className="leading-relaxed">
@@ -404,7 +404,7 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 <div className="flex items-center justify-between text-xs text-white/80 font-bold mb-1 tabular-nums">
                   <span>
                     {activeTab === 'wealth'
-                      ? `${currentInfo.currentPoints.toLocaleString()} / ${currentInfo.tierNext === Infinity ? 'MAX' : currentInfo.tierNext.toLocaleString()} EXP`
+                      ? `${currentInfo.currentPoints.toLocaleString()} / ${currentInfo.tierNext === Infinity ? '100M (MAX)' : `${currentInfo.tierNext.toLocaleString()} Diamonds`}`
                       : `${formatLiveTime(currentInfo.currentPoints)} / ${currentInfo.tierNext === Infinity ? 'MAX' : formatLiveTime(currentInfo.tierNext)} Live Time`}
                   </span>
                   <span className={activeTab === 'wealth' ? 'text-amber-300 font-extrabold' : 'text-lime-300 font-extrabold'}>
@@ -416,8 +416,10 @@ export const LevelDetailSheet: React.FC<LevelDetailSheetProps> = ({
                 <p className="text-[11px] text-white/60 font-medium">
                   {currentInfo.remaining > 0
                     ? activeTab === 'wealth'
-                      ? `Remaining progress to upgrade: ${currentInfo.remaining.toLocaleString()} EXP`
+                      ? `Remaining to upgrade: ${currentInfo.remaining.toLocaleString()} Diamonds`
                       : `Remaining live time to upgrade: ${formatLiveTime(currentInfo.remaining)}`
+                    : activeTab === 'wealth'
+                    ? 'Level 100 Max Wealth reached (100 Million Diamonds)!'
                     : 'Top level reached!'}
                 </p>
               </div>

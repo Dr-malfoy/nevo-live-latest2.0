@@ -145,10 +145,11 @@ export const PartyRoom = () => {
     };
   }, [id, fetchRoomData]);
 
+  const leavingRoomRef = useRef(false);
   const { joinChannel, toggleMic, micOn, error: agoraError, leaveChannel, remoteUsers } = useAgora();
 
   useEffect(() => {
-    if (agoraError) {
+    if (agoraError && !leavingRoomRef.current) {
       showToast(agoraError, 'error');
     }
   }, [agoraError, showToast]);
@@ -424,6 +425,7 @@ export const PartyRoom = () => {
 
   const handleCloseParty = async () => {
     if (!id) return;
+    leavingRoomRef.current = true;
     if (isHost) {
       if (window.confirm('Are you sure you want to close this party permanently?')) {
         try {

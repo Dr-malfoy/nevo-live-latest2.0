@@ -1,4 +1,5 @@
 export const MAX_LEVEL = 100;
+export const MAX_WEALTH_DIAMONDS = 100_000_000; // 100 Million Diamonds reaches Level 100
 
 export interface LevelInfo {
   level: number;
@@ -13,6 +14,43 @@ export interface LevelMilestone {
   level: number;
   min: number;
   next: number;
+}
+
+/**
+ * Generates progressive milestones for Wealth Level from Level 1 (0 Diamonds)
+ * to Level 100 (exactly 100,000,000 Diamonds top-up).
+ */
+function generateWealthMilestones(targetMaxExp: number = 100_000_000, power: number = 2.5): LevelMilestone[] {
+  const milestones: LevelMilestone[] = [];
+  for (let lvl = 1; lvl <= MAX_LEVEL; lvl++) {
+    if (lvl === 1) {
+      milestones.push({ level: lvl, min: 0, next: 0 });
+      continue;
+    }
+    if (lvl === MAX_LEVEL) {
+      milestones.push({ level: lvl, min: targetMaxExp, next: Infinity });
+      continue;
+    }
+    const ratio = (lvl - 1) / (MAX_LEVEL - 1);
+    let min = Math.round(targetMaxExp * Math.pow(ratio, power));
+    if (min >= 10_000_000) min = Math.round(min / 100_000) * 100_000;
+    else if (min >= 1_000_000) min = Math.round(min / 10_000) * 10_000;
+    else if (min >= 100_000) min = Math.round(min / 1_000) * 1_000;
+    else if (min >= 10_000) min = Math.round(min / 100) * 100;
+    else if (min >= 1_000) min = Math.round(min / 50) * 50;
+    else min = Math.round(min / 10) * 10;
+
+    const prevMin = milestones[milestones.length - 1].min;
+    if (min <= prevMin) {
+      min = prevMin + 50;
+    }
+
+    milestones.push({ level: lvl, min, next: 0 });
+  }
+  for (let i = 0; i < MAX_LEVEL - 1; i++) {
+    milestones[i].next = milestones[i + 1].min;
+  }
+  return milestones;
 }
 
 /**
@@ -50,7 +88,7 @@ function generateMilestones(baseExp: number, growthFactor: number): LevelMilesto
 }
 
 // 100-Level Ladders for Wealth Level (Diamonds) & Live Level (Live Stream Minutes)
-export const WEALTH_MILESTONES: LevelMilestone[] = generateMilestones(100, 1.4);
+export const WEALTH_MILESTONES: LevelMilestone[] = generateWealthMilestones(100_000_000, 2.5);
 export const LIVE_MILESTONES: LevelMilestone[] = generateMilestones(10, 1.35);
 
 export function formatLiveTime(minutes: number): string {

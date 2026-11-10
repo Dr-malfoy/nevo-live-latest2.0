@@ -42,6 +42,8 @@ export const LiveRoom = ({
   error,
   isReconnecting,
   reconnectCountdown,
+  ended = false,
+  isClosing = false,
   isMinimized = false,
   onMaximize,
   onMinimize,
@@ -649,11 +651,11 @@ export const LiveRoom = ({
           </AnimatePresence>
 
       {/* Connecting state (only when not ended) */}
-      {!joined && stream?.status !== 'ended' && <LiveSkeleton />}
+      {!joined && stream?.status !== 'ended' && !ended && !isClosing && <LiveSkeleton />}
 
       {/* Reconnecting Overlay / Banner with Countdown */}
       <AnimatePresence>
-        {isReconnecting && (
+        {isReconnecting && !ended && !isClosing && stream?.status !== 'ended' && (
           <div className="absolute top-20 inset-x-0 z-50 flex justify-center px-4 pointer-events-none select-none">
             <motion.div
               initial={{ opacity: 0, y: -15, scale: 0.95 }}
@@ -683,7 +685,7 @@ export const LiveRoom = ({
       </AnimatePresence>
 
       {/* RTC connection error pill (general error when not actively reconnecting with countdown) */}
-      {error && !isReconnecting && (
+      {error && !isReconnecting && !ended && !isClosing && stream?.status !== 'ended' && (
         <div className="absolute top-20 inset-x-0 z-40 flex justify-center px-6 pointer-events-none">
           <p className="text-sm text-red-300 bg-red-500/15 border border-red-500/30 rounded-full px-4 py-1.5 backdrop-blur-md">{error}</p>
         </div>

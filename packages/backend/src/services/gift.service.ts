@@ -118,20 +118,15 @@ export const giftService = {
     const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
 
     // 1. Host receives coins (1 diamond = 1 coin, 70% share)
-    const receiverNewWealthExp = (receiver.wealthExp || 0) + hostCoins;
-    const receiverWealthInfo = calculateWealthLevel(receiverNewWealthExp, receiver.wealthLevel);
     const updatedReceiver = await User.findOneAndUpdate(
       { _id: receiverId },
       {
-        $inc: { coins: hostCoins, wealthExp: hostCoins },
-        $set: { wealthLevel: Math.max(receiver.wealthLevel || 1, receiverWealthInfo.level) },
+        $inc: { coins: hostCoins },
       },
       { new: true }
     );
     if (updatedReceiver) {
       receiver.coins = updatedReceiver.coins;
-      receiver.wealthExp = updatedReceiver.wealthExp;
-      receiver.wealthLevel = updatedReceiver.wealthLevel;
     }
 
     // 1b. If gift is sent in a live stream, increment live stream earnings

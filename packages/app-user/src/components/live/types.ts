@@ -40,6 +40,8 @@ export interface LiveRoomProps {
   isReconnecting?: boolean;
   reconnectCountdown?: number;
   isMinimized?: boolean;
+  ended?: boolean;
+  isClosing?: boolean;
   onMaximize?: () => void;
   onMinimize?: () => void;
   elapsed: string;

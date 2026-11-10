@@ -232,7 +232,7 @@ export const Profile = () => {
     );
   }
 
-  const wealthPoints = Math.max((user as any).wealthExp || 0, ((user as any).coins || 0) + (user.diamonds || 0));
+  const wealthPoints = Math.max((user as any).wealthExp || 0, user.diamonds || 0);
   const liveTimeMinutes = (user as any).liveStreamMinutes || Math.floor(((user as any).liveStreamSeconds || 0) / 60);
   const wealthInfo = calculateWealthLevel(wealthPoints, (user as any).wealthLevel || user.level);
   const liveInfo = calculateLiveLevel(liveTimeMinutes, (user as any).liveLevel || user.level);

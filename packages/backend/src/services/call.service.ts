@@ -666,13 +666,10 @@ export const callService = {
       const { hostCoins, agencyCoins, adminCoins, agencyTier, tierConfig, agencyShareRate, adminShareRate } = distribution;
 
       // 1. Host receives coins (1 diamond = 1 coin, 70% share)
-      const hostNewWealthExp = (host.wealthExp || 0) + hostCoins;
-      const hostWealthInfo = calculateWealthLevel(hostNewWealthExp, host.wealthLevel);
       await User.findOneAndUpdate(
         { _id: call.hostId },
         {
-          $inc: { coins: hostCoins, wealthExp: hostCoins },
-          $set: { wealthLevel: Math.max(host.wealthLevel || 1, hostWealthInfo.level) },
+          $inc: { coins: hostCoins },
         }
       );
 

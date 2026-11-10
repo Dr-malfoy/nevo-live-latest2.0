@@ -114,7 +114,7 @@ export const PublicProfile = () => {
 
   // Calculated Levels
   const wealthInfo = useMemo(() => {
-    const rawExp = Math.max(profile?.wealthExp || 0, ((profile?.coins || 0) + (profile?.diamonds || 0)));
+    const rawExp = Math.max(profile?.wealthExp || 0, profile?.diamonds || 0);
     return calculateWealthLevel(rawExp, profile?.wealthLevel || profile?.level);
   }, [profile]);
 
