@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import {
   PiBellFill as Bell,
   PiCameraFill as Camera,
@@ -222,14 +222,7 @@ export const Profile = () => {
   }, [socket]);
 
   if (!isAuthenticated || !user) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <p className="text-ink-muted mb-4">Sign in to view your profile</p>
-        <button onClick={() => navigate('/login')} className="h-11 px-6 btn-primary">
-          Sign In
-        </button>
-      </div>
-    );
+    return <Navigate to="/login" replace />;
   }
 
   const wealthPoints = Math.max((user as any).wealthExp || 0, user.diamonds || 0);
@@ -686,8 +679,8 @@ export const Profile = () => {
       <div className="mx-4 mt-3 mb-6 list-group">
         <button
           onClick={() => {
+            navigate('/login', { replace: true });
             logout();
-            navigate('/login');
           }}
           className="list-row w-full text-role-host font-semibold"
         >

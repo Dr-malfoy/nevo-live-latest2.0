@@ -6,31 +6,31 @@ import { useAuthStore, useUIStore } from '../stores';
 import { CountdownPill } from '../components/common';
 import { Loading } from '../components/ui';
 
-// 10 Diamond slices matching backend configuration (5, 10, 15, 20, 25, 45, 75, 100, 250, 500 💎)
+// 10 Diamond slices matching backend configuration (50, 100, 150, 200, 250, 450, 750, 1000, 2500, 5000 💎)
 const FALLBACK_SLICES: SpinSlice[] = [
-  { index: 0, amount: 5, currency: 'diamond' },
-  { index: 1, amount: 10, currency: 'diamond' },
-  { index: 2, amount: 15, currency: 'diamond' },
-  { index: 3, amount: 20, currency: 'diamond' },
-  { index: 4, amount: 25, currency: 'diamond' },
-  { index: 5, amount: 45, currency: 'diamond' },
-  { index: 6, amount: 75, currency: 'diamond' },
-  { index: 7, amount: 100, currency: 'diamond' },
-  { index: 8, amount: 250, currency: 'diamond' },
-  { index: 9, amount: 500, currency: 'diamond' },
+  { index: 0, amount: 50, currency: 'diamond' },
+  { index: 1, amount: 100, currency: 'diamond' },
+  { index: 2, amount: 150, currency: 'diamond' },
+  { index: 3, amount: 200, currency: 'diamond' },
+  { index: 4, amount: 250, currency: 'diamond' },
+  { index: 5, amount: 450, currency: 'diamond' },
+  { index: 6, amount: 750, currency: 'diamond' },
+  { index: 7, amount: 1000, currency: 'diamond' },
+  { index: 8, amount: 2500, currency: 'diamond' },
+  { index: 9, amount: 5000, currency: 'diamond' },
 ];
 
 const SLICE_COLORS = [
-  '#0f172a', // 5 💎
-  '#0d9488', // 10 💎
-  '#1e293b', // 15 💎
-  '#0284c7', // 20 💎
-  '#312e81', // 25 💎
-  '#059669', // 45 💎
-  '#4f46e5', // 75 💎
-  '#7c3aed', // 100 💎
-  '#b45309', // 250 💎 (Major Prize)
-  '#d97706', // 500 💎 (JACKPOT)
+  '#0f172a', // 50 💎
+  '#0d9488', // 100 💎
+  '#1e293b', // 150 💎
+  '#0284c7', // 200 💎
+  '#312e81', // 250 💎
+  '#059669', // 450 💎
+  '#4f46e5', // 750 💎
+  '#7c3aed', // 1000 💎
+  '#b45309', // 2500 💎 (Major Prize)
+  '#d97706', // 5000 💎 (JACKPOT)
 ];
 
 export const LuckySpin = () => {
@@ -95,12 +95,12 @@ export const LuckySpin = () => {
         if (data?.slices?.length) {
           setState(data);
         } else {
-          setState({ slices: FALLBACK_SLICES, freeSpinAvailable: true, extraSpinCostDiamonds: 10 });
+          setState({ slices: FALLBACK_SLICES, freeSpinAvailable: true, extraSpinCostDiamonds: 1000 });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setState({ slices: FALLBACK_SLICES, freeSpinAvailable: true, extraSpinCostDiamonds: 10 });
+          setState({ slices: FALLBACK_SLICES, freeSpinAvailable: true, extraSpinCostDiamonds: 1000 });
         }
       })
       .finally(() => {
@@ -115,7 +115,7 @@ export const LuckySpin = () => {
   const slices = state?.slices?.length ? state.slices : FALLBACK_SLICES;
   const sliceAngle = 360 / slices.length;
   const isFree = Boolean(state?.freeSpinAvailable);
-  const spinCost = state?.extraSpinCostDiamonds ?? 10;
+  const spinCost = state?.extraSpinCostDiamonds ?? 1000;
   const diamonds = Math.floor(user?.diamonds ?? 0);
 
   const handleSpin = async () => {
@@ -133,10 +133,10 @@ export const LuckySpin = () => {
 
     const cost = isFree ? 0 : spinCost;
 
-    // Immediately deduct 10 diamonds optimistically on screen so deduction is 100% visible
+    // Immediately deduct diamonds optimistically on screen so deduction is 100% visible
     if (cost > 0) {
       updateUser({ diamonds: Math.max(0, diamonds - cost) });
-      showDeltaBadge({ text: `-${cost} 💎`, type: 'deduct' }, 4000);
+      showDeltaBadge({ text: `-${cost.toLocaleString()} 💎`, type: 'deduct' }, 4000);
     } else {
       showDeltaBadge({ text: '🎁 Free Spin', type: 'free' }, 4000);
     }
@@ -241,7 +241,7 @@ export const LuckySpin = () => {
             LUCKY SPIN 🎡
           </h1>
           <span className="text-[10px] text-cyan-400 font-extrabold tracking-widest uppercase truncate">
-            Win Up To 500 Diamonds
+            Win Up To 5,000 Diamonds
           </span>
         </div>
 
@@ -287,7 +287,7 @@ export const LuckySpin = () => {
             <h2 className="text-xl sm:text-2xl font-black text-white">
               Spin & Win Up to{' '}
               <span className="bg-gradient-to-r from-amber-300 to-yellow-400 bg-clip-text text-transparent drop-shadow">
-                500 💎
+                5,000 💎
               </span>
             </h2>
             <div className="flex items-center justify-center gap-2">
@@ -297,7 +297,7 @@ export const LuckySpin = () => {
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#131b2e] border border-amber-500/40 text-amber-300 text-xs font-black shadow">
-                  ⚡ Extra Spin: {spinCost} Diamonds
+                  ⚡ Extra Spin: {spinCost.toLocaleString()} Diamonds
                 </span>
               )}
             </div>
@@ -325,8 +325,8 @@ export const LuckySpin = () => {
             >
               {slices.map((slice, i) => {
                 const angle = i * sliceAngle + sliceAngle / 2;
-                const isJackpot = slice.amount === 500;
-                const isMega = slice.amount === 250;
+                const isJackpot = slice.amount === 5000;
+                const isMega = slice.amount === 2500;
 
                 return (
                   <div
@@ -384,7 +384,7 @@ export const LuckySpin = () => {
                 <div className="flex flex-col items-center leading-none">
                   <span className="text-base font-black tracking-tight">SPIN</span>
                   <span className="text-[11px] font-black text-black/85 flex items-center gap-0.5 pt-0.5">
-                    10 💎
+                    {spinCost.toLocaleString()} 💎
                   </span>
                 </div>
               )}
@@ -408,7 +408,7 @@ export const LuckySpin = () => {
               ) : isFree ? (
                 <span>🎁 CLAIM DAILY FREE SPIN (0 💎)</span>
               ) : (
-                <span>💎 SPIN FOR {spinCost} DIAMONDS</span>
+                <span>💎 SPIN FOR {spinCost.toLocaleString()} DIAMONDS</span>
               )}
             </button>
 
@@ -459,15 +459,15 @@ export const LuckySpin = () => {
                 </div>
                 <div className="flex items-center gap-1.5 text-zinc-300">
                   <span className="text-cyan-400">💎</span>
-                  <span>Cost: 10 💎 / Spin</span>
+                  <span>Cost: {spinCost.toLocaleString()} 💎 / Spin</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-zinc-300">
                   <span className="text-amber-400">🏆</span>
-                  <span>Win up to 500 💎</span>
+                  <span>Win up to 5,000 💎</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-zinc-300">
                   <span className="text-purple-400">🎯</span>
-                  <span>500 💎 Chance: 10%</span>
+                  <span>5,000 💎 Chance: 10%</span>
                 </div>
               </div>
             </div>
@@ -482,14 +482,14 @@ export const LuckySpin = () => {
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500" />
 
             <div className="text-5xl animate-bounce">
-              {result.amount >= 250 ? '👑🎉' : '💎✨'}
+              {result.amount >= 2500 ? '👑🎉' : '💎✨'}
             </div>
 
             <div className="space-y-1">
               <h3 className="text-xl font-black text-amber-300">
-                {result.amount >= 500
+                {result.amount >= 5000
                   ? 'MEGA JACKPOT WINNER!'
-                  : result.amount >= 250
+                  : result.amount >= 2500
                   ? 'MAJOR PRIZE WINNER!'
                   : 'CONGRATULATIONS!'}
               </h3>
@@ -560,7 +560,7 @@ export const LuckySpin = () => {
                 }}
                 className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-500 text-black font-black text-xs shadow-md transition active:scale-95"
               >
-                Spin Again (10 💎)
+                Spin Again ({spinCost.toLocaleString()} 💎)
               </button>
             </div>
           </div>

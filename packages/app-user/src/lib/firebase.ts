@@ -303,16 +303,6 @@ export const mapFirebaseAuthError = (err: any): string => {
 };
 
 export const signOutAll = async (): Promise<void> => {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth');
-      await GoogleAuth.signOut();
-    } catch {}
-    try {
-      const { FacebookLogin } = await import('@capacitor-community/facebook-login');
-      await FacebookLogin.logout();
-    } catch {}
-  }
   try {
     await auth.signOut();
   } catch {}

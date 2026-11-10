@@ -5,19 +5,19 @@ import { getIO } from '../socket';
 import { taskService } from './task.service';
 import { referralService } from './referral.service';
 
-// Lucky spin slices: 10 diamond prize slices (5, 10, 15, 20, 25, 45, 75, 100, 250, 500 💎)
-// Probability configuration: in 1000 spins, 500 💎 has exactly 10% chance (100 / 1000)
+// Lucky spin slices: 10 diamond prize slices (50, 100, 150, 200, 250, 450, 750, 1000, 2500, 5000 💎)
+// Probability configuration: in 1000 spins, 5000 💎 has exactly 10% chance (100 / 1000)
 const SPIN_SLICES = [
-  { index: 0, amount: 5,   currency: 'diamond' as const, weight: 100 }, // 10%
-  { index: 1, amount: 10,  currency: 'diamond' as const, weight: 150 }, // 15%
-  { index: 2, amount: 15,  currency: 'diamond' as const, weight: 150 }, // 15%
-  { index: 3, amount: 20,  currency: 'diamond' as const, weight: 150 }, // 15%
-  { index: 4, amount: 25,  currency: 'diamond' as const, weight: 120 }, // 12%
-  { index: 5, amount: 45,  currency: 'diamond' as const, weight: 80  }, // 8%
-  { index: 6, amount: 75,  currency: 'diamond' as const, weight: 70  }, // 7%
-  { index: 7, amount: 100, currency: 'diamond' as const, weight: 50  }, // 5%
-  { index: 8, amount: 250, currency: 'diamond' as const, weight: 30  }, // 3% (Major Prize)
-  { index: 9, amount: 500, currency: 'diamond' as const, weight: 100 }, // 10% (Jackpot Prize — exactly 10% chance)
+  { index: 0, amount: 50,   currency: 'diamond' as const, weight: 100 }, // 10%
+  { index: 1, amount: 100,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 2, amount: 150,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 3, amount: 200,  currency: 'diamond' as const, weight: 150 }, // 15%
+  { index: 4, amount: 250,  currency: 'diamond' as const, weight: 120 }, // 12%
+  { index: 5, amount: 450,  currency: 'diamond' as const, weight: 80  }, // 8%
+  { index: 6, amount: 750,  currency: 'diamond' as const, weight: 70  }, // 7%
+  { index: 7, amount: 1000, currency: 'diamond' as const, weight: 50  }, // 5%
+  { index: 8, amount: 2500, currency: 'diamond' as const, weight: 30  }, // 3% (Major Prize)
+  { index: 9, amount: 5000, currency: 'diamond' as const, weight: 100 }, // 10% (Jackpot Prize — exactly 10% chance)
 ];
 
 const SIGNIN_REWARDS = [
@@ -431,7 +431,7 @@ export class GamesHubService {
       freeSpinAvailable: !existing,
       nextFreeSpinAt: existing ? end.toISOString() : null,
       extraSpinCostCoins: 0,
-      extraSpinCostDiamonds: 10,
+      extraSpinCostDiamonds: 1000,
     };
   }
 
@@ -442,11 +442,11 @@ export class GamesHubService {
     const user = await User.findById(userId).select('coins diamonds tickets');
     if (!user) throw new AppError('User not found', 404);
 
-    const EXTRA_SPIN_COST_DIAMONDS = 10;
+    const EXTRA_SPIN_COST_DIAMONDS = 1000;
     const isFreeSpin = !existing;
     const cost = isFreeSpin ? 0 : EXTRA_SPIN_COST_DIAMONDS;
 
-    // If daily free spin is already used, this spin costs 10 diamonds
+    // If daily free spin is already used, this spin costs 1000 diamonds
     if (!isFreeSpin) {
       if ((user.diamonds || 0) < EXTRA_SPIN_COST_DIAMONDS) {
         throw new AppError(`Insufficient diamonds. Each spin costs ${EXTRA_SPIN_COST_DIAMONDS} 💎.`, 400);
@@ -465,7 +465,7 @@ export class GamesHubService {
       }).catch(() => {});
     }
 
-    // Pick slice using probability distribution (in 1000 spins, 500 & 1000 diamonds have 10% combined chance):
+    // Pick slice using probability distribution (in 1000 spins, 5000 diamonds has 10% chance):
     const totalWeight = SPIN_SLICES.reduce((sum, s) => sum + s.weight, 0);
     let rand = Math.random() * totalWeight;
     let selectedSlice = SPIN_SLICES[0];
