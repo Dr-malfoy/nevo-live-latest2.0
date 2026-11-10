@@ -30,6 +30,7 @@ interface TopGifterSeatsProps {
   speakers: LiveSpeakerItem[];
   currentUserId?: string;
   hostId?: string;
+  hostNickname?: string;
   isHost: boolean;
   isSpeaker?: boolean;
   micRequestPending?: boolean;
@@ -65,6 +66,7 @@ export const TopGifterSeats = ({
   speakers = [],
   currentUserId,
   hostId,
+  hostNickname,
   isHost,
   isSpeaker,
   micRequestPending,
@@ -82,19 +84,40 @@ export const TopGifterSeats = ({
     { id: string; slotIndex: number; icon: string; count: number }[]
   >([]);
 
+  const cleanId = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') {
+      if (val._id) return String(val._id);
+      if (val.id) return String(val.id);
+      if (val.userId) return String(val.userId);
+    }
+    return '';
+  };
+
+  const effectiveHostId = cleanId(hostId) || (isHost && currentUserId ? cleanId(currentUserId) : '');
+  const cleanHostNick = (hostNickname || '').trim().toLowerCase();
+
+  const isHostEntity = (uid?: any, nick?: string): boolean => {
+    const cUid = cleanId(uid);
+    if (effectiveHostId && cUid && cUid === effectiveHostId) return true;
+    if (isHost && currentUserId && cUid && cUid === cleanId(currentUserId)) return true;
+    if (cleanHostNick && nick && nick.trim().toLowerCase() === cleanHostNick) return true;
+    return false;
+  };
+
   // Build the 5 vertical slots
-  const effectiveHostId = hostId || (isHost && currentUserId ? currentUserId : undefined);
   const slots: SlotData[] = Array.from({ length: 5 }, (_, i) => {
     // Only consider gifters with totalGifts > 0 as true top gifters (NEVER include the host)
     const validGifters = topGifters.filter((g) => {
       if ((g.totalGifts || 0) <= 0) return false;
-      if (effectiveHostId && String(g.userId) === String(effectiveHostId)) return false;
+      if (isHostEntity(g.userId, g.nickname)) return false;
       return true;
     });
     const gifter = validGifters[i];
 
     if (gifter) {
-      const sp = speakers.find((s) => s.userId === gifter.userId);
+      const sp = speakers.find((s) => cleanId(s.userId) === cleanId(gifter.userId));
       return {
         index: i,
         userId: gifter.userId,
@@ -109,8 +132,8 @@ export const TopGifterSeats = ({
     // If no gifter at this slot, place active speakers who are not yet in topGifters (excluding host)
     const unplacedSpeakers = speakers.filter(
       (s) =>
-        (!effectiveHostId || String(s.userId) !== String(effectiveHostId)) &&
-        !validGifters.some((g) => g.userId === s.userId)
+        !isHostEntity(s.userId, s.nickname) &&
+        !validGifters.some((g) => cleanId(g.userId) === cleanId(s.userId))
     );
     const unplacedIndex = i - validGifters.length;
     const speaker = unplacedSpeakers[unplacedIndex];
@@ -141,11 +164,11 @@ export const TopGifterSeats = ({
     // Determine target slot:
     // 1. If sent to a specific user (host gifts a user, or direct recipient), target the recipient's seat!
     let targetIndex = -1;
-    const targetId = giftBurst.receiverId;
+    const targetId = cleanId(giftBurst.receiverId);
     const targetName = giftBurst.receiverName;
 
     if (targetId) {
-      targetIndex = slots.findIndex((s) => s.userId && String(s.userId) === String(targetId));
+      targetIndex = slots.findIndex((s) => s.userId && cleanId(s.userId) === targetId);
     }
     if (targetIndex < 0 && targetName) {
       targetIndex = slots.findIndex(
@@ -155,9 +178,9 @@ export const TopGifterSeats = ({
 
     // 2. If it's a normal viewer gift to the stream / host (not from host to a user),
     // match the sender's slot among the seats (excluding host)
-    if (targetIndex < 0 && !giftBurst.isFromHost && (!effectiveHostId || String(giftBurst.userId || '') !== String(effectiveHostId))) {
+    if (targetIndex < 0 && !giftBurst.isFromHost && !isHostEntity(giftBurst.userId, giftBurst.nickname)) {
       if (giftBurst.userId) {
-        targetIndex = slots.findIndex((s) => s.userId && String(s.userId) === String(giftBurst.userId));
+        targetIndex = slots.findIndex((s) => s.userId && cleanId(s.userId) === cleanId(giftBurst.userId));
       }
       if (targetIndex < 0 && giftBurst.nickname) {
         targetIndex = slots.findIndex(

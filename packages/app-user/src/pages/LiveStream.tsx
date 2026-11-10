@@ -22,6 +22,28 @@ const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a
 const NETWORK_GRACE_MS = 30_000; // 30s grace window before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
+const getCleanHostId = (stream: any, host: any): string => {
+  if (host?._id) return String(host._id);
+  if (host?.id) return String(host.id);
+  if (stream?.hostId) {
+    if (typeof stream.hostId === 'object') {
+      return String(stream.hostId._id || stream.hostId.id || '');
+    }
+    return String(stream.hostId);
+  }
+  if (stream?.host) {
+    if (typeof stream.host === 'object') {
+      return String(stream.host._id || stream.host.id || '');
+    }
+    return String(stream.host);
+  }
+  return '';
+};
+
+const getCleanHostNickname = (stream: any, host: any): string => {
+  return String(host?.nickname || stream?.hostId?.nickname || stream?.host?.nickname || '').trim().toLowerCase();
+};
+
 export interface LiveStreamPageProps {
   streamIdProp?: string;
   isMinimized?: boolean;
@@ -484,36 +506,57 @@ export const LiveStreamPage = ({
       ]);
     };
     const onGift = (msg: any) => {
-      const isSelf = Boolean(userRef.current && msg?.userId === userRef.current._id);
+      const myId = userRef.current?._id ? String(userRef.current._id) : '';
+      const isSelf = Boolean(myId && String(msg?.userId) === myId);
       const giftCount = msg?.count || 1;
       const giftObj = msg?.gift;
-      const giftMsgId = msg?.id || `gift-${Date.now()}-${Math.random()}`;
-      const entry: RoomMessage = {
-        ...msg,
-        id: giftMsgId,
-        isGift: true,
-        nickname: msg?.nickname || (isSelf ? (userRef.current?.nickname || 'You') : 'Guest'),
-        level: msg?.level || 1,
-        wealthLevel: msg?.wealthLevel || msg?.level || 1,
-        liveLevel: msg?.liveLevel || msg?.level || 1,
-        message: `Sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`,
-      };
-      // Append to chat if not self (self added optimistically)
-      if (!isSelf) {
-        setChatMessages((prev) => [...prev, entry]);
+      const giftMsgId = msg?.id || `gift-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+      const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
+      const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
+      const isFromHost = Boolean(
+        msg?.isFromHost ||
+        (streamHostId && msg?.userId && String(msg.userId) === streamHostId) ||
+        (hostNick && msg?.nickname && msg.nickname.trim().toLowerCase() === hostNick)
+      );
+      const isRecipient = Boolean(
+        myId && (
+          (msg?.receiverId && String(msg.receiverId) === myId) ||
+          (!msg?.receiverId && isHostRef.current)
+        )
+      );
+
+      // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
+      // If host gifts a joined user, DO NOT add it to room chat messages for live audience!
+      const isHostToUserGift = Boolean(isFromHost && msg?.receiverId);
+
+      // Append to chat if not self AND (not host-to-user gift OR is recipient)
+      if (!isSelf && (!isHostToUserGift || isRecipient)) {
+        const entry: RoomMessage = {
+          ...msg,
+          id: giftMsgId,
+          isGift: true,
+          nickname: msg?.nickname || (isSelf ? (userRef.current?.nickname || 'You') : 'Guest'),
+          level: msg?.level || 1,
+          wealthLevel: msg?.wealthLevel || msg?.level || 1,
+          liveLevel: msg?.liveLevel || msg?.level || 1,
+          message: `Sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`,
+        };
+        setChatMessages((prev) => {
+          // Deduplicate if identical gift from same user arrived within 3s
+          const isDup = prev.some(
+            (m) =>
+              m.id === giftMsgId ||
+              (m.userId && String(m.userId) === String(msg.userId) && m.isGift && m.message === entry.message)
+          );
+          if (isDup) return prev;
+          return [...prev, entry];
+        });
         // Auto-remove gift notification after 5 seconds
         setTimeout(() => {
           setChatMessages((prev) => prev.filter((m) => m.id !== giftMsgId));
         }, 5000);
       }
-      const streamHostId = String(streamRef.current?.hostId || hostRef.current?._id || '');
-      const isFromHost = Boolean(msg?.isFromHost || (msg?.userId && streamHostId && String(msg.userId) === streamHostId));
-      const isRecipient = Boolean(
-        userRef.current && (
-          (msg?.receiverId && String(userRef.current._id) === String(msg.receiverId)) ||
-          (!msg?.receiverId && isHostRef.current)
-        )
-      );
 
       // Trigger the pop-up animation and floating gifts
       if (giftObj) {
@@ -532,7 +575,7 @@ export const LiveStreamPage = ({
           burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
 
           // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
-          if (isFromHost && msg.receiverId) {
+          if (isHostToUserGift) {
             if (isRecipient) {
               triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
             }
@@ -542,28 +585,32 @@ export const LiveStreamPage = ({
         }
       }
 
-      // Show top gift notification banner card for EVERYONE in the live room (auto-dismiss 5s)
-      const senderName = isSelf ? 'You' : (msg?.nickname || 'Someone');
+      // Show top gift notification banner card (auto-dismiss 5s)
+      // If host gifted a user, show only for recipient!
+      if (!isHostToUserGift || isRecipient) {
+        const senderName = isSelf ? 'You' : (msg?.nickname || 'Someone');
+        const notifText = isSelf
+          ? `You sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
+          : isRecipient
+            ? (isFromHost
+                ? `Host gifted you ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
+                : `${senderName} sent you ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`)
+            : `${senderName} sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`;
 
-      const notifText = isSelf
-        ? `You sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
-        : isRecipient
-          ? `${senderName} sent you ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
-          : `${senderName} sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`;
-
-      const notifId = `${Date.now()}-${Math.random()}`;
-      setNotifications((prev) => [
-        ...prev.slice(-4),
-        {
-          id: notifId,
-          kind: 'gift',
-          text: notifText,
-          avatar: msg?.avatar,
-        },
-      ]);
-      setTimeout(() => {
-        setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-      }, 5000);
+        const notifId = `${Date.now()}-${Math.random()}`;
+        setNotifications((prev) => [
+          ...prev.slice(-4),
+          {
+            id: notifId,
+            kind: 'gift',
+            text: notifText,
+            avatar: msg?.avatar,
+          },
+        ]);
+        setTimeout(() => {
+          setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+        }, 5000);
+      }
     };
     const onEnded = () => {
       endedRef.current = true;
@@ -733,19 +780,33 @@ export const LiveStreamPage = ({
     };
 
     const onTopGifters = (data: any) => {
-      if (data?.topGifters) {
-        const streamHostId = String(streamRef.current?.hostId || hostRef.current?._id || '');
+      if (data?.topGifters && Array.isArray(data.topGifters)) {
+        const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
+        const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
         const filtered = data.topGifters.filter(
-          (g: any) => !streamHostId || String(g.userId) !== streamHostId
+          (g: any) => {
+            if (streamHostId && String(g.userId) === streamHostId) return false;
+            if (hostNick && g.nickname && g.nickname.trim().toLowerCase() === hostNick) return false;
+            return true;
+          }
         );
         setTopGifters(filtered);
       }
     };
     const onSpeakersUpdate = (data: any) => {
-      if (data?.speakers) {
-        setSpeakers(data.speakers);
+      if (data?.speakers && Array.isArray(data.speakers)) {
+        const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
+        const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
+        const filtered = data.speakers.filter(
+          (s: any) => {
+            if (streamHostId && String(s.userId) === streamHostId) return false;
+            if (hostNick && s.nickname && s.nickname.trim().toLowerCase() === hostNick) return false;
+            return true;
+          }
+        );
+        setSpeakers(filtered);
         const myId = String(userRef.current?._id || (userRef.current as any)?.id || '');
-        const meAsSpeaker = data.speakers.find((s: any) => String(s.userId) === myId);
+        const meAsSpeaker = filtered.find((s: any) => String(s.userId) === myId);
         if (meAsSpeaker) {
           setIsSpeaker(true);
           setMicRequestPending(false);
@@ -1121,8 +1182,12 @@ export const LiveStreamPage = ({
       gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
       // Optimistic local gift message for the sender
       const currentUser = userRef.current;
-      if (currentUser) {
-        const selfGiftId = `gift-self-${Date.now()}-${Math.random()}`;
+      const isHostSender = Boolean(isHostRef.current);
+      const isHostToUserGift = Boolean(isHostSender && receiverId);
+
+      // If host gifts a joined user, DO NOT add to room chat messages on the live screen!
+      if (currentUser && !isHostToUserGift) {
+        const selfGiftId = `gift-self-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setChatMessages((prev) => [
           ...prev,
           {
@@ -1143,7 +1208,6 @@ export const LiveStreamPage = ({
       }
 
       // Immediately trigger pop-up animation and floating gifts for the sender
-      const isHostSender = Boolean(isHostRef.current);
       setGiftBurst({
         id: `${Date.now()}-${Math.random()}`,
         gift,
@@ -1560,12 +1624,18 @@ export const LiveStreamPage = ({
         likeCount={likeCount}
         onLike={handleLike}
         topGifters={topGifters.filter((g) => {
-          const hId = String(host?._id || stream?.hostId || '');
-          return !hId || String(g.userId) !== hId;
+          const hId = getCleanHostId(stream, host);
+          const hNick = getCleanHostNickname(stream, host);
+          if (hId && String(g.userId) === hId) return false;
+          if (hNick && g.nickname && g.nickname.trim().toLowerCase() === hNick) return false;
+          return true;
         })}
         speakers={speakers.filter((s) => {
-          const hId = String(host?._id || stream?.hostId || '');
-          return !hId || String(s.userId) !== hId;
+          const hId = getCleanHostId(stream, host);
+          const hNick = getCleanHostNickname(stream, host);
+          if (hId && String(s.userId) === hId) return false;
+          if (hNick && s.nickname && s.nickname.trim().toLowerCase() === hNick) return false;
+          return true;
         })}
         isSpeaker={isHost || isSpeaker}
         micRequestPending={micRequestPending}

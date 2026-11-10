@@ -193,7 +193,7 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-pink-500 animate-pulse shadow-sm shadow-pink-500" />
             <h3 className="text-sm font-bold text-white tracking-wide">
-              {isHost ? 'Live Tools & Controls' : 'Live Actions'}
+              {isHost ? 'Live Tools & Controls' : 'Basic Tools'}
             </h3>
           </div>
           <button
@@ -205,10 +205,60 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
           </button>
         </div>
 
-        {/* Scrollable Tools Sections matching Image 1 */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-          {/* Section 1: Host Tools (Only shown for Host) */}
-          {isHost && (
+        {!isHost ? (
+          /* Audience View: strictly 3 Basic Tools options (Mic, Message, Share) */
+          <div className="px-5 py-6">
+            <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-4">
+              Basic Tools
+            </span>
+            <div className="grid grid-cols-3 gap-4 place-items-center">
+              {/* 1. Mic: request mic or mute/unmute if co-speaker */}
+              <ToolButton
+                id="audience_mic"
+                label={isSpeaker ? (micOn ? 'Mic ON' : 'Mic OFF') : (micRequestPending ? 'Requested' : 'Request Mic')}
+                icon={isSpeaker ? (micOn ? <Mic className="w-6 h-6 text-emerald-400" /> : <MicOff className="w-6 h-6 text-red-400" />) : <MouthIcon className="w-6 h-6 text-pink-400" />}
+                badge={isSpeaker ? (micOn ? 'ON' : 'OFF') : (micRequestPending ? 'WAIT' : 'MIC')}
+                badgeColor={isSpeaker ? (micOn ? 'bg-emerald-500' : 'bg-red-500') : (micRequestPending ? 'bg-amber-500' : 'bg-pink-500')}
+                active={isSpeaker ? micOn : micRequestPending}
+                onClick={() => {
+                  if (isSpeaker) {
+                    onToggleMic?.();
+                  } else {
+                    onClose();
+                    onRequestMic?.();
+                  }
+                }}
+              />
+
+              {/* 2. Message */}
+              <ToolButton
+                id="message"
+                label="Message"
+                icon={<ChatDots className="w-6 h-6 text-sky-400" />}
+                badge="NEW"
+                badgeColor="bg-red-500"
+                onClick={() => {
+                  onClose();
+                  onOpenMessenger?.();
+                }}
+              />
+
+              {/* 3. Share */}
+              <ToolButton
+                id="share"
+                label="Share"
+                icon={<Share2 className="w-6 h-6 text-cyan-400" />}
+                onClick={() => {
+                  onClose();
+                  onShare?.();
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Host View: complete host tools, basic tools, and features center */
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+            {/* Section 1: Host Tools (Only shown for Host) */}
             <div>
               <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-3">
                 Host Tools
@@ -336,87 +386,85 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                 )}
               </div>
             </div>
-          )}
 
-          {/* Section 2: Basic Tools */}
-          <div>
-            <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-3">
-              Basic Tools
-            </span>
-            <div className="grid grid-cols-4 gap-y-4 gap-x-2">
-              <ToolButton
-                id="message"
-                label="Message"
-                icon={<ChatDots className="w-6 h-6 text-sky-400" />}
-                badge="NEW"
-                badgeColor="bg-red-500"
-                onClick={() => {
-                  onClose();
-                  onOpenMessenger?.();
-                }}
-              />
-
-              {videoEnabled && onToggleCamera && (
+            {/* Section 2: Basic Tools (Host view) */}
+            <div>
+              <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-3">
+                Basic Tools
+              </span>
+              <div className="grid grid-cols-4 gap-y-4 gap-x-2">
                 <ToolButton
-                  id="video"
-                  label="Video"
-                  icon={cameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
-                  badge={cameraOn ? 'On' : 'Off'}
-                  badgeColor={cameraOn ? 'bg-emerald-500' : 'bg-red-500'}
-                  active={cameraOn}
-                  onClick={() => onToggleCamera()}
-                />
-              )}
-
-              {isHost && onToggleMic && (
-                <ToolButton
-                  id="host_mic"
-                  label={micOn ? 'Mic ON' : 'Mic OFF'}
-                  icon={micOn ? <Mic className="w-6 h-6 text-emerald-400" /> : <MicOff className="w-6 h-6 text-red-400" />}
-                  badge={micOn ? 'ON' : 'OFF'}
-                  badgeColor={micOn ? 'bg-emerald-500' : 'bg-red-500'}
-                  active={micOn}
-                  onClick={() => onToggleMic()}
-                />
-              )}
-
-              {videoEnabled && onSwitchCamera && (
-                <ToolButton
-                  id="switch_camera"
-                  label="Switch Camera"
-                  icon={<CameraRotate className="w-6 h-6 text-cyan-300" />}
+                  id="message"
+                  label="Message"
+                  icon={<ChatDots className="w-6 h-6 text-sky-400" />}
+                  badge="NEW"
+                  badgeColor="bg-red-500"
                   onClick={() => {
-                    onSwitchCamera();
-                    showToast('Camera switched', 'info');
+                    onClose();
+                    onOpenMessenger?.();
                   }}
                 />
-              )}
 
-              <ToolButton
-                id="beauty"
-                label="Beauty"
-                icon={<Wand2 className="w-6 h-6 text-fuchsia-400" />}
-                badge="PRO"
-                badgeColor="bg-gradient-to-r from-purple-500 to-pink-500"
-                onClick={() => {
-                  onClose();
-                  onOpenBeauty?.();
-                }}
-              />
+                {videoEnabled && onToggleCamera && (
+                  <ToolButton
+                    id="video"
+                    label="Video"
+                    icon={cameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+                    badge={cameraOn ? 'On' : 'Off'}
+                    badgeColor={cameraOn ? 'bg-emerald-500' : 'bg-red-500'}
+                    active={cameraOn}
+                    onClick={() => onToggleCamera()}
+                  />
+                )}
 
-              <ToolButton
-                id="mirror"
-                label="Mirror"
-                icon={<Repeat className="w-6 h-6 text-indigo-400 rotate-90" />}
-                badge={mirrorOn ? 'On' : 'Off'}
-                badgeColor={mirrorOn ? 'bg-emerald-500' : 'bg-slate-600'}
-                active={mirrorOn}
-                onClick={() => {
-                  onToggleMirror?.();
-                }}
-              />
+                {onToggleMic && (
+                  <ToolButton
+                    id="host_mic"
+                    label={micOn ? 'Mic ON' : 'Mic OFF'}
+                    icon={micOn ? <Mic className="w-6 h-6 text-emerald-400" /> : <MicOff className="w-6 h-6 text-red-400" />}
+                    badge={micOn ? 'ON' : 'OFF'}
+                    badgeColor={micOn ? 'bg-emerald-500' : 'bg-red-500'}
+                    active={micOn}
+                    onClick={() => onToggleMic()}
+                  />
+                )}
 
-              {isHost && (
+                {videoEnabled && onSwitchCamera && (
+                  <ToolButton
+                    id="switch_camera"
+                    label="Switch Camera"
+                    icon={<CameraRotate className="w-6 h-6 text-cyan-300" />}
+                    onClick={() => {
+                      onSwitchCamera();
+                      showToast('Camera switched', 'info');
+                    }}
+                  />
+                )}
+
+                <ToolButton
+                  id="beauty"
+                  label="Beauty"
+                  icon={<Wand2 className="w-6 h-6 text-fuchsia-400" />}
+                  badge="PRO"
+                  badgeColor="bg-gradient-to-r from-purple-500 to-pink-500"
+                  onClick={() => {
+                    onClose();
+                    onOpenBeauty?.();
+                  }}
+                />
+
+                <ToolButton
+                  id="mirror"
+                  label="Mirror"
+                  icon={<Repeat className="w-6 h-6 text-indigo-400 rotate-90" />}
+                  badge={mirrorOn ? 'On' : 'Off'}
+                  badgeColor={mirrorOn ? 'bg-emerald-500' : 'bg-slate-600'}
+                  active={mirrorOn}
+                  onClick={() => {
+                    onToggleMirror?.();
+                  }}
+                />
+
                 <ToolButton
                   id="camera_fit"
                   label="Camera Size"
@@ -428,72 +476,37 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                     onToggleCameraFit?.();
                   }}
                 />
-              )}
 
-              <ToolButton
-                id="share"
-                label="Share"
-                icon={<Share2 className="w-6 h-6 text-cyan-400" />}
-                onClick={() => {
-                  onClose();
-                  onShare?.();
-                }}
-              />
-
-              <ToolButton
-                id="noise_reduction"
-                label="Noise Reduction"
-                icon={<Waveform className="w-6 h-6 text-emerald-400" />}
-                badge={noiseReductionOn ? 'On' : 'Off'}
-                badgeColor={noiseReductionOn ? 'bg-emerald-500' : 'bg-slate-600'}
-                active={noiseReductionOn}
-                onClick={() => {
-                  onToggleNoiseReduction?.();
-                }}
-              />
-
-              {!isHost && (
                 <ToolButton
-                  id="live_data_viewer"
-                  label="Live Data"
-                  icon={<Star className="w-6 h-6 text-amber-400 fill-current" />}
-                  badge="HOT"
-                  badgeColor="bg-amber-500"
+                  id="share"
+                  label="Share"
+                  icon={<Share2 className="w-6 h-6 text-cyan-400" />}
                   onClick={() => {
                     onClose();
-                    onOpenLiveData?.();
+                    onShare?.();
                   }}
                 />
-              )}
 
-              {!isHost && (
                 <ToolButton
-                  id="viewer_mic"
-                  label={isSpeaker ? (micOn ? 'Mic ON' : 'Mic OFF') : (micRequestPending ? 'Requested' : 'Request Mic')}
-                  icon={isSpeaker ? (micOn ? <MouthIcon className="w-6 h-6" /> : <MouthOffIcon className="w-6 h-6" />) : <MouthIcon className="w-6 h-6" />}
-                  badge={isSpeaker ? (micOn ? 'ON' : 'OFF') : (micRequestPending ? 'WAIT' : 'MIC')}
-                  badgeColor={isSpeaker ? (micOn ? 'bg-emerald-500' : 'bg-red-500') : (micRequestPending ? 'bg-amber-500' : 'bg-pink-500')}
-                  active={isSpeaker ? micOn : micRequestPending}
+                  id="noise_reduction"
+                  label="Noise Reduction"
+                  icon={<Waveform className="w-6 h-6 text-emerald-400" />}
+                  badge={noiseReductionOn ? 'On' : 'Off'}
+                  badgeColor={noiseReductionOn ? 'bg-emerald-500' : 'bg-slate-600'}
+                  active={noiseReductionOn}
                   onClick={() => {
-                    if (isSpeaker) {
-                      onToggleMic?.();
-                    } else {
-                      onClose();
-                      onRequestMic?.();
-                    }
+                    onToggleNoiseReduction?.();
                   }}
                 />
-              )}
+              </div>
             </div>
-          </div>
 
-          {/* Section 3: Features Center */}
-          <div>
-            <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-3">
-              Features Center
-            </span>
-            <div className="grid grid-cols-4 gap-y-4 gap-x-2">
-              {isHost && (
+            {/* Section 3: Features Center */}
+            <div>
+              <span className="text-xs font-bold text-white/50 uppercase tracking-wider block mb-3">
+                Features Center
+              </span>
+              <div className="grid grid-cols-4 gap-y-4 gap-x-2">
                 <ToolButton
                   id="pk"
                   label="PK Battle"
@@ -505,36 +518,34 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                     onOpenPK?.();
                   }}
                 />
-              )}
 
-              <ToolButton
-                id="games"
-                label="Games"
-                icon={<PiGameControllerFill className="w-6 h-6 text-violet-400" />}
-                badge="HOT"
-                badgeColor="bg-gradient-to-r from-violet-600 to-fuchsia-600"
-                onClick={() => {
-                  onClose();
-                  if (onOpenGames) {
-                    onOpenGames();
-                  } else {
-                    useLivePlayerStore.getState().setMinimized(true);
-                    navigate('/games');
-                  }
-                }}
-              />
+                <ToolButton
+                  id="games"
+                  label="Games"
+                  icon={<PiGameControllerFill className="w-6 h-6 text-violet-400" />}
+                  badge="HOT"
+                  badgeColor="bg-gradient-to-r from-violet-600 to-fuchsia-600"
+                  onClick={() => {
+                    onClose();
+                    if (onOpenGames) {
+                      onOpenGames();
+                    } else {
+                      useLivePlayerStore.getState().setMinimized(true);
+                      navigate('/games');
+                    }
+                  }}
+                />
 
-              <ToolButton
-                id="rank"
-                label="Rank"
-                icon={<Trophy className="w-6 h-6 text-amber-400" />}
-                onClick={() => {
-                  onClose();
-                  onOpenPKRank?.();
-                }}
-              />
+                <ToolButton
+                  id="rank"
+                  label="Rank"
+                  icon={<Trophy className="w-6 h-6 text-amber-400" />}
+                  onClick={() => {
+                    onClose();
+                    onOpenPKRank?.();
+                  }}
+                />
 
-              {isHost && (
                 <ToolButton
                   id="rewards"
                   label="Rewards"
@@ -546,44 +557,44 @@ export const LiveToolsSheet: React.FC<LiveToolsSheetProps> = ({
                     onOpenRewards?.();
                   }}
                 />
-              )}
 
-              <ToolButton
-                id="store"
-                label="Store"
-                icon={<ShoppingBag className="w-6 h-6 text-rose-400" />}
-                onClick={() => {
-                  onClose();
-                  if (onOpenStore) onOpenStore();
-                  else navigate('/diamonds');
-                }}
-              />
+                <ToolButton
+                  id="store"
+                  label="Store"
+                  icon={<ShoppingBag className="w-6 h-6 text-rose-400" />}
+                  onClick={() => {
+                    onClose();
+                    if (onOpenStore) onOpenStore();
+                    else navigate('/diamonds');
+                  }}
+                />
 
-              <ToolButton
-                id="bag"
-                label="Bag"
-                icon={<Backpack className="w-6 h-6 text-sky-400" />}
-                onClick={() => {
-                  onClose();
-                  if (onOpenBag) onOpenBag();
-                  else navigate('/backpack');
-                }}
-              />
+                <ToolButton
+                  id="bag"
+                  label="Bag"
+                  icon={<Backpack className="w-6 h-6 text-sky-400" />}
+                  onClick={() => {
+                    onClose();
+                    if (onOpenBag) onOpenBag();
+                    else navigate('/backpack');
+                  }}
+                />
 
-              <ToolButton
-                id="gift_gallery"
-                label="Gift Gallery"
-                icon={<Storefront className="w-6 h-6 text-cyan-400" />}
-                badge="TOP 3"
-                badgeColor="bg-cyan-500"
-                onClick={() => {
-                  onClose();
-                  onOpenGiftGallery?.();
-                }}
-              />
+                <ToolButton
+                  id="gift_gallery"
+                  label="Gift Gallery"
+                  icon={<Storefront className="w-6 h-6 text-cyan-400" />}
+                  badge="TOP 3"
+                  badgeColor="bg-cyan-500"
+                  onClick={() => {
+                    onClose();
+                    onOpenGiftGallery?.();
+                  }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

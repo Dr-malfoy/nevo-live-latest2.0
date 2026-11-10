@@ -729,29 +729,41 @@ export const LiveRoom = ({
       )}
 
       {/* Top 5 Gifter Showcase & Co-speaker Seats (5 Vertical Slots on the Right) */}
-      <TopGifterSeats
-        topGifters={topGifters.filter((g) => {
-          const hId = String(host?._id || stream?.hostId || '');
-          return !hId || String(g.userId) !== hId;
-        })}
-        speakers={speakers.filter((s) => {
-          const hId = String(host?._id || stream?.hostId || '');
-          return !hId || String(s.userId) !== hId;
-        })}
-        currentUserId={user?._id}
-        hostId={host?._id || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?._id : stream?.hostId)}
-        isHost={isHost}
-        isSpeaker={isSpeaker}
-        micRequestPending={micRequestPending}
-        onRequestMic={onRequestMic}
-        giftBurst={giftBurst}
-        onViewProfile={(uid) => {
-          if (onHostClick) onHostClick({ _id: uid, nickname: '', avatar: '' } as any);
-        }}
-        onOpenGiftToUser={onOpenGiftToUser || onOpenGift}
-        onMuteSpeaker={onMuteSpeaker}
-        onKickSpeaker={onKickSpeaker}
-      />
+      {(() => {
+        const cleanHostId = host?._id
+          ? String(host._id)
+          : (typeof stream?.hostId === 'object' && stream.hostId
+              ? String((stream.hostId as any)._id)
+              : (typeof stream?.hostId === 'string' ? stream.hostId : ''));
+        const cleanHostNick = host?.nickname || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname : '') || '';
+        const isHostEntity = (uid?: string, nick?: string) => {
+          if (cleanHostId && uid && String(uid) === cleanHostId) return true;
+          if (isHost && user?._id && uid && String(uid) === String(user._id)) return true;
+          if (cleanHostNick && nick && nick.trim().toLowerCase() === cleanHostNick.trim().toLowerCase()) return true;
+          return false;
+        };
+
+        return (
+          <TopGifterSeats
+            topGifters={topGifters.filter((g) => !isHostEntity(g.userId, g.nickname))}
+            speakers={speakers.filter((s) => !isHostEntity(s.userId, s.nickname))}
+            currentUserId={user?._id ? String(user._id) : undefined}
+            hostId={cleanHostId}
+            hostNickname={cleanHostNick}
+            isHost={isHost}
+            isSpeaker={isSpeaker}
+            micRequestPending={micRequestPending}
+            onRequestMic={onRequestMic}
+            giftBurst={giftBurst}
+            onViewProfile={(uid) => {
+              if (onHostClick) onHostClick({ _id: uid, nickname: '', avatar: '' } as any);
+            }}
+            onOpenGiftToUser={onOpenGiftToUser || onOpenGift}
+            onMuteSpeaker={onMuteSpeaker}
+            onKickSpeaker={onKickSpeaker}
+          />
+        );
+      })()}
 
       <CommentOverlay
         messages={messages}
@@ -784,7 +796,7 @@ export const LiveRoom = ({
         onEnd={onEnd}
         onChatSend={onChatSend}
         onOpenMenu={() => setToolsOpen(true)}
-        onOpenPK={isHost ? () => setShowPKModal(true) : () => setShowPKRank(true)}
+        onOpenPK={isHost ? () => setShowPKModal(true) : undefined}
       />
 
       {/* Camera enhancement pickers (host only) */}

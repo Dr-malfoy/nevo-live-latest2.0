@@ -192,8 +192,8 @@ export const BottomToolbar = ({
           </RoundBtn>
         )}
 
-        {/* PK Battle button */}
-        {onOpenPK && (
+        {/* PK Battle button (Host only) */}
+        {isHost && onOpenPK && (
           <motion.button
             whileTap={{ scale: 0.88 }}
             aria-label="PK Battle"
