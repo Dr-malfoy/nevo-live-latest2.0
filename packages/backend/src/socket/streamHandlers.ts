@@ -118,6 +118,16 @@ const syncPkViewerCount = async (streamId: string, count: number) => {
   } catch {}
 };
 
+const streamRecentJoinsMap = new Map<string, number>();
+
+// Clean up stale join entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 30000;
+  for (const [key, ts] of streamRecentJoinsMap.entries()) {
+    if (ts < cutoff) streamRecentJoinsMap.delete(key);
+  }
+}, 300000);
+
 export const registerStreamHandlers = (socket: Socket): void => {
   socket.on('stream:join', async ({ streamId }) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel, isVip, diamonds, coins } = await getUserProfile(socket.data.user?.userId);
@@ -126,21 +136,30 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const currentStream = await LiveStream.findById(streamId).select('viewerCount').lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
 
+    const joinKey = `${userId || socket.id}:${streamId}`;
+    const now = Date.now();
+    const lastJoin = streamRecentJoinsMap.get(joinKey) || 0;
+    const isDuplicate = now - lastJoin < 3500;
+    streamRecentJoinsMap.set(joinKey, now);
+
     getIO().to(`stream:${streamId}`).emit('stream:viewer-count', { count });
     syncPkViewerCount(streamId, count);
-    socket.to(`stream:${streamId}`).emit('stream:viewer-joined', {
-      userId,
-      nickname,
-      avatar,
-      level,
-      wealthLevel,
-      liveLevel,
-      isVip,
-      diamonds,
-      coins,
-      viewerCount: count,
-      peerSocketId: socket.id,
-    });
+
+    if (!isDuplicate) {
+      socket.to(`stream:${streamId}`).emit('stream:viewer-joined', {
+        userId,
+        nickname,
+        avatar,
+        level,
+        wealthLevel,
+        liveLevel,
+        isVip,
+        diamonds,
+        coins,
+        viewerCount: count,
+        peerSocketId: socket.id,
+      });
+    }
 
     // Provide the current Top 5 gifters and active speakers to the user
     socket.emit('stream:top-gifters', {

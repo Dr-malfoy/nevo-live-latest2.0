@@ -2,6 +2,7 @@ import type { UserPublic, LiveStream, Gift } from '../../types';
 import type { GiftBurst } from './GiftOverlay';
 
 export interface RoomMessage {
+  id?: string;
   userId: string;
   nickname: string;
   avatar?: string;

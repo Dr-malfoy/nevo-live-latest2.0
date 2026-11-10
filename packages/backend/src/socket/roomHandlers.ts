@@ -21,22 +21,40 @@ const getUserProfile = async (userId?: string) => {
   return { userId, nickname: u?.nickname || 'Guest', avatar: u?.avatar || '', level: u?.level || 1 };
 };
 
+const roomRecentJoinsMap = new Map<string, number>();
+
+setInterval(() => {
+  const cutoff = Date.now() - 30000;
+  for (const [key, ts] of roomRecentJoinsMap.entries()) {
+    if (ts < cutoff) roomRecentJoinsMap.delete(key);
+  }
+}, 300000);
+
 export const registerRoomHandlers = (socket: Socket): void => {
   socket.on('room:join', async ({ roomId, seatIndex }) => {
     if (!roomId) return;
     socket.join(`room:${roomId}`);
     const { userId, nickname, avatar, level } = await getUserProfile(socket.data.user?.userId);
-    socket.to(`room:${roomId}`).emit('room:user-joined', {
-      seatIndex,
-      user: {
-        userId,
+
+    const joinKey = `${userId || socket.id}:${roomId}`;
+    const now = Date.now();
+    const lastJoin = roomRecentJoinsMap.get(joinKey) || 0;
+    const isDuplicate = now - lastJoin < 3500;
+    roomRecentJoinsMap.set(joinKey, now);
+
+    if (!isDuplicate) {
+      socket.to(`room:${roomId}`).emit('room:user-joined', {
+        seatIndex,
+        user: {
+          userId,
+          nickname,
+          avatar,
+          level,
+        },
         nickname,
-        avatar,
         level,
-      },
-      nickname,
-      level,
-    });
+      });
+    }
     const count = await broadcastViewerCount(roomId);
     socket.emit('room:viewer-count', { count });
   });

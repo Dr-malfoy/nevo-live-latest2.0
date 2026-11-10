@@ -102,6 +102,7 @@ export const LiveStreamPage = ({
   // cleanup must still tear down the session, but must NOT navigate again (that
   // would override the profile route the user just opened).
   const navigatingAwayRef = useRef(false);
+  const recentJoinsRef = useRef<Map<string, number>>(new Map());
 
   const {
     joined,
@@ -443,7 +444,6 @@ export const LiveStreamPage = ({
   useEffect(() => {
     if (!socket || !id) return;
     joinRoom(`stream:${id}`, { streamId: id });
-    socket.emit('stream:join', { streamId: id });
 
     const onChat = (msg: any) => {
       // Self messages are already appended optimistically — skip the socket echo
@@ -627,11 +627,22 @@ export const LiveStreamPage = ({
     };
 
     const onViewerJoined = (msg: any) => {
+      const joinKey = String(msg?.userId || msg?.nickname || '');
+      const now = Date.now();
+      const lastJoin = recentJoinsRef.current.get(joinKey) || 0;
+      if (now - lastJoin < 3500) {
+        // Prevent duplicate join message within 3.5 seconds
+        return;
+      }
+      recentJoinsRef.current.set(joinKey, now);
+
       totalViewersRef.current += 1;
       if (msg?.nickname) {
+        const joinId = `join-${joinKey}-${now}-${Math.random()}`;
         setChatMessages((prev) => [
           ...prev,
           {
+            id: joinId,
             userId: msg.userId || '',
             nickname: msg.nickname,
             avatar: msg.avatar || '',
@@ -642,6 +653,11 @@ export const LiveStreamPage = ({
             kind: 'join',
           } as RoomMessage,
         ]);
+
+        // Auto remove joining message after 3 seconds
+        setTimeout(() => {
+          setChatMessages((prev) => prev.filter((m) => m.id !== joinId));
+        }, 3000);
       }
       if (typeof msg?.viewerCount === 'number') {
         peakViewersRef.current = Math.max(peakViewersRef.current, msg.viewerCount);

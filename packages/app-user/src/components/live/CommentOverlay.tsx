@@ -35,7 +35,8 @@ const CommentBubble = ({
         layout
         initial={{ opacity: 0, x: -16, scale: 0.96 }}
         animate={{ opacity: 1, x: 0, scale: 1 }}
-        exit={{ opacity: 0 }}
+        exit={{ opacity: 0, x: -10, scale: 0.9 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500/85 to-amber-500/85 shadow-sm mb-1 max-w-[90%] self-start text-left"
       >
         <Star className="w-3 h-3 text-white/90 shrink-0" />
@@ -161,7 +162,7 @@ export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) =
           <AnimatePresence initial={false}>
             {filteredMessages.map((msg, i) => (
               <CommentBubble
-                key={`${msg.userId}-${msg.message}-${i}`}
+                key={msg.id || `${msg.userId}-${msg.message}-${i}`}
                 msg={msg}
                 onUserClick={onUserClick}
               />

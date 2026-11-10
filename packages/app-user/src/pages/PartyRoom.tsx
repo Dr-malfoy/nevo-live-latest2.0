@@ -65,6 +65,7 @@ export const PartyRoom = () => {
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [pendingSeatIndex, setPendingSeatIndex] = useState<number | null>(null);
   const burstTimerRef = useRef<any>(null);
+  const recentPartyJoinsRef = useRef<Map<string, number>>(new Map());
   const { items: floatingGiftItems, triggerGifts } = useFloatingGifts();
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -181,7 +182,25 @@ export const PartyRoom = () => {
       setMessages((prev) => [...prev.slice(-40), msg]);
 
     const onJoin = (p: any) => {
-      push({ id: `${Date.now()}-j`, kind: 'join', nickname: p?.nickname || p?.user?.nickname || 'Someone', level: p?.level || p?.user?.level });
+      const joinKey = String(p?.userId || p?.user?.userId || p?.nickname || p?.user?.nickname || '');
+      const now = Date.now();
+      const lastJoinTime = recentPartyJoinsRef.current.get(joinKey) || 0;
+      if (now - lastJoinTime < 3500) return;
+      recentPartyJoinsRef.current.set(joinKey, now);
+
+      const joinId = `join-${joinKey}-${now}-${Math.random()}`;
+      push({
+        id: joinId,
+        kind: 'join',
+        nickname: p?.nickname || p?.user?.nickname || 'Someone',
+        level: p?.level || p?.user?.level,
+        userId: p?.userId || p?.user?.userId,
+      });
+
+      // Auto remove joining message after 3 seconds
+      setTimeout(() => {
+        setMessages((prev) => prev.filter((m) => m.id !== joinId));
+      }, 3000);
     };
     const onMessage = (p: any) => {
       if (p?.userId && user && p.userId === user._id) return;
@@ -266,7 +285,6 @@ export const PartyRoom = () => {
     };
 
     socket.on('room:user-joined', onJoin);
-    socket.on('room:join:highlight', onJoin);
     socket.on('room:message', onMessage);
     socket.on('room:chat-message', onMessage);
     socket.on('room:win', onWin);
@@ -281,7 +299,6 @@ export const PartyRoom = () => {
     return () => {
       leaveRoom(`room:${id}`);
       socket.off('room:user-joined', onJoin);
-      socket.off('room:join:highlight', onJoin);
       socket.off('room:message', onMessage);
       socket.off('room:chat-message', onMessage);
       socket.off('room:win', onWin);
