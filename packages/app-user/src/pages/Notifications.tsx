@@ -24,7 +24,7 @@ import {
   PiSlidersHorizontalBold as FilterIcon,
 } from 'react-icons/pi';
 import { useNavigate } from 'react-router-dom';
-import { notificationApi, officialNotificationApi, type NotificationItem } from '../api';
+import { notificationApi, officialNotificationApi, agencyApi, type NotificationItem } from '../api';
 import { Avatar } from '../components/user';
 import { useAuthStore, useSocketStore, useUIStore } from '../stores';
 
@@ -64,6 +64,7 @@ export const Notifications = () => {
   const [selectedNotif, setSelectedNotif] = useState<NotificationItem | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   // Fetch unread count for normal and official notifications
   const loadCounts = useCallback(async () => {
@@ -202,6 +203,64 @@ export const Notifications = () => {
     }
   };
 
+  const handleRespondInvitation = async (
+    e: React.MouseEvent | null,
+    invitationId: string,
+    notifId: string,
+    decision: 'accept' | 'reject'
+  ) => {
+    if (e) e.stopPropagation();
+    setRespondingId(invitationId);
+    try {
+      const res = await agencyApi.respondInvitation(invitationId, decision);
+      if (res.data?.success) {
+        showToast(
+          decision === 'accept'
+            ? res.data.message || 'Congratulations! You have joined the agency.'
+            : 'Invitation declined.',
+          decision === 'accept' ? 'success' : 'info'
+        );
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n._id === notifId
+              ? {
+                  ...n,
+                  read: true,
+                  data: { ...n.data, status: decision === 'accept' ? 'accepted' : 'rejected' },
+                }
+              : n
+          )
+        );
+        if (selectedNotif && selectedNotif._id === notifId) {
+          setSelectedNotif((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  read: true,
+                  data: { ...prev.data, status: decision === 'accept' ? 'accepted' : 'rejected' },
+                }
+              : null
+          );
+        }
+        if (decision === 'accept') {
+          await useAuthStore.getState().fetchProfile().catch(() => {});
+          setTimeout(() => {
+            navigate('/my-agency');
+          }, 800);
+        }
+      } else {
+        showToast(res.data?.error || 'Failed to respond to invitation', 'error');
+      }
+    } catch (err: any) {
+      showToast(
+        err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to respond to invitation',
+        'error'
+      );
+    } finally {
+      setRespondingId(null);
+    }
+  };
+
   const handleNotificationClick = async (notif: NotificationItem) => {
     // Mark as read immediately
     if (!notif.read) {
@@ -213,6 +272,15 @@ export const Notifications = () => {
     }
 
     // Determine target route or action
+    if (notif.type === 'agency_invitation') {
+      if (notif.data?.status === 'accepted') {
+        navigate('/my-agency');
+      } else {
+        setSelectedNotif(notif);
+      }
+      return;
+    }
+
     if (notif.targetUrl) {
       navigate(notif.targetUrl);
       return;
@@ -688,6 +756,58 @@ export const Notifications = () => {
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mt-0.5">
                       {notif.message}
                     </p>
+
+                    {/* Agency Invitation Interactive Banner */}
+                    {notif.type === 'agency_invitation' && notif.data?.invitationId && (
+                      <div
+                        className="mt-2.5 p-2.5 rounded-xl bg-purple-50/90 border border-purple-100 flex flex-col gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-purple-900 truncate">
+                            Agency: {notif.data.agencyName || 'Agency'}
+                          </span>
+                          {notif.data.agencyCode && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-200/80 text-purple-800 font-bold shrink-0">
+                              Code: {notif.data.agencyCode}
+                            </span>
+                          )}
+                        </div>
+
+                        {notif.data.status === 'accepted' ? (
+                          <div className="flex items-center gap-1.5 text-emerald-700 text-xs font-bold pt-0.5">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Joined agency successfully</span>
+                          </div>
+                        ) : notif.data.status === 'rejected' ? (
+                          <div className="text-slate-500 text-xs font-semibold pt-0.5">
+                            <span>Invitation declined</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              disabled={respondingId === notif.data.invitationId}
+                              onClick={(e) =>
+                                handleRespondInvitation(e, notif.data!.invitationId, notif._id, 'accept')
+                              }
+                              className="flex-1 py-1.5 px-3 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-bold shadow-xs active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-1"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{respondingId === notif.data.invitationId ? 'Joining…' : 'Accept & Join'}</span>
+                            </button>
+                            <button
+                              disabled={respondingId === notif.data.invitationId}
+                              onClick={(e) =>
+                                handleRespondInvitation(e, notif.data!.invitationId, notif._id, 'reject')
+                              }
+                              className="py-1.5 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold active:scale-95 transition-all disabled:opacity-60"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -782,6 +902,65 @@ export const Notifications = () => {
               <p className="text-[10px] text-slate-400 pt-1">
                 Received: {new Date(selectedNotif.createdAt).toLocaleString()}
               </p>
+
+              {/* Agency Invitation Modal Interactive Actions */}
+              {selectedNotif.type === 'agency_invitation' && selectedNotif.data?.invitationId && (
+                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-100 space-y-2 mt-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-purple-900 truncate">
+                      Agency: {selectedNotif.data.agencyName || 'Agency'}
+                    </span>
+                    {selectedNotif.data.agencyCode && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-200 text-purple-800 font-bold">
+                        Code: {selectedNotif.data.agencyCode}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedNotif.data.status === 'accepted' ? (
+                    <div className="flex items-center gap-1.5 text-emerald-700 text-xs font-bold pt-1">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span>Joined agency successfully</span>
+                    </div>
+                  ) : selectedNotif.data.status === 'rejected' ? (
+                    <div className="text-slate-500 text-xs font-semibold pt-1">
+                      <span>Invitation declined</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-1.5">
+                      <button
+                        disabled={respondingId === selectedNotif.data.invitationId}
+                        onClick={() =>
+                          handleRespondInvitation(
+                            null,
+                            selectedNotif.data!.invitationId,
+                            selectedNotif._id,
+                            'accept'
+                          )
+                        }
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-bold shadow-xs active:scale-95 transition-all disabled:opacity-60 flex items-center justify-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{respondingId === selectedNotif.data.invitationId ? 'Joining…' : 'Accept & Join'}</span>
+                      </button>
+                      <button
+                        disabled={respondingId === selectedNotif.data.invitationId}
+                        onClick={() =>
+                          handleRespondInvitation(
+                            null,
+                            selectedNotif.data!.invitationId,
+                            selectedNotif._id,
+                            'reject'
+                          )
+                        }
+                        className="py-2 px-3.5 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold active:scale-95 transition-all disabled:opacity-60"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="pt-2 flex gap-2">

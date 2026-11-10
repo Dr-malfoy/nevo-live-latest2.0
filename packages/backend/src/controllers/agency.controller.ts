@@ -266,4 +266,43 @@ export const agencyController = {
       next(error);
     }
   },
+
+  async inviteHost(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId, hostCode } = req.body;
+      const result = await agencyService.inviteHostToAgency(req.user!.userId, userId, hostCode);
+      sendSuccess(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getAgencyInvitations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const invitations = await agencyService.getAgencyInvitations(req.user!.userId);
+      sendSuccess(res, invitations);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getMyInvitations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const invitations = await agencyService.getMyInvitations(req.user!.userId);
+      sendSuccess(res, invitations);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async respondInvitation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const decision = (req.body?.decision || req.body?.action || '').toLowerCase() === 'reject' ? 'reject' : 'accept';
+      const result = await agencyService.respondToInvitation(req.user!.userId, id, decision);
+      sendSuccess(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

@@ -41,8 +41,10 @@ router.post('/link-by-agent', authenticate, agencyController.linkByAgent);
 router.post('/join', authenticate, agencyController.join);
 
 // ── Agent Invitations ────────────────────────────────────────────────────────
-router.post('/invite', authenticate, referralController.inviteAgencyHost);
-router.get('/invitations', authenticate, referralController.getAgencyInvitations);
+router.post('/invite', authenticate, agencyController.inviteHost);
+router.get('/invitations', authenticate, agencyController.getAgencyInvitations);
+router.get('/my-invitations', authenticate, agencyController.getMyInvitations);
+router.post('/invitations/:id/respond', authenticate, agencyController.respondInvitation);
 
 // ── Specific Agency Dynamic ID Routes ────────────────────────────────────────
 router.get('/:id', optionalAuth, agencyController.getAgencyDetails);

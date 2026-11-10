@@ -206,4 +206,22 @@ export const agencyApi = {
 
   suggestAgents: (limit = 5) =>
     client.get<ApiResponse<any[]>>('/agency/suggest', { params: { limit } }),
+
+  inviteHost: (userId: string, hostCode?: string) =>
+    client.post<ApiResponse<{ success: boolean; message: string; invitation?: any }>>('/agency/invite', {
+      userId,
+      hostCode,
+    }),
+
+  getAgencyInvitations: () =>
+    client.get<ApiResponse<any[]>>('/agency/invitations'),
+
+  getMyInvitations: () =>
+    client.get<ApiResponse<any[]>>('/agency/my-invitations'),
+
+  respondInvitation: (invitationId: string, decision: 'accept' | 'reject') =>
+    client.post<ApiResponse<{ success: boolean; message: string; agency?: any }>>(
+      `/agency/invitations/${invitationId}/respond`,
+      { decision }
+    ),
 };

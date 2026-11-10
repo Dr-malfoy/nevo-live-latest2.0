@@ -60,6 +60,7 @@ const allowedOrigins = [
   "capacitor://localhost",
   "http://localhost",
   "https://localhost",
+  "https://navolive.fly.dev",
   "https://nevo-live-latest.onrender.com",
   "https://nevo-live-latest-v98z.onrender.com",
   "https://navolive-admin.onrender.com",
@@ -90,7 +91,9 @@ app.use(cors({
       origin.startsWith('capacitor://') ||
       origin.startsWith('http://localhost') ||
       origin.startsWith('https://localhost') ||
-      origin.endsWith('.onrender.com')
+      origin.endsWith('.onrender.com') ||
+      origin.endsWith('.fly.dev') ||
+      origin.includes('navolive.fly.dev')
     ) {
       return callback(null, true);
     }

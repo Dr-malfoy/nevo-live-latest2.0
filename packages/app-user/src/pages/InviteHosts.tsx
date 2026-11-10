@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PiClockFill as Clock, PiQuestionFill as HelpCircle, PiShareNetworkFill as Share2, PiShieldWarningFill as ShieldAlert, PiBuildingsFill as AgencyIcon, PiCopyFill as CopyIcon } from 'react-icons/pi';
-import { referralApi, type AgencyInvitation } from '../api/social.api';
+import { type AgencyInvitation } from '../api/social.api';
 import { agencyApi } from '../api';
-import { optional } from '../api/pending';
 import { useAuthStore, useUIStore } from '../stores';
 import { ScreenHeader, SectionCard, EmptyState } from '../components/common';
 import { timeAgo } from '../lib/time';
@@ -13,8 +12,8 @@ import { timeAgo } from '../lib/time';
  *
  * Exclusively available for agents.
  * `POST /api/agency/invite` is specified in BACKEND-GUIDE.md §4.4.
- * The form validates locally; the server re-checks and rejects a user who
- * already belongs to an agency.
+ * When an agent sends an invitation, an in-app notification is sent to the target host.
+ * Once the host accepts the notification, they directly join the agency.
  */
 export const InviteHosts = () => {
   const navigate = useNavigate();
@@ -31,6 +30,7 @@ export const InviteHosts = () => {
   const [userId, setUserId] = useState('');
   const [hostCode, setHostCode] = useState('');
   const [myAgencyCode, setMyAgencyCode] = useState<string>('');
+  const [myAgencyName, setMyAgencyName] = useState<string>('');
   const [sending, setSending] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<AgencyInvitation[] | null>(null);
@@ -39,21 +39,37 @@ export const InviteHosts = () => {
     if (!isAgent) return;
     agencyApi.getMyAgency()
       .then((res) => {
-        if (res?.data?.success && res.data.data?.code) {
-          setMyAgencyCode(res.data.data.code);
-          setHostCode((prev) => prev || res.data.data.code);
+        if (res?.data?.success && res.data.data) {
+          if (res.data.data.code) {
+            setMyAgencyCode(res.data.data.code);
+            setHostCode((prev) => prev || res.data.data.code);
+          }
+          if (res.data.data.name) {
+            setMyAgencyName(res.data.data.name);
+          }
         }
       })
       .catch(() => {});
   }, [isAgent]);
 
+  const loadHistory = async () => {
+    try {
+      const res = await agencyApi.getAgencyInvitations();
+      if (res?.data?.success) {
+        setHistory(res.data.data || []);
+      } else {
+        setHistory([]);
+      }
+    } catch {
+      setHistory([]);
+    }
+  };
+
   useEffect(() => {
     if (!isAgent) return;
-    if (!historyOpen || history) return;
-    optional(referralApi.getInvitations())
-      .then((res) => setHistory(res?.data ?? []))
-      .catch(() => setHistory([]));
-  }, [historyOpen, history, isAgent]);
+    if (!historyOpen) return;
+    loadHistory();
+  }, [historyOpen, isAgent]);
 
   if (!isAgent) {
     return (
@@ -86,25 +102,25 @@ export const InviteHosts = () => {
     );
   }
 
-  const canSend = userId.trim().length >= 4 && hostCode.trim().length > 0 && !sending;
+  const canSend = userId.trim().length >= 3 && !sending;
 
   const send = async () => {
+    if (!userId.trim()) {
+      showToast('Please enter the Host User ID', 'warning');
+      return;
+    }
     setSending(true);
     try {
-      const res = await optional(referralApi.inviteHost(userId.trim(), hostCode.trim()));
-      if (res === null) {
-        showToast('Host invitations are not connected yet', 'info');
-        return;
-      }
-      if (res.success) {
-        showToast('Invitation sent successfully!', 'success');
+      const res = await agencyApi.inviteHost(userId.trim(), (hostCode || myAgencyCode).trim());
+      if (res.data?.success) {
+        showToast(res.data.message || 'Invitation sent successfully! Host will receive a notification to join.', 'success');
         setUserId('');
-        setHistory(null);
+        loadHistory();
       } else {
-        showToast(res.error || 'Could not send the invitation', 'error');
+        showToast(res.data?.error || 'Could not send the invitation', 'error');
       }
     } catch (err: any) {
-      showToast(err.response?.data?.error || 'Could not send the invitation', 'error');
+      showToast(err.response?.data?.error || err.response?.data?.message || err.message || 'Could not send the invitation', 'error');
     } finally {
       setSending(false);
     }
@@ -130,7 +146,10 @@ export const InviteHosts = () => {
         variant="media"
         right={
           <button
-            onClick={() => setHistoryOpen((v) => !v)}
+            onClick={() => {
+              setHistoryOpen((v) => !v);
+              if (!historyOpen) loadHistory();
+            }}
             aria-label="Invitation history"
             className="w-8 h-8 flex items-center justify-center text-white"
           >
@@ -156,8 +175,8 @@ export const InviteHosts = () => {
           <div className="p-4 space-y-4">
             <div>
               <label className="text-sm font-semibold text-ink flex items-center gap-1 mb-1.5">
-                User ID <span className="text-role-host">*</span>
-                <span title="Enter your friend's User ID">
+                Host User ID <span className="text-role-host">*</span>
+                <span title="Enter the host's numeric User ID">
                   <HelpCircle className="w-3.5 h-3.5 text-ink-faint" />
                 </span>
               </label>
@@ -165,7 +184,7 @@ export const InviteHosts = () => {
                 value={userId}
                 onChange={(e) => setUserId(e.target.value.replace(/\D/g, ''))}
                 inputMode="numeric"
-                placeholder="User ID"
+                placeholder="Enter User ID (e.g. 100234)"
                 className="w-full h-12 px-4 rounded-xl bg-surface-sunken text-ink placeholder:text-ink-faint
                   border border-transparent focus:bg-white focus:border-accent-500 focus:outline-none transition-colors"
               />
@@ -173,15 +192,15 @@ export const InviteHosts = () => {
 
             <div>
               <label className="text-sm font-semibold text-ink flex items-center gap-1 mb-1.5">
-                Host Code <span className="text-role-host">*</span>
-                <span title="The host's invitation code">
+                Agency Code <span className="text-xs text-ink-muted font-normal">(Auto-filled)</span>
+                <span title="Your Agency Code">
                   <HelpCircle className="w-3.5 h-3.5 text-ink-faint" />
                 </span>
               </label>
               <input
                 value={hostCode}
                 onChange={(e) => setHostCode(e.target.value)}
-                placeholder="Host code No..xxx"
+                placeholder={myAgencyCode || "Agency Code"}
                 className="w-full h-12 px-4 rounded-xl bg-surface-sunken text-ink placeholder:text-ink-faint
                   border border-transparent focus:bg-white focus:border-accent-500 focus:outline-none transition-colors"
               />
@@ -189,7 +208,9 @@ export const InviteHosts = () => {
 
             {myAgencyCode && (
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-50 border border-purple-100 text-xs">
-                <span className="text-purple-700 font-medium">My Agency Code: <strong className="text-purple-900 font-bold">{myAgencyCode}</strong></span>
+                <span className="text-purple-700 font-medium">
+                  Agency: <strong className="text-purple-900 font-bold">{myAgencyName || 'My Agency'}</strong> ({myAgencyCode})
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -198,18 +219,20 @@ export const InviteHosts = () => {
                   }}
                   className="px-2.5 py-1 rounded-lg bg-purple-600 text-white font-semibold text-[11px] active:scale-95 transition-transform"
                 >
-                  Use My Code
+                  Apply Code
                 </button>
               </div>
             )}
 
-            <p className="text-xs text-ink-muted">User ID and code are provided by the host.</p>
+            <p className="text-xs text-ink-muted">
+              Enter the host's User ID. An invitation notification will be sent to them. When they accept, they will directly join your agency.
+            </p>
 
             <button
               onClick={send}
               disabled={!canSend}
               className={`w-full h-13 py-3.5 rounded-full font-bold text-white transition-colors ${
-                canSend ? 'bg-[#7C3AED]' : 'bg-[#C4B5FD]'
+                canSend ? 'bg-[#7C3AED] shadow-md hover:bg-[#6D28D9]' : 'bg-[#C4B5FD] cursor-not-allowed'
               }`}
             >
               {sending ? 'Sending…' : 'Send invitation'}
@@ -247,9 +270,9 @@ export const InviteHosts = () => {
                 {history.map((row) => (
                   <div key={row._id} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-ink text-sm truncate">{row.invitee.nickname}</p>
+                      <p className="font-semibold text-ink text-sm truncate">{row.invitee?.nickname || 'Host'}</p>
                       <p className="text-[11px] text-ink-muted">
-                        ID {row.invitee.uid} · {timeAgo(row.sentAt)}
+                        ID {row.invitee?.uid || '---'} · {timeAgo(row.sentAt)}
                       </p>
                     </div>
                     <span
@@ -257,7 +280,7 @@ export const InviteHosts = () => {
                         row.status === 'accepted'
                           ? 'bg-status-online/10 text-status-online'
                           : row.status === 'pending'
-                            ? 'bg-surface-sunken text-ink-muted'
+                            ? 'bg-purple-100 text-purple-700'
                             : 'bg-role-host/10 text-role-host'
                       }`}
                     >

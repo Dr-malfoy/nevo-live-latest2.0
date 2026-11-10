@@ -6,6 +6,8 @@ import {
   PiShareNetworkFill as Share2,
   PiLinkBold as LinkIcon,
   PiGiftFill as GiftIcon,
+  PiGlobeBold as GlobeIcon,
+  PiDownloadSimpleBold as DownloadIcon,
 } from 'react-icons/pi';
 import { referralApi, type ReferralTemplate } from '../api/social.api';
 import { optional } from '../api/pending';
@@ -33,9 +35,14 @@ export const Referral = () => {
   const [live, setLive] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPortfolio, setCopiedPortfolio] = useState(false);
+  const [copiedApk, setCopiedApk] = useState(false);
+
+  const APP_PORTFOLIO_URL = 'https://navolive.fly.dev';
+  const APP_DOWNLOAD_URL = 'https://navolive.fly.dev/uploads/1794259975559_Navo_Live.apk';
 
   const uid = user?.uid || '';
-  const inviteLink = uid ? `${window.location.origin}/invite/${uid}` : window.location.origin;
+  const inviteLink = uid ? `${APP_PORTFOLIO_URL}/?code=${uid}` : APP_PORTFOLIO_URL;
 
   useEffect(() => {
     if (tab !== 'link') return;
@@ -87,6 +94,28 @@ export const Referral = () => {
       setCopiedLink(true);
       showToast('Referral link copied to clipboard!', 'success');
       setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      showToast('Could not access clipboard', 'error');
+    }
+  };
+
+  const copyPortfolioLink = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_PORTFOLIO_URL);
+      setCopiedPortfolio(true);
+      showToast('Portfolio link copied!', 'success');
+      setTimeout(() => setCopiedPortfolio(false), 2000);
+    } catch {
+      showToast('Could not access clipboard', 'error');
+    }
+  };
+
+  const copyDownloadLink = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_DOWNLOAD_URL);
+      setCopiedApk(true);
+      showToast('APK download link copied!', 'success');
+      setTimeout(() => setCopiedApk(false), 2000);
     } catch {
       showToast('Could not access clipboard', 'error');
     }
@@ -160,6 +189,36 @@ export const Referral = () => {
             {copiedLink ? <Check className="w-3.5 h-3.5" /> : <LinkIcon className="w-3.5 h-3.5" />}
             <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* App Portfolio & Download APK Banner */}
+      <div className="mx-3 mt-2.5 p-3 rounded-2xl bg-white/90 border border-purple-200/60 shadow-xs flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <GlobeIcon className="w-4 h-4 text-purple-600" />
+            <span className="text-xs font-bold text-purple-900">App Portfolio & APK Download</span>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Official</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
+          <button
+            onClick={copyPortfolioLink}
+            className="h-8 px-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
+          >
+            <GlobeIcon className="w-3.5 h-3.5" />
+            <span>{copiedPortfolio ? 'Copied!' : 'Copy Portfolio'}</span>
+          </button>
+          <a
+            href={APP_DOWNLOAD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            download="Navo_Live.apk"
+            className="h-8 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
+          >
+            <DownloadIcon className="w-3.5 h-3.5" />
+            <span>Download APK</span>
+          </a>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ export { Transaction, ITransactionDocument, TransactionType, getFormattedTxId, g
 export { Agency, IAgencyDocument } from './Agency';
 export { AgencyLeaveRequest, IAgencyLeaveRequestDocument } from './AgencyLeaveRequest';
 export { AgencyJoinRequest, IAgencyJoinRequestDocument } from './AgencyJoinRequest';
+export { AgencyInvitation, IAgencyInvitationDocument } from './AgencyInvitation';
 export { Moment, IMomentDocument } from './Moment';
 export { LevelConfig, ILevelConfigDocument } from './LevelConfig';
 export { NobleTier, INobleTierDocument } from './NobleTier';

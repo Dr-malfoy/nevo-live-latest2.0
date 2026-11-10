@@ -67,6 +67,7 @@ const notificationSchema = new Schema<INotificationDocument>(
         'live_joined',
         'coin_received',
         'coin_transfer',
+        'diamond_transfer',
         'agency_join_request',
         'agency_join_approved',
         'agency_join_rejected',

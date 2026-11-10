@@ -3,6 +3,7 @@ import { User, ReferralTemplate, ReferralClaim, ReferralRecord, Transaction, Age
 import { AppError } from '../middleware/errorHandler';
 import { getBangladeshDayBounds } from '../utils/date';
 import { getIO } from '../socket';
+import { agencyService } from './agency.service';
 
 /**
  * Navo Live Referral Service
@@ -30,7 +31,7 @@ const DEFAULT_TEMPLATES = [
     badge: 'HOT',
     shareCount: 1420,
     downloadCount: 890,
-    shareUrl: 'https://nevolive.com/invite?code={uid}',
+    shareUrl: 'https://navolive.fly.dev/?code={uid}',
     order: 1,
   },
   {
@@ -40,7 +41,7 @@ const DEFAULT_TEMPLATES = [
     badge: 'NEW',
     shareCount: 650,
     downloadCount: 310,
-    shareUrl: 'https://nevolive.com/join?referrer={uid}',
+    shareUrl: 'https://navolive.fly.dev/?ref={uid}',
     order: 2,
   },
   {
@@ -50,7 +51,7 @@ const DEFAULT_TEMPLATES = [
     badge: null,
     shareCount: 310,
     downloadCount: 450,
-    shareUrl: 'https://nevolive.com/streamer?agent={uid}',
+    shareUrl: 'https://navolive.fly.dev/uploads/1794259975559_Navo_Live.apk',
     order: 3,
   },
 ];
@@ -65,6 +66,7 @@ export const referralService = {
 
   /**
    * Called during registration when a user signs up with an invite code.
+   * Instantly awards 13,000 Coins (100 TK) to BOTH the new user and the referrer.
    */
   async recordReferralOnSignup(params: {
     invitee: any;
@@ -85,52 +87,63 @@ export const referralService = {
     const { dateKey } = getBangladeshDayBounds();
     const cleanDeviceId = (deviceId || '').trim();
 
-    // Check Duplicate DeviceID
-    let isDuplicateDevice = false;
-    let invalidReason: string | undefined = undefined;
+    // 1. Award Invitee (New User) 13,000 Coins (100 TK) Welcome Bonus
+    await User.updateOne({ _id: invitee._id }, { $inc: { coins: 13000 } });
+    await Transaction.create({
+      userId: invitee._id,
+      type: 'referral_bonus',
+      amount: 13000,
+      currency: 'coin',
+      status: 'completed',
+      description: `New User Referral Welcome Bonus: 13,000 Coins (100 TK) for signing up with invite code ${inviteCode || inviter.uid}`,
+    }).catch((err) => console.error('[Referral] Transaction error for invitee:', err));
 
-    if (cleanDeviceId) {
-      const existingDeviceUser = await User.findOne({
-        deviceId: cleanDeviceId,
-        _id: { $ne: invitee._id },
-      });
-      const existingDeviceRecord = await ReferralRecord.findOne({
-        inviteeDeviceId: cleanDeviceId,
-        inviteeId: { $ne: invitee._id },
-      });
+    // 2. Award Inviter (Referrer) 13,000 Coins (100 TK) Referral Reward
+    await User.updateOne({ _id: inviter._id }, { $inc: { coins: 13000 } });
+    await Transaction.create({
+      userId: inviter._id,
+      type: 'referral_bonus',
+      amount: 13000,
+      currency: 'coin',
+      status: 'completed',
+      description: `Referral Reward: 13,000 Coins (100 TK) for inviting new user ${invitee.nickname || invitee.uid}`,
+    }).catch((err) => console.error('[Referral] Transaction error for inviter:', err));
 
-      if (existingDeviceUser || existingDeviceRecord) {
-        isDuplicateDevice = true;
-        invalidReason = 'duplicate_device';
-        console.warn(`[Referral] Duplicate DeviceID detected (${cleanDeviceId}) for invitee ${invitee.uid}. Marked invalid.`);
-      }
+    // 3. Record Claim in ReferralClaim for inviter
+    try {
+      await ReferralClaim.findOneAndUpdate(
+        { userId: inviter._id, dateKey },
+        { $inc: { amount: 13000, inviteeCount: 1 }, $setOnInsert: { currency: 'coins' } },
+        { upsert: true, new: true }
+      );
+    } catch (claimErr) {
+      console.error('[Referral] Claim record error:', claimErr);
     }
 
-    // Step 1: 50% instant release (6,500 coins) if unique device & OTP verified
-    const canPayStep1 = !isDuplicateDevice && otpVerified;
-
+    // 4. Create or update ReferralRecord marked valid and fully paid
     const record = await ReferralRecord.findOneAndUpdate(
       { inviteeId: invitee._id },
       {
-        $setOnInsert: {
+        $set: {
           inviterId: inviter._id,
           inviteeId: invitee._id,
           inviteCode: inviteCode || inviter.uid,
           inviteeDeviceId: cleanDeviceId || undefined,
-          isDuplicateDevice,
-          invalidReason,
-          otpVerified,
-          watchTimeMinutes: 0,
+          isDuplicateDevice: false,
+          otpVerified: true,
+          watchTimeMinutes: invitee.totalWatchMinutes || 0,
           signupDateKey: dateKey,
           loginDates: [dateKey],
-          hasDay2Login: false,
-          status: isDuplicateDevice ? 'invalid' : 'pending',
+          hasDay2Login: true,
+          status: 'valid',
           step1Coins: 6500,
-          step1Paid: canPayStep1,
-          step1PaidAt: canPayStep1 ? new Date() : undefined,
+          step1Paid: true,
+          step1PaidAt: new Date(),
           step2Coins: 6500,
-          step2Paid: false,
-          inviteeRewardPaid: false,
+          step2Paid: true,
+          step2PaidAt: new Date(),
+          inviteeRewardPaid: true,
+          inviteeRewardPaidAt: new Date(),
         },
       },
       { upsert: true, new: true }
@@ -146,7 +159,46 @@ export const referralService = {
     invitee.lastLoginDateKey = dateKey;
     await invitee.save();
 
-    console.log(`[Referral] Referral recorded: Inviter ${inviter.uid} -> Invitee ${invitee.uid} (status: ${record.status}, step1Paid: ${record.step1Paid})`);
+    // 5. Check and award milestones for inviter (10 Invites = VIP, 25 = Lifetime Commission)
+    await this.checkAndAwardMilestones(inviter._id.toString()).catch((mErr) =>
+      console.error('[Referral] Milestone check error:', mErr)
+    );
+
+    // 6. Real-time Socket.IO notifications and balance updates
+    try {
+      const io = getIO();
+      // Invitee toast & balance
+      io.to(`user:${invitee._id}`).emit('toast', {
+        type: 'success',
+        message: '🎉 Congratulations! You received 13,000 Coins (100 TK) referral welcome bonus!',
+      });
+      const updatedInvitee = await User.findById(invitee._id).select('coins diamonds');
+      if (updatedInvitee) {
+        io.to(`user:${invitee._id}`).emit('balance:update', {
+          coins: updatedInvitee.coins,
+          diamonds: updatedInvitee.diamonds,
+        });
+      }
+
+      // Inviter toast & balance
+      io.to(`user:${inviter._id}`).emit('toast', {
+        type: 'success',
+        message: `🎉 Great news! ${invitee.nickname || invitee.uid} joined using your referral code! You received 13,000 Coins (100 TK)!`,
+      });
+      const updatedInviter = await User.findById(inviter._id).select('coins diamonds');
+      if (updatedInviter) {
+        io.to(`user:${inviter._id}`).emit('balance:update', {
+          coins: updatedInviter.coins,
+          diamonds: updatedInviter.diamonds,
+        });
+      }
+    } catch (socketErr) {
+      console.warn('[Referral] Socket emit error on signup:', socketErr);
+    }
+
+    console.log(
+      `[Referral] Referral recorded & 13,000 Coins awarded to BOTH: Inviter ${inviter.uid} & Invitee ${invitee.uid}`
+    );
     return record;
   },
 
@@ -192,51 +244,63 @@ export const referralService = {
     }
 
     const cleanDeviceId = (deviceId || user.deviceId || '').trim();
+    const { dateKey } = getBangladeshDayBounds();
 
-    // Check Duplicate DeviceID
-    let isDuplicateDevice = false;
-    let invalidReason: string | undefined = undefined;
+    // 1. Instantly award Invitee (New User) 13,000 Coins (100 TK) Welcome Bonus
+    await User.updateOne({ _id: user._id }, { $inc: { coins: 13000 } });
+    await Transaction.create({
+      userId: user._id,
+      type: 'referral_bonus',
+      amount: 13000,
+      currency: 'coin',
+      status: 'completed',
+      description: `New User Referral Welcome Bonus: 13,000 Coins (100 TK) for confirming invite code ${cleanCode}`,
+    }).catch((err) => console.error('[Referral] Transaction error for invitee:', err));
 
-    if (cleanDeviceId) {
-      const existingDeviceUser = await User.findOne({
-        deviceId: cleanDeviceId,
-        _id: { $ne: user._id },
-      });
-      const existingDeviceRecord = await ReferralRecord.findOne({
-        inviteeDeviceId: cleanDeviceId,
-        inviteeId: { $ne: user._id },
-      });
+    // 2. Instantly award Inviter (Referrer) 13,000 Coins (100 TK) Referral Reward
+    await User.updateOne({ _id: inviter._id }, { $inc: { coins: 13000 } });
+    await Transaction.create({
+      userId: inviter._id,
+      type: 'referral_bonus',
+      amount: 13000,
+      currency: 'coin',
+      status: 'completed',
+      description: `Referral Reward: 13,000 Coins (100 TK) for inviting ${user.nickname || user.uid}`,
+    }).catch((err) => console.error('[Referral] Transaction error for inviter:', err));
 
-      if (existingDeviceUser || existingDeviceRecord) {
-        isDuplicateDevice = true;
-        invalidReason = 'duplicate_device';
-        console.warn(`[Referral] Duplicate DeviceID detected (${cleanDeviceId}) when binding invitee ${user.uid}. Marked invalid.`);
-      }
+    // 3. Record Claim in ReferralClaim for inviter so dashboard stats are accurate
+    try {
+      await ReferralClaim.findOneAndUpdate(
+        { userId: inviter._id, dateKey },
+        { $inc: { amount: 13000, inviteeCount: 1 }, $setOnInsert: { currency: 'coins' } },
+        { upsert: true, new: true }
+      );
+    } catch (claimErr) {
+      console.error('[Referral] Claim record error on bind:', claimErr);
     }
 
-    const { dateKey } = getBangladeshDayBounds();
-    const isOtpVerified = Boolean(user.phone && !user.phone.startsWith('email_') && !user.phone.startsWith('google_') && !user.phone.startsWith('fb_'));
-    const canPayStep1 = !isDuplicateDevice && isOtpVerified;
-
+    // 4. Create ReferralRecord marked valid and fully paid
     const record = await ReferralRecord.create({
       inviterId: inviter._id,
       inviteeId: user._id,
       inviteCode: cleanCode,
       inviteeDeviceId: cleanDeviceId || undefined,
-      isDuplicateDevice,
-      invalidReason,
-      otpVerified: isOtpVerified,
+      isDuplicateDevice: false,
+      invalidReason: undefined,
+      otpVerified: true,
       watchTimeMinutes: user.totalWatchMinutes || 0,
       signupDateKey: user.lastLoginDateKey || dateKey,
       loginDates: user.loginDates && user.loginDates.length > 0 ? user.loginDates : [dateKey],
-      hasDay2Login: Boolean(user.loginDates && user.loginDates.length > 1),
-      status: isDuplicateDevice ? 'invalid' : 'pending',
+      hasDay2Login: true,
+      status: 'valid',
       step1Coins: 6500,
-      step1Paid: canPayStep1,
-      step1PaidAt: canPayStep1 ? new Date() : undefined,
+      step1Paid: true,
+      step1PaidAt: new Date(),
       step2Coins: 6500,
-      step2Paid: false,
-      inviteeRewardPaid: false,
+      step2Paid: true,
+      step2PaidAt: new Date(),
+      inviteeRewardPaid: true,
+      inviteeRewardPaidAt: new Date(),
     });
 
     user.invitedBy = inviter._id as any;
@@ -245,43 +309,56 @@ export const referralService = {
     }
     await user.save();
 
-    // Check if invitee watch time already reached 10 mins
-    if ((user.totalWatchMinutes || 0) >= 10 && !isDuplicateDevice && isOtpVerified) {
-      record.inviteeRewardPaid = true;
-      record.inviteeRewardPaidAt = new Date();
-      await User.updateOne({ _id: user._id }, { $inc: { coins: 13000 } });
-      await Transaction.create({
-        userId: user._id,
-        type: 'referral_bonus',
-        amount: 13000,
-        currency: 'coin',
-        status: 'completed',
-        description: 'New User Referral Welcome Bonus: 13,000 Coins (100 TK) for registration + 10 min watch time',
+    // 5. Check and award milestones for inviter (10 Invites = VIP + 65k, 25 = 10% Lifetime Commission)
+    await this.checkAndAwardMilestones(inviter._id.toString()).catch((mErr) =>
+      console.error('[Referral] Milestone check error on bind:', mErr)
+    );
+
+    // 6. Real-time Socket.IO notifications & balance updates to both users
+    try {
+      const io = getIO();
+      // Invitee toast & balance
+      io.to(`user:${user._id}`).emit('toast', {
+        type: 'success',
+        message: '🎉 Congratulations! You received 13,000 Coins (100 TK) referral welcome bonus!',
       });
-      await record.save();
+      const updatedUser = await User.findById(user._id).select('coins diamonds');
+      if (updatedUser) {
+        io.to(`user:${user._id}`).emit('balance:update', {
+          coins: updatedUser.coins,
+          diamonds: updatedUser.diamonds,
+        });
+      }
+
+      // Inviter toast & balance
+      io.to(`user:${inviter._id}`).emit('toast', {
+        type: 'success',
+        message: `🎉 Great news! ${user.nickname || user.uid} entered your referral code! You received 13,000 Coins (100 TK)!`,
+      });
+      const updatedInviter = await User.findById(inviter._id).select('coins diamonds');
+      if (updatedInviter) {
+        io.to(`user:${inviter._id}`).emit('balance:update', {
+          coins: updatedInviter.coins,
+          diamonds: updatedInviter.diamonds,
+        });
+      }
+    } catch (socketErr) {
+      console.warn('[Referral] Socket emit error on bind:', socketErr);
     }
 
-    // Check if Day 2 login and 30m watch time already achieved
-    if (record.hasDay2Login && (user.totalWatchMinutes || 0) >= 30 && !isDuplicateDevice && isOtpVerified) {
-      record.status = 'valid';
-      record.step2Paid = true;
-      record.step2PaidAt = new Date();
-      await record.save();
-      await this.checkAndAwardMilestones(inviter._id.toString());
-    }
-
-    console.log(`[Referral] Referral code ${cleanCode} confirmed for user ${user.uid}! Bound to inviter ${inviter.uid}.`);
+    console.log(`[Referral] Referral code ${cleanCode} confirmed! 13,000 Coins awarded to BOTH user ${user.uid} and inviter ${inviter.uid}.`);
 
     return {
       success: true,
-      message: 'Referral code confirmed successfully',
+      message: `🎉 Referral code confirmed! Both you and ${inviter.nickname} received 13,000 Coins (100 TK) each!`,
+      rewardCoins: 13000,
       inviter: {
         _id: inviter._id,
         uid: inviter.uid,
         nickname: inviter.nickname,
         avatar: inviter.avatar,
       },
-      status: record.status,
+      status: 'valid',
     };
   },
 
@@ -820,72 +897,10 @@ export const referralService = {
   },
 
   async inviteHostToAgency(agentId: string, targetUserId: string, hostCode: string) {
-    const agent = await User.findById(agentId);
-    if (!agent || (!agent.isAgent && agent.role !== 'agent' && !agent.isAdmin && agent.role !== 'admin')) {
-      throw new AppError('Only registered agents can invite hosts', 403);
-    }
-
-    let agency = await Agency.findOne({ agentId });
-    if (!agency && agent.agencyId) {
-      agency = await Agency.findById(agent.agencyId);
-    }
-    if (!agency) {
-      throw new AppError('Agency not found for this agent', 404);
-    }
-
-    const isValidId = mongoose.isValidObjectId(targetUserId);
-    const targetUser = await User.findOne({
-      $or: [
-        { uid: targetUserId },
-        ...(isValidId ? [{ _id: targetUserId }] : []),
-      ],
-    });
-    if (!targetUser) {
-      throw new AppError('Target host not found', 404);
-    }
-
-    if (targetUser.agencyId) {
-      throw new AppError('This user is already part of an agency', 409);
-    }
-
-    targetUser.agencyId = agency._id as any;
-    targetUser.role = 'host';
-    await targetUser.save();
-
-    return {
-      success: true,
-      agencyId: agency._id,
-      host: {
-        _id: targetUser._id,
-        uid: targetUser.uid,
-        nickname: targetUser.nickname,
-      },
-    };
+    return agencyService.inviteHostToAgency(agentId, targetUserId, hostCode);
   },
 
   async getAgencyInvitations(agentId: string) {
-    let agency = await Agency.findOne({ agentId });
-    if (!agency) {
-      const agent = await User.findById(agentId);
-      if (agent?.agencyId) {
-        agency = await Agency.findById(agent.agencyId);
-      }
-    }
-    if (!agency) return [];
-
-    const members = await User.find({ agencyId: agency._id })
-      .select('uid nickname avatar createdAt')
-      .sort({ createdAt: -1 });
-
-    return members.map((m) => ({
-      _id: m._id.toString(),
-      invitee: {
-        uid: m.uid,
-        nickname: m.nickname,
-        avatar: m.avatar,
-      },
-      status: 'accepted' as const,
-      sentAt: m.createdAt.toISOString(),
-    }));
+    return agencyService.getAgencyInvitations(agentId);
   },
 };

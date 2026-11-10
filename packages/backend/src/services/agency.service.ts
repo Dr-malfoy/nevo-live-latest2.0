@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Agency, User, AgencyLeaveRequest, AgencyJoinRequest, LiveStream, Transaction, PaymentConfig, getFormattedTxId } from '../models';
+import { Agency, User, AgencyLeaveRequest, AgencyJoinRequest, AgencyInvitation, LiveStream, Transaction, PaymentConfig, getFormattedTxId } from '../models';
 import { AppError } from '../middleware/errorHandler';
 import { notificationService } from './notification.service';
 import { auditService } from './audit.service';
@@ -1732,5 +1732,311 @@ export const agencyService = {
     }
 
     return results;
+  },
+
+  /**
+   * Invite a host/user to join an agency.
+   * Sends an in-app notification with type 'agency_invitation'.
+   * Host can accept or decline via the notification.
+   */
+  async inviteHostToAgency(agentId: string, targetUserId: string, hostCode?: string) {
+    const agent = await User.findById(agentId);
+    if (!agent) {
+      throw new AppError('User not found', 404);
+    }
+
+    const isAgent = agent.isAgent || agent.role === 'agent' || agent.isAdmin || agent.role === 'admin';
+    let agency = await Agency.findOne({ agentId: agent._id });
+    if (!agency && agent.agencyId) {
+      agency = await Agency.findById(agent.agencyId);
+    }
+    if (!agency && hostCode) {
+      agency = await Agency.findOne({ code: hostCode.trim().toUpperCase() });
+    }
+    if (!agency) {
+      if (!isAgent) {
+        throw new AppError('Only registered agents can invite hosts', 403);
+      }
+      throw new AppError('Agency not found for your account. Please create or link an agency first.', 404);
+    }
+
+    if (agency.isBanned) {
+      throw new AppError('Your agency is currently suspended or banned', 403);
+    }
+
+    const cleanTarget = (targetUserId || '').trim();
+    if (!cleanTarget) {
+      throw new AppError('Target User ID is required', 400);
+    }
+
+    const isValidObjectId = mongoose.isValidObjectId(cleanTarget);
+    const targetUser = await User.findOne({
+      $or: [
+        { uid: cleanTarget },
+        ...(isValidObjectId ? [{ _id: cleanTarget }] : []),
+        { username: cleanTarget },
+      ],
+    });
+
+    if (!targetUser) {
+      throw new AppError(`Target user with ID "${cleanTarget}" was not found. Please verify the ID.`, 404);
+    }
+
+    if (targetUser._id.toString() === agent._id.toString()) {
+      throw new AppError('You cannot invite yourself to your own agency', 400);
+    }
+
+    // Check if target is already in this agency
+    if (
+      (targetUser.agencyId && targetUser.agencyId.toString() === agency._id.toString()) ||
+      agency.hosts.some((h: any) => h.toString() === targetUser._id.toString())
+    ) {
+      throw new AppError(`${targetUser.nickname || 'This user'} is already a member of your agency`, 400);
+    }
+
+    // Check if target is in another agency
+    if (targetUser.agencyId && targetUser.agencyId.toString() !== agency._id.toString()) {
+      throw new AppError(`${targetUser.nickname || 'This user'} already belongs to another agency`, 409);
+    }
+
+    // Check for existing pending invitation
+    let invitation = await AgencyInvitation.findOne({
+      agencyId: agency._id,
+      inviteeId: targetUser._id,
+      status: 'pending',
+    });
+
+    if (invitation) {
+      invitation.updatedAt = new Date();
+      await invitation.save();
+    } else {
+      invitation = await AgencyInvitation.create({
+        agencyId: agency._id,
+        agentId: agent._id,
+        inviteeId: targetUser._id,
+        hostCode: agency.code,
+        status: 'pending',
+      });
+    }
+
+    // Send Notification to target host
+    await notificationService.createNotification({
+      userId: targetUser._id.toString(),
+      type: 'agency_invitation',
+      category: 'system',
+      senderId: agent._id.toString(),
+      senderInfo: {
+        nickname: agent.nickname || 'Agent',
+        avatar: agent.avatar || '',
+        uid: agent.uid,
+      },
+      title: 'Agency Invitation',
+      message: `${agency.name} (Agent: ${agent.nickname || agent.uid}) invited you to join their agency as a host.`,
+      targetUrl: '/notifications',
+      data: {
+        invitationId: invitation._id.toString(),
+        agencyId: agency._id.toString(),
+        agencyName: agency.name,
+        agencyCode: agency.code,
+        agencyAvatar: agency.avatar,
+        agentId: agent._id.toString(),
+        agentNickname: agent.nickname,
+        agentUid: agent.uid,
+        agentAvatar: agent.avatar,
+        status: 'pending',
+      },
+    });
+
+    return {
+      success: true,
+      message: `Invitation successfully sent to ${targetUser.nickname} (ID: ${targetUser.uid})`,
+      invitation: {
+        _id: invitation._id.toString(),
+        agencyId: agency._id,
+        agencyName: agency.name,
+        targetUser: {
+          _id: targetUser._id,
+          uid: targetUser.uid,
+          nickname: targetUser.nickname,
+          avatar: targetUser.avatar,
+        },
+        status: invitation.status,
+      },
+    };
+  },
+
+  /**
+   * Host responds to an agency invitation (accept or reject).
+   * If accepted, host is immediately linked to the agency!
+   */
+  async respondToInvitation(userId: string, invitationId: string, decision: 'accept' | 'reject') {
+    if (!mongoose.isValidObjectId(invitationId)) {
+      throw new AppError('Invalid invitation ID', 400);
+    }
+
+    const invitation = await AgencyInvitation.findById(invitationId);
+    if (!invitation) {
+      throw new AppError('Invitation not found', 404);
+    }
+
+    if (invitation.inviteeId.toString() !== userId) {
+      throw new AppError('Unauthorized: This invitation was not sent to you', 403);
+    }
+
+    if (invitation.status !== 'pending') {
+      throw new AppError(`This invitation has already been ${invitation.status}`, 400);
+    }
+
+    const hostUser = await User.findById(userId);
+    if (!hostUser) {
+      throw new AppError('Host user not found', 404);
+    }
+
+    const agency = await Agency.findById(invitation.agencyId);
+    if (!agency) {
+      throw new AppError('Agency not found or no longer active', 404);
+    }
+
+    if (agency.isBanned) {
+      throw new AppError('This agency is currently suspended or banned', 403);
+    }
+
+    if (decision === 'accept') {
+      if (hostUser.agencyId && hostUser.agencyId.toString() !== agency._id.toString()) {
+        throw new AppError('You already belong to another agency. Please leave that agency before accepting a new one.', 400);
+      }
+
+      // Link host to agency
+      hostUser.agencyId = agency._id as any;
+      hostUser.role = 'host';
+      if (hostUser.verification && (hostUser.verification as any).type === 'user') {
+        (hostUser.verification as any).type = 'host';
+      }
+      await hostUser.save();
+
+      // Add host to agency hosts list if not already there
+      if (!agency.hosts.some((h: any) => h.toString() === userId)) {
+        agency.hosts.push(hostUser._id as any);
+        await agency.save();
+      }
+
+      invitation.status = 'accepted';
+      invitation.respondedAt = new Date();
+      await invitation.save();
+
+      // Cancel any other pending invitations for this user
+      await AgencyInvitation.updateMany(
+        { inviteeId: hostUser._id, status: 'pending', _id: { $ne: invitation._id } },
+        { $set: { status: 'canceled' } }
+      );
+
+      // Notify the agent that the host joined
+      const agentIdStr = agency.agentId ? agency.agentId.toString() : invitation.agentId.toString();
+      await notificationService.createNotification({
+        userId: agentIdStr,
+        type: 'agent_linked',
+        category: 'system',
+        senderId: hostUser._id.toString(),
+        senderInfo: {
+          nickname: hostUser.nickname,
+          avatar: hostUser.avatar,
+          uid: hostUser.uid,
+        },
+        title: 'Host Joined Agency',
+        message: `${hostUser.nickname} (ID: ${hostUser.uid}) accepted your invitation and joined "${agency.name}"!`,
+        targetUrl: '/my-agency',
+        data: {
+          userId: hostUser._id.toString(),
+          agencyId: agency._id.toString(),
+        },
+      });
+
+      return {
+        success: true,
+        message: `Successfully joined ${agency.name}!`,
+        agency: {
+          _id: agency._id,
+          name: agency.name,
+          code: agency.code,
+          avatar: agency.avatar,
+        },
+      };
+    } else {
+      invitation.status = 'rejected';
+      invitation.respondedAt = new Date();
+      await invitation.save();
+
+      // Notify agent of decline
+      const agentIdStr = agency.agentId ? agency.agentId.toString() : invitation.agentId.toString();
+      await notificationService.createNotification({
+        userId: agentIdStr,
+        type: 'agency_join_rejected',
+        category: 'system',
+        senderId: hostUser._id.toString(),
+        senderInfo: {
+          nickname: hostUser.nickname,
+          avatar: hostUser.avatar,
+          uid: hostUser.uid,
+        },
+        title: 'Invitation Declined',
+        message: `${hostUser.nickname} (ID: ${hostUser.uid}) declined your invitation to join "${agency.name}".`,
+        targetUrl: '/invite-hosts',
+        data: {
+          userId: hostUser._id.toString(),
+          agencyId: agency._id.toString(),
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Invitation declined',
+      };
+    }
+  },
+
+  /**
+   * Get all invitations sent by the current agent's agency.
+   */
+  async getAgencyInvitations(agentId: string) {
+    let agency = await Agency.findOne({ agentId });
+    if (!agency) {
+      const agent = await User.findById(agentId);
+      if (agent?.agencyId) {
+        agency = await Agency.findById(agent.agencyId);
+      }
+    }
+    if (!agency) return [];
+
+    const invitations = await AgencyInvitation.find({ agencyId: agency._id })
+      .populate('inviteeId', 'uid nickname avatar')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return invitations.map((inv: any) => ({
+      _id: inv._id.toString(),
+      invitee: {
+        uid: inv.inviteeId?.uid || 'Unknown',
+        nickname: inv.inviteeId?.nickname || 'Unknown User',
+        avatar: inv.inviteeId?.avatar || '',
+      },
+      status: inv.status,
+      sentAt: (inv.createdAt ? new Date(inv.createdAt) : new Date()).toISOString(),
+    }));
+  },
+
+  /**
+   * Get invitations received by the current user.
+   */
+  async getMyInvitations(userId: string) {
+    const invitations = await AgencyInvitation.find({
+      inviteeId: userId,
+      status: 'pending',
+    })
+      .populate('agencyId', 'name code avatar description')
+      .populate('agentId', 'uid nickname avatar')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return invitations;
   },
 };

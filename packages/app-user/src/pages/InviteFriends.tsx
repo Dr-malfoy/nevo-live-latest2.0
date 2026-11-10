@@ -25,6 +25,10 @@ import {
   PiArrowsClockwiseBold as RefreshIcon,
   PiTicketFill as TicketIcon,
   PiUserCheckFill as UserCheck,
+  PiDownloadSimpleBold as DownloadIcon,
+  PiGlobeBold as GlobeIcon,
+  PiAndroidLogoFill as AndroidIcon,
+  PiArrowSquareOutBold as ExternalLink,
 } from 'react-icons/pi';
 import { referralApi, type ReferralSummary } from '../api/social.api';
 import { optional } from '../api/pending';
@@ -68,12 +72,17 @@ export const InviteFriends = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPortfolio, setCopiedPortfolio] = useState(false);
+  const [copiedApk, setCopiedApk] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [activeTickerIdx, setActiveTickerIdx] = useState(0);
   const [inputCode, setInputCode] = useState('');
   const [submittingCode, setSubmittingCode] = useState(false);
+
+  const APP_PORTFOLIO_URL = 'https://navolive.fly.dev';
+  const APP_DOWNLOAD_URL = 'https://navolive.fly.dev/uploads/1794259975559_Navo_Live.apk';
 
   const fetchReferralData = async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -117,8 +126,9 @@ export const InviteFriends = () => {
   }, [ticker.length]);
 
   const myId = summary?.myId ?? user?.uid ?? '';
-  const inviteUrl = `${window.location.origin}/invite/${myId || user?.uid || ''}`;
-  const shareText = `Join me on Navo Live! Use my invite code [${myId}] to get 13,000 Free Coins (100 TK) after registering and watching 10 mins: ${inviteUrl}`;
+  // Referral link directs new user to the app portfolio website with referral code
+  const inviteUrl = myId ? `${APP_PORTFOLIO_URL}/?code=${myId}` : APP_PORTFOLIO_URL;
+  const shareText = `🎉 Join me on Navo Live! Download App: ${APP_DOWNLOAD_URL} (Portfolio: ${APP_PORTFOLIO_URL}). Use my Referral Code [${myId}] to get 13,000 Coins (100 TK) welcome bonus!`;
 
   const copyId = async () => {
     if (!myId) return;
@@ -136,8 +146,30 @@ export const InviteFriends = () => {
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setCopiedLink(true);
-      showToast('Invite link copied to clipboard!', 'success');
+      showToast('Referral portfolio link copied!', 'success');
       setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      showToast('Could not access clipboard', 'error');
+    }
+  };
+
+  const copyPortfolioLink = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_PORTFOLIO_URL);
+      setCopiedPortfolio(true);
+      showToast('Portfolio link copied!', 'success');
+      setTimeout(() => setCopiedPortfolio(false), 2000);
+    } catch {
+      showToast('Could not access clipboard', 'error');
+    }
+  };
+
+  const copyDownloadLink = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_DOWNLOAD_URL);
+      setCopiedApk(true);
+      showToast('APK download link copied!', 'success');
+      setTimeout(() => setCopiedApk(false), 2000);
     } catch {
       showToast('Could not access clipboard', 'error');
     }
@@ -148,7 +180,7 @@ export const InviteFriends = () => {
       if (navigator.share) {
         await navigator.share({
           title: 'Join Navo Live — 13,000 Coins Welcome Bonus',
-          text: `Use my invite code ${myId} on Navo Live to get 13,000 Coins (100 TK) welcome bonus!`,
+          text: `Download Navo Live: ${APP_DOWNLOAD_URL} and use my invite code ${myId} to get 13,000 Coins (100 TK)!`,
           url: inviteUrl,
         });
       } else {
@@ -167,7 +199,7 @@ export const InviteFriends = () => {
     if (platform === 'whatsapp') {
       url = `https://api.whatsapp.com/send?text=${encodedText}`;
     } else if (platform === 'telegram') {
-      url = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(`Join me on Navo Live! Use my invite code: ${myId} to get 13,000 Coins (100 TK)!`)}`;
+      url = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(`Join me on Navo Live! Download: ${APP_DOWNLOAD_URL} and use invite code ${myId} for 13,000 Coins (100 TK)!`)}`;
     } else if (platform === 'facebook') {
       url = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
     }
@@ -213,8 +245,9 @@ export const InviteFriends = () => {
     try {
       const res = await referralApi.bindCode(clean);
       if (res.data?.success) {
+        const inviterNick = res.data?.data?.inviter?.nickname || 'your friend';
         showToast(
-          `🎉 Referral code confirmed! Linked to ${res.data?.data?.inviter?.nickname || 'inviter'}.`,
+          `🎉 Referral code confirmed! You received 13,000 Coins (100 TK) and ${inviterNick} received 13,000 Coins!`,
           'success'
         );
         setInputCode('');
@@ -379,7 +412,7 @@ export const InviteFriends = () => {
               <div className="mt-3.5 inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/10 text-xs text-white/90">
                 <Lightning className="w-3.5 h-3.5 text-[#FFD277]" />
                 <span>
-                  Coin Release: <strong className="text-emerald-400">50% Instant</strong> (6,500) + <strong className="text-emerald-400">50% Day 2 Login</strong> (6,500)
+                  Coin Release: <strong className="text-emerald-400">Instant 13,000 Coins</strong> (= 100 TK) to Both Users!
                 </span>
               </div>
 
@@ -472,6 +505,86 @@ export const InviteFriends = () => {
             </div>
           </div>
 
+          {/* App Portfolio & Download APK Card */}
+          <div className="rounded-2xl p-4 bg-gradient-to-r from-[#171330] via-[#211648] to-[#2D124D] border border-[#8B5CF6]/30 shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                <GlobeIcon className="w-4 h-4 text-[#A78BFA]" />
+                App Portfolio & Download
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+                Official Links
+              </span>
+            </div>
+
+            {/* Portfolio Link Item */}
+            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <GlobeIcon className="w-3.5 h-3.5 text-[#38BDF8]" />
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-white/50">App Portfolio Link</p>
+                </div>
+                <p className="text-xs font-medium text-[#38BDF8] truncate mt-0.5 font-mono select-all">
+                  {APP_PORTFOLIO_URL}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={copyPortfolioLink}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-[11px] font-semibold text-white flex items-center gap-1 transition-all"
+                  title="Copy Portfolio Link"
+                >
+                  {copiedPortfolio ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedPortfolio ? 'Copied' : 'Copy'}</span>
+                </button>
+                <a
+                  href={APP_PORTFOLIO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg bg-[#38BDF8]/20 hover:bg-[#38BDF8]/30 active:scale-95 border border-[#38BDF8]/30 text-[11px] font-bold text-[#38BDF8] flex items-center gap-1 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Visit</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Direct APK Download Item */}
+            <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <AndroidIcon className="w-3.5 h-3.5 text-emerald-400" />
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-white/50">App Download Link (APK)</p>
+                </div>
+                <p className="text-xs font-medium text-emerald-400 truncate mt-0.5 font-mono select-all">
+                  {APP_DOWNLOAD_URL}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={copyDownloadLink}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-[11px] font-semibold text-white flex items-center gap-1 transition-all"
+                  title="Copy APK Link"
+                >
+                  {copiedApk ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedApk ? 'Copied' : 'Copy'}</span>
+                </button>
+                <a
+                  href={APP_DOWNLOAD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download="Navo_Live.apk"
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-95 active:scale-95 text-[11px] font-bold text-white shadow-md shadow-emerald-500/20 flex items-center gap-1 transition-all"
+                >
+                  <DownloadIcon className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
           {/* Invitee Reward Card (Highlighted) */}
           <div className="rounded-2xl p-4 bg-gradient-to-r from-[#22C55E]/15 via-[#10B981]/20 to-[#059669]/15 border border-emerald-500/30 flex items-start gap-3 shadow-lg">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
@@ -490,7 +603,7 @@ export const InviteFriends = () => {
                 New User Join = <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong>
               </p>
               <p className="text-xs text-white/70 mt-0.5 leading-relaxed">
-                Your friends get credited 13,000 Coins right after registration and completing <strong className="text-white">10 min watch time</strong>!
+                Both you and your friends receive <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> instantly when entering a referral code!
               </p>
             </div>
           </div>
@@ -520,13 +633,13 @@ export const InviteFriends = () => {
                   </div>
                 </div>
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full shrink-0">
-                  Bound ✓
+                  Bound ✓ (+13,000 Coins)
                 </span>
               </div>
             ) : (
               <form onSubmit={handleConfirmInviteCode} className="space-y-2.5">
                 <p className="text-xs text-white/70 leading-relaxed">
-                  Enter your friend&apos;s referral code to confirm and link your account to earn the <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> welcome bonus.
+                  Enter your friend&apos;s referral code to confirm and link your account to earn the <strong className="text-[#FFD277]">13,000 Coins (100 TK)</strong> welcome bonus instantly!
                 </p>
 
                 <div className="flex items-center gap-2">
