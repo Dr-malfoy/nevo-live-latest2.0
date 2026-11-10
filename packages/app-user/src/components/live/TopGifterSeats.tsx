@@ -29,11 +29,21 @@ interface TopGifterSeatsProps {
   topGifters: TopGifterItem[];
   speakers: LiveSpeakerItem[];
   currentUserId?: string;
+  hostId?: string;
   isHost: boolean;
   isSpeaker?: boolean;
   micRequestPending?: boolean;
   onRequestMic?: () => void;
-  giftBurst?: { id: string; gift: any; count: number; nickname: string } | null;
+  giftBurst?: {
+    id: string;
+    gift: any;
+    count: number;
+    nickname: string;
+    receiverId?: string;
+    receiverName?: string;
+    userId?: string;
+    isFromHost?: boolean;
+  } | null;
   onViewProfile?: (userId: string) => void;
   onOpenGiftToUser?: (userId: string) => void;
   onMuteSpeaker?: (userId: string, isMuted: boolean) => void;
@@ -54,6 +64,7 @@ export const TopGifterSeats = ({
   topGifters = [],
   speakers = [],
   currentUserId,
+  hostId,
   isHost,
   isSpeaker,
   micRequestPending,
@@ -72,9 +83,14 @@ export const TopGifterSeats = ({
   >([]);
 
   // Build the 5 vertical slots
+  const effectiveHostId = hostId || (isHost && currentUserId ? currentUserId : undefined);
   const slots: SlotData[] = Array.from({ length: 5 }, (_, i) => {
-    // Only consider gifters with totalGifts > 0 as true top gifters
-    const validGifters = topGifters.filter((g) => (g.totalGifts || 0) > 0);
+    // Only consider gifters with totalGifts > 0 as true top gifters (NEVER include the host)
+    const validGifters = topGifters.filter((g) => {
+      if ((g.totalGifts || 0) <= 0) return false;
+      if (effectiveHostId && String(g.userId) === String(effectiveHostId)) return false;
+      return true;
+    });
     const gifter = validGifters[i];
 
     if (gifter) {
@@ -90,9 +106,11 @@ export const TopGifterSeats = ({
       };
     }
 
-    // If no gifter at this slot, place active speakers who are not yet in topGifters
+    // If no gifter at this slot, place active speakers who are not yet in topGifters (excluding host)
     const unplacedSpeakers = speakers.filter(
-      (s) => !validGifters.some((g) => g.userId === s.userId)
+      (s) =>
+        (!effectiveHostId || String(s.userId) !== String(effectiveHostId)) &&
+        !validGifters.some((g) => g.userId === s.userId)
     );
     const unplacedIndex = i - validGifters.length;
     const speaker = unplacedSpeakers[unplacedIndex];
@@ -120,11 +138,36 @@ export const TopGifterSeats = ({
   useEffect(() => {
     if (!giftBurst) return;
 
-    // Determine target slot by matching nickname
-    let targetIndex = slots.findIndex(
-      (s) => s.nickname && s.nickname.toLowerCase() === giftBurst.nickname.toLowerCase()
-    );
-    if (targetIndex < 0) targetIndex = 0; // Default to rank 1 seat if not matched
+    // Determine target slot:
+    // 1. If sent to a specific user (host gifts a user, or direct recipient), target the recipient's seat!
+    let targetIndex = -1;
+    const targetId = giftBurst.receiverId;
+    const targetName = giftBurst.receiverName;
+
+    if (targetId) {
+      targetIndex = slots.findIndex((s) => s.userId && String(s.userId) === String(targetId));
+    }
+    if (targetIndex < 0 && targetName) {
+      targetIndex = slots.findIndex(
+        (s) => s.nickname && s.nickname.toLowerCase() === targetName.toLowerCase()
+      );
+    }
+
+    // 2. If it's a normal viewer gift to the stream / host (not from host to a user),
+    // match the sender's slot among the seats (excluding host)
+    if (targetIndex < 0 && !giftBurst.isFromHost && (!effectiveHostId || String(giftBurst.userId || '') !== String(effectiveHostId))) {
+      if (giftBurst.userId) {
+        targetIndex = slots.findIndex((s) => s.userId && String(s.userId) === String(giftBurst.userId));
+      }
+      if (targetIndex < 0 && giftBurst.nickname) {
+        targetIndex = slots.findIndex(
+          (s) => s.nickname && s.nickname.toLowerCase() === giftBurst.nickname.toLowerCase()
+        );
+      }
+    }
+
+    // If no matching slot is found for this recipient, DO NOT default to slot 0!
+    if (targetIndex < 0) return;
 
     const newParticle = {
       id: `${Date.now()}-${Math.random()}`,

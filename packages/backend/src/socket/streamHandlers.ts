@@ -68,10 +68,11 @@ export interface StreamFilterState {
 }
 const streamFiltersMap = new Map<string, StreamFilterState>();
 
-const getTopGifters = (streamId: string): StreamGifter[] => {
+const getTopGifters = (streamId: string, hostId?: string): StreamGifter[] => {
   const gifters = streamGiftersMap.get(streamId);
   if (!gifters) return [];
   return Array.from(gifters.values())
+    .filter((g) => !hostId || String(g.userId) !== String(hostId))
     .sort((a, b) => b.totalGifts - a.totalGifts)
     .slice(0, 5);
 };
@@ -133,8 +134,9 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel, isVip, diamonds, coins } = await getUserProfile(socket.data.user?.userId);
     socket.join(`stream:${streamId}`);
 
-    const currentStream = await LiveStream.findById(streamId).select('viewerCount').lean();
+    const currentStream = await LiveStream.findById(streamId).select('viewerCount hostId').lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
+    const hostId = currentStream?.hostId?.toString();
 
     const joinKey = `${userId || socket.id}:${streamId}`;
     const now = Date.now();
@@ -164,7 +166,7 @@ export const registerStreamHandlers = (socket: Socket): void => {
     // Provide the current Top 5 gifters and active speakers to the user
     socket.emit('stream:top-gifters', {
       streamId,
-      topGifters: getTopGifters(streamId),
+      topGifters: getTopGifters(streamId, hostId),
     });
     socket.emit('stream:speakers-update', {
       streamId,
@@ -272,8 +274,9 @@ export const registerStreamHandlers = (socket: Socket): void => {
       cleanupStreamUser(streamId, userId);
     }
 
-    const currentStream = await LiveStream.findById(streamId).select('viewerCount').lean();
+    const currentStream = await LiveStream.findById(streamId).select('viewerCount hostId').lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
+    const hostId = currentStream?.hostId?.toString();
 
     getIO().to(`stream:${streamId}`).emit('stream:viewer-count', { count });
     syncPkViewerCount(streamId, count);
@@ -477,8 +480,19 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(socket.data.user?.userId);
     if (!streamId) return;
 
-    // Track total gift value for ranking in this stream
-    if (userId) {
+    let isFromHost = false;
+    let streamHostId = '';
+    try {
+      const stream = await LiveStream.findById(streamId).select('hostId').lean();
+      if (stream?.hostId) {
+        streamHostId = stream.hostId.toString();
+        isFromHost = Boolean(userId && streamHostId && String(userId) === streamHostId);
+      }
+    } catch {}
+
+    // Track total gift value for ranking in this stream ONLY if sender is NOT the host!
+    // The host should never be ranked in top gifters.
+    if (userId && !isFromHost) {
       if (!streamGiftersMap.has(streamId)) {
         streamGiftersMap.set(streamId, new Map());
       }
@@ -508,12 +522,13 @@ export const registerStreamHandlers = (socket: Socket): void => {
       gift,
       count,
       receiverId,
+      isFromHost,
     });
 
-    // Broadcast updated Top 5 gifters to the room
+    // Broadcast updated Top 5 gifters to the room (excluding host)
     getIO().to(`stream:${streamId}`).emit('stream:top-gifters', {
       streamId,
-      topGifters: getTopGifters(streamId),
+      topGifters: getTopGifters(streamId, streamHostId),
     });
 
     // If stream is participating in an active PK battle, credit score to corresponding side!

@@ -500,7 +500,16 @@ export const LiveStreamPage = ({
       if (!isSelf) {
         setChatMessages((prev) => [...prev, entry]);
       }
-      // Trigger the pop-up animation and floating gifts for everyone
+      const streamHostId = String(streamRef.current?.hostId || hostRef.current?._id || '');
+      const isFromHost = Boolean(msg?.isFromHost || (msg?.userId && streamHostId && String(msg.userId) === streamHostId));
+      const isRecipient = Boolean(
+        userRef.current && (
+          (msg?.receiverId && String(userRef.current._id) === String(msg.receiverId)) ||
+          (!msg?.receiverId && isHostRef.current)
+        )
+      );
+
+      // Trigger the pop-up animation and floating gifts
       if (giftObj) {
         if (!isSelf) {
           setGiftBurst({
@@ -508,22 +517,27 @@ export const LiveStreamPage = ({
             gift: giftObj,
             count: giftCount,
             nickname: msg.nickname || 'Someone',
+            receiverId: msg.receiverId,
+            receiverName: msg.receiverName,
+            userId: msg.userId,
+            isFromHost,
           });
           if (burstTimer.current) clearTimeout(burstTimer.current);
           burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
 
-          triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
+          // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
+          if (isFromHost && msg.receiverId) {
+            if (isRecipient) {
+              triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
+            }
+          } else {
+            triggerGifts(giftObj.icon || giftObj.animation || '🎁', giftObj.name || 'Gift', Math.min(giftCount, 6));
+          }
         }
       }
 
       // Show top gift notification banner card for EVERYONE in the live room (auto-dismiss 5s)
       const senderName = isSelf ? 'You' : (msg?.nickname || 'Someone');
-      const isRecipient = Boolean(
-        userRef.current && (
-          (msg?.receiverId && userRef.current._id === msg.receiverId) ||
-          (!msg?.receiverId && isHostRef.current)
-        )
-      );
 
       const notifText = isSelf
         ? `You sent ${giftCount > 1 ? `${giftCount}x ` : ''}${giftObj?.name || 'a gift'}!`
@@ -714,7 +728,11 @@ export const LiveStreamPage = ({
 
     const onTopGifters = (data: any) => {
       if (data?.topGifters) {
-        setTopGifters(data.topGifters);
+        const streamHostId = String(streamRef.current?.hostId || hostRef.current?._id || '');
+        const filtered = data.topGifters.filter(
+          (g: any) => !streamHostId || String(g.userId) !== streamHostId
+        );
+        setTopGifters(filtered);
       }
     };
     const onSpeakersUpdate = (data: any) => {
@@ -810,14 +828,25 @@ export const LiveStreamPage = ({
         setNotifications((prev) => prev.filter((n) => n.id !== notifId));
       }, 6000);
 
-      // 2. Center floating window: Host gift to [UserName]
-      triggerGifts('💎', `Host gift to ${receiverName}`, 6);
+      // 2. Center floating window: only float for the recipient user who received it!
+      const isRecipient = Boolean(
+        userRef.current && (
+          (payload.receiverId && String(userRef.current._id) === String(payload.receiverId)) ||
+          (payload.receiverName && userRef.current.nickname === payload.receiverName)
+        )
+      );
+      if (isRecipient) {
+        triggerGifts('💎', `Host gift to ${receiverName}`, 6);
+      }
 
       // 3. Animated 3D colorful pop-up modal with glowing diamond & sound chime
       setGiftBurst({
         id: `burst-reward-${Date.now()}-${Math.random()}`,
         nickname: senderName,
         receiverName: receiverName,
+        receiverId: payload.receiverId,
+        userId: payload.senderId,
+        isFromHost: true,
         count: amount,
         currency: 'diamond',
         gift: {
@@ -1096,16 +1125,23 @@ export const LiveStreamPage = ({
       }
 
       // Immediately trigger pop-up animation and floating gifts for the sender
+      const isHostSender = Boolean(isHostRef.current);
       setGiftBurst({
         id: `${Date.now()}-${Math.random()}`,
         gift,
         count: quantity,
         nickname: currentUser?.nickname || 'You',
+        receiverId,
+        userId: currentUser?._id,
+        isFromHost: isHostSender,
       });
       if (burstTimer.current) clearTimeout(burstTimer.current);
       burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
 
-      triggerGifts(gift.icon || (gift as any).animation || '🎁', gift.name, Math.min(quantity, 6));
+      // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
+      if (!isHostSender || !receiverId) {
+        triggerGifts(gift.icon || (gift as any).animation || '🎁', gift.name, Math.min(quantity, 6));
+      }
 
       const costDiamonds = (gift.priceDiamonds || 0) * quantity;
       showToast(`Sent ${quantity}x ${gift.name}! (-${costDiamonds.toLocaleString()} Diamonds)`, 'success');
@@ -1409,11 +1445,14 @@ export const LiveStreamPage = ({
               durationMs: 6000,
             },
           ]);
-          triggerGifts('💎', `Host gift to ${recName}`, 6);
+          // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
           setGiftBurst({
             id: `burst-reward-${Date.now()}-${Math.random()}`,
             nickname: userRef.current?.nickname || 'Host',
             receiverName: recName,
+            receiverId: targetUserId,
+            userId: userRef.current?._id,
+            isFromHost: true,
             count: points,
             currency: 'diamond',
             gift: {
@@ -1502,8 +1541,14 @@ export const LiveStreamPage = ({
         }}
         likeCount={likeCount}
         onLike={handleLike}
-        topGifters={topGifters}
-        speakers={speakers}
+        topGifters={topGifters.filter((g) => {
+          const hId = String(host?._id || stream?.hostId || '');
+          return !hId || String(g.userId) !== hId;
+        })}
+        speakers={speakers.filter((s) => {
+          const hId = String(host?._id || stream?.hostId || '');
+          return !hId || String(s.userId) !== hId;
+        })}
         isSpeaker={isHost || isSpeaker}
         micRequestPending={micRequestPending}
         onRequestMic={handleRequestMic}

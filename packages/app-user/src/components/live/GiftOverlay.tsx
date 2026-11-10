@@ -11,11 +11,15 @@ export interface GiftBurst {
   gift: Gift;
   count: number;
   receiverName?: string;
+  receiverId?: string;
+  userId?: string;
+  isFromHost?: boolean;
   currency?: 'diamond' | 'coin';
 }
 
 interface GiftOverlayProps {
   burst: GiftBurst | null;
+  currentUserId?: string;
 }
 
 const sparklePositions = [
@@ -63,7 +67,7 @@ const playGiftChime = () => {
   } catch {}
 };
 
-export const GiftOverlay = ({ burst }: GiftOverlayProps) => {
+export const GiftOverlay = ({ burst, currentUserId }: GiftOverlayProps) => {
   useEffect(() => {
     if (burst) {
       playGiftChime();
@@ -71,6 +75,12 @@ export const GiftOverlay = ({ burst }: GiftOverlayProps) => {
   }, [burst?.id]);
 
   if (!burst) return null;
+
+  // If gift is from host to a specific joined user, do not show center modal for host or other viewers;
+  // only show for the recipient user who received it!
+  if (burst.isFromHost && burst.receiverId && (!currentUserId || String(burst.receiverId) !== String(currentUserId))) {
+    return null;
+  }
 
   const giftName = burst.gift?.name || 'Gift';
   const count = burst.count || 1;

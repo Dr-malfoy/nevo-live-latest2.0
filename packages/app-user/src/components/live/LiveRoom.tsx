@@ -695,7 +695,7 @@ export const LiveRoom = ({
       <NotificationOverlay notifications={notifications} onDismiss={onDismissNotification} durationMs={5000} />
       <ReactionOverlay items={reactions} />
       <FloatingHearts hearts={hearts} />
-      <GiftOverlay burst={giftBurst} />
+      <GiftOverlay burst={giftBurst} currentUserId={user?._id} />
 
       {/* Host camera state pill (video rooms only) */}
       {joined && isHost && videoEnabled && <HostCameraPreview cameraOn={cameraOn} />}
@@ -730,9 +730,16 @@ export const LiveRoom = ({
 
       {/* Top 5 Gifter Showcase & Co-speaker Seats (5 Vertical Slots on the Right) */}
       <TopGifterSeats
-        topGifters={topGifters}
-        speakers={speakers}
+        topGifters={topGifters.filter((g) => {
+          const hId = String(host?._id || stream?.hostId || '');
+          return !hId || String(g.userId) !== hId;
+        })}
+        speakers={speakers.filter((s) => {
+          const hId = String(host?._id || stream?.hostId || '');
+          return !hId || String(s.userId) !== hId;
+        })}
         currentUserId={user?._id}
+        hostId={host?._id || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?._id : stream?.hostId)}
         isHost={isHost}
         isSpeaker={isSpeaker}
         micRequestPending={micRequestPending}
