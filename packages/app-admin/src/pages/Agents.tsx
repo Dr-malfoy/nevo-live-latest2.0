@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Users, Copy, Check } from 'lucide-react';
+import { UserPlus, Users, Copy, Check, Trash2 } from 'lucide-react';
 import { adminApi } from '../api';
 
 const TIER_OPTIONS = [
@@ -20,6 +20,7 @@ export const Agents = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -62,6 +63,44 @@ export const Agents = () => {
       load();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to update agency tier');
+    }
+  };
+
+  const handleDeleteAgency = async (agency: any) => {
+    if (!window.confirm(`Are you sure you want to delete agency "${agency.name}"? All linked hosts and agent references will be unlinked. This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(agency._id);
+    try {
+      const { data } = await adminApi.deleteAgency(agency._id);
+      if (data.success) {
+        load();
+      } else {
+        alert(data.error || 'Failed to delete agency');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete agency');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteAgent = async (agent: any) => {
+    if (!window.confirm(`Are you sure you want to delete agent "${agent.nickname}" (${agent.phone})? Any associated agencies will also be removed.`)) {
+      return;
+    }
+    setDeletingId(agent._id);
+    try {
+      const { data } = await adminApi.deleteAgent(agent._id);
+      if (data.success) {
+        load();
+      } else {
+        alert(data.error || 'Failed to delete agent');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete agent');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -123,10 +162,36 @@ export const Agents = () => {
       {loading ? <p className="text-dark-400">Loading...</p> : (
         <div className="bg-dark-800 rounded-xl overflow-hidden">
           <table className="w-full">
-            <thead><tr className="border-b border-dark-700"><th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">UID</th><th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Nickname</th><th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Phone</th><th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Level</th><th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Created</th></tr></thead>
+            <thead>
+              <tr className="border-b border-dark-700">
+                <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">UID</th>
+                <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Nickname</th>
+                <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Phone</th>
+                <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Level</th>
+                <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Created</th>
+                <th className="text-right px-4 py-3 text-xs text-dark-400 uppercase">Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {agents.map((a: any) => (
-                <tr key={a._id} className="border-b border-dark-700/50"><td className="px-4 py-3 text-sm">{a.uid}</td><td className="px-4 py-3 text-sm">{a.nickname}</td><td className="px-4 py-3 text-sm text-dark-400">{a.phone}</td><td className="px-4 py-3 text-sm">{a.level}</td><td className="px-4 py-3 text-sm text-dark-400">{new Date(a.createdAt).toLocaleDateString()}</td></tr>
+                <tr key={a._id} className="border-b border-dark-700/50">
+                  <td className="px-4 py-3 text-sm">{a.uid}</td>
+                  <td className="px-4 py-3 text-sm font-semibold">{a.nickname}</td>
+                  <td className="px-4 py-3 text-sm text-dark-400">{a.phone}</td>
+                  <td className="px-4 py-3 text-sm">{a.level}</td>
+                  <td className="px-4 py-3 text-sm text-dark-400">{new Date(a.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-right">
+                    <button
+                      onClick={() => handleDeleteAgent(a)}
+                      disabled={deletingId === a._id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white transition-colors disabled:opacity-50"
+                      title="Delete Agent"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{deletingId === a._id ? 'Deleting...' : 'Delete'}</span>
+                    </button>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -153,6 +218,7 @@ export const Agents = () => {
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Agency Cut</th>
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Admin Cut</th>
                   <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Status</th>
+                  <th className="text-right px-4 py-3 text-xs text-dark-400 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,6 +258,17 @@ export const Agents = () => {
                       <td className="px-4 py-3 text-sm font-bold text-amber-400">{adminCut}%</td>
                       <td className="px-4 py-3 text-sm">
                         {a.isBanned ? <span className="text-xs px-2 py-0.5 rounded bg-red-600 text-white">Banned</span> : <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Active</span>}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right">
+                        <button
+                          onClick={() => handleDeleteAgency(a)}
+                          disabled={deletingId === a._id}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white transition-colors disabled:opacity-50"
+                          title="Delete Agency"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{deletingId === a._id ? 'Deleting...' : 'Delete'}</span>
+                        </button>
                       </td>
                     </tr>
                   );

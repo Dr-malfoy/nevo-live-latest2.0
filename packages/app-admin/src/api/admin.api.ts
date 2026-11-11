@@ -40,8 +40,10 @@ export const adminApi = {
   updateRewardConfig: (data: any) => client.put('/admin/reward-config', data),
   createAgent: (data: { phone: string; password: string; nickname: string; name?: string; tier?: string; commission?: number }) =>
     client.post('/admin/agents', data),
+  deleteAgent: (id: string) => client.delete(`/admin/agents/${id}`),
   updateAgency: (id: string, data: { tier?: string; commission?: number; isBanned?: boolean; name?: string }) =>
     client.put(`/admin/agencies/${id}`, data),
+  deleteAgency: (id: string) => client.delete(`/admin/agencies/${id}`),
 
   // Admin payment info (QR/wallet)
   getAdminPaymentInfo: () => client.get('/admin/payment-info'),

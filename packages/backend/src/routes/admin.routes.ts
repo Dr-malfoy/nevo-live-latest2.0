@@ -50,10 +50,12 @@ router.post('/badges', authenticate, requireAdmin, adminController.createBadge);
 router.put('/badges/:id', authenticate, requireAdmin, adminController.updateBadge);
 router.delete('/badges/:id', authenticate, requireAdmin, adminController.deleteBadge);
 
-// Agent management
+// Agent & Agency management
 router.get('/agents', authenticate, requireAdmin, adminController.getAgents);
 router.post('/agents', authenticate, requireAdmin, adminController.createAgent);
+router.delete('/agents/:id', authenticate, requireAdmin, adminController.deleteAgent);
 router.put('/agencies/:id', authenticate, requireAdmin, adminController.updateAgency);
+router.delete('/agencies/:id', authenticate, requireAdmin, adminController.deleteAgency);
 
 // Purchase order management (supervision & direct official orders)
 router.get('/orders', authenticate, requireAdmin, adminController.getPurchaseOrders);

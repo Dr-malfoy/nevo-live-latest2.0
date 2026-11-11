@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage, PurchaseOrder } from '../models';
+import { User, LiveStream, Transaction, Gift, Agency, PlatformWallet, WithdrawalRequest, AgentPurchaseOrder, AppConfig, StoreItem, ContactMessage, PurchaseOrder, AgencyJoinRequest, AgencyLeaveRequest, AgencyInvitation } from '../models';
 import { getFormattedTxId } from '../models/Transaction';
 
 import { paymentService } from '../services/payment.service';
@@ -444,6 +444,74 @@ export const adminController = {
 
       await agency.save();
       sendSuccess(res, agency, 'Agency updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteAgency(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const agency = await Agency.findById(id);
+      if (!agency) {
+        res.status(404).json({ success: false, error: 'Agency not found' });
+        return;
+      }
+
+      const agencyId = agency._id;
+      const agentId = agency.agentId;
+
+      // 1. Unset agencyId for all users (agent and hosts) associated with this agency
+      await User.updateMany(
+        { agencyId },
+        { $unset: { agencyId: 1 } }
+      );
+
+      // Ensure the agent owner also has agencyId unset
+      if (agentId) {
+        await User.updateOne(
+          { _id: agentId },
+          { $unset: { agencyId: 1 } }
+        );
+      }
+
+      // 2. Clean up related join requests, leave requests, and invitations
+      await AgencyJoinRequest.deleteMany({ agencyId });
+      await AgencyLeaveRequest.deleteMany({ agencyId });
+      await AgencyInvitation.deleteMany({ agencyId });
+
+      // 3. Delete the agency itself
+      await Agency.findByIdAndDelete(agencyId);
+
+      sendSuccess(res, null, 'Agency deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteAgent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const agent = await User.findById(id);
+      if (!agent) {
+        res.status(404).json({ success: false, error: 'Agent not found' });
+        return;
+      }
+
+      // Find any agencies owned by this agent and clean them up
+      const agencies = await Agency.find({ agentId: agent._id });
+      for (const agency of agencies) {
+        await User.updateMany({ agencyId: agency._id }, { $unset: { agencyId: 1 } });
+        await AgencyJoinRequest.deleteMany({ agencyId: agency._id });
+        await AgencyLeaveRequest.deleteMany({ agencyId: agency._id });
+        await AgencyInvitation.deleteMany({ agencyId: agency._id });
+        await Agency.findByIdAndDelete(agency._id);
+      }
+
+      // Delete the agent user
+      await User.findByIdAndDelete(id);
+
+      sendSuccess(res, null, 'Agent deleted successfully');
     } catch (error) {
       next(error);
     }
