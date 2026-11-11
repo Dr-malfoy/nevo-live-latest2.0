@@ -204,16 +204,15 @@ export const AgentDashboard = () => {
 
   // Check if current user is agency owner / agent
   const isOwner = useMemo(() => {
-    if (!user) return false;
-    if (user.role === 'agent' || (user as any).isAgent) return true;
-    if (myAgency?.agent) {
+    if (!user || !myAgency || !myAgency._id) return false;
+    if (myAgency.agent) {
       if (typeof myAgency.agent === 'object' && myAgency.agent !== null) {
         if (myAgency.agent._id === user._id || myAgency.agent.uid === user.uid) return true;
       } else if (typeof myAgency.agent === 'string' && myAgency.agent === user._id) {
         return true;
       }
     }
-    return false;
+    return user.role === 'agent' || (user as any).isAgent;
   }, [user, myAgency]);
 
   const loadAgencyData = async () => {
@@ -759,7 +758,7 @@ export const AgentDashboard = () => {
           </div>
 
           {/* Agency Identity Bar (when user has an agency) */}
-          {myAgency ? (
+          {myAgency && myAgency._id ? (
             <div className="max-w-md mx-auto mt-2 flex items-center gap-3.5 bg-black/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shadow-sm">
               <div className="relative shrink-0">
                 <Avatar src={getMediaUrl(myAgency?.avatar) || getMediaUrl(user?.avatar)} nickname={myAgency?.name || user?.nickname || 'Agent'} size="lg" className="ring-2 ring-white/40" />
@@ -773,13 +772,15 @@ export const AgentDashboard = () => {
                 </div>
 
                 <div className="flex items-center gap-2 mt-1">
-                  <button
-                    onClick={copyAgencyCode}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-[11px] font-mono font-bold text-amber-300 transition-colors"
-                  >
-                    <span>Code: {myAgency?.code || 'AGENCY'}</span>
-                    <CopyIcon className="w-3 h-3" />
-                  </button>
+                  {myAgency.code && (
+                    <button
+                      onClick={copyAgencyCode}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-[11px] font-mono font-bold text-amber-300 transition-colors"
+                    >
+                      <span>Code: {myAgency.code}</span>
+                      <CopyIcon className="w-3 h-3" />
+                    </button>
+                  )}
                   <span className="text-white/40">•</span>
                   <span className="text-[11px] text-indigo-200 font-bold">
                     Lv.{myAgency?.level || 1}
@@ -1097,80 +1098,84 @@ export const AgentDashboard = () => {
                 )}
 
                 {/* Agency Brand & Level Hero Card */}
-                <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 rounded-3xl p-4 text-white shadow-md relative overflow-hidden border border-white/10">
-                  <div className="absolute top-0 right-0 w-44 h-44 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                {myAgency && myAgency._id ? (
+                  <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 rounded-3xl p-4 text-white shadow-md relative overflow-hidden border border-white/10">
+                    <div className="absolute top-0 right-0 w-44 h-44 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar
-                        src={getMediaUrl(myAgency?.avatar) || getMediaUrl(user?.avatar)}
-                        nickname={myAgency?.name || 'Agency'}
-                        size="lg"
-                        className="ring-2 ring-indigo-400/50 shadow-md shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h3 className="text-base font-black text-white truncate">
-                            {myAgency?.name || `${user?.nickname}'s Agency`}
-                          </h3>
-                          <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" title="Verified Agency" />
-                          <span className={`px-2 py-0.2 rounded-full text-[10px] font-black border ${
-                            myAgency?.type === 'private'
-                              ? 'bg-purple-500/30 text-purple-200 border-purple-400/40'
-                              : 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
-                          }`}>
-                            {myAgency?.type === 'private' ? 'Private' : 'Public'}
-                          </span>
-                        </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar
+                          src={getMediaUrl(myAgency?.avatar) || getMediaUrl(user?.avatar)}
+                          nickname={myAgency?.name || 'Agency'}
+                          size="lg"
+                          className="ring-2 ring-indigo-400/50 shadow-md shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-base font-black text-white truncate">
+                              {myAgency?.name || `${user?.nickname}'s Agency`}
+                            </h3>
+                            <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" title="Verified Agency" />
+                            <span className={`px-2 py-0.2 rounded-full text-[10px] font-black border ${
+                              myAgency?.type === 'private'
+                                ? 'bg-purple-500/30 text-purple-200 border-purple-400/40'
+                                : 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
+                            }`}>
+                              {myAgency?.type === 'private' ? 'Private' : 'Public'}
+                            </span>
+                          </div>
 
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          <button
-                            onClick={() => myAgency?.code && handleCopyCode(myAgency.code)}
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-mono font-bold text-amber-300 transition-all border border-white/10"
-                            title="Copy Agency Code"
-                          >
-                            <span>Code: {myAgency?.code || 'AGENCY'}</span>
-                            {copiedCode ? <CheckBold className="w-3 h-3 text-emerald-400" /> : <CopyIcon className="w-3 h-3" />}
-                          </button>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            {myAgency.code && (
+                              <button
+                                onClick={() => handleCopyCode(myAgency.code)}
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-mono font-bold text-amber-300 transition-all border border-white/10"
+                                title="Copy Agency Code"
+                              >
+                                <span>Code: {myAgency.code}</span>
+                                {copiedCode ? <CheckBold className="w-3 h-3 text-emerald-400" /> : <CopyIcon className="w-3 h-3" />}
+                              </button>
+                            )}
 
-                          <span className="text-white/30">•</span>
-                          <span className="text-[11px] font-extrabold text-indigo-300 flex items-center gap-1">
-                            <Crown className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Level {myAgency?.level || 1}</span>
-                          </span>
+                            <span className="text-white/30">•</span>
+                            <span className="text-[11px] font-extrabold text-indigo-300 flex items-center gap-1">
+                              <Crown className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Level {myAgency?.level || 1}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      {myAgency?._id && (
+                        <button
+                          onClick={() => navigate(`/agency/${myAgency._id}`)}
+                          className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-xs border border-white/15 shadow-2xs flex items-center gap-1 shrink-0 transition-all"
+                          title="View Public Agency Profile"
+                        >
+                          <span>Public View</span>
+                          <ExternalLinkIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
 
-                    {myAgency?._id && (
-                      <button
-                        onClick={() => navigate(`/agency/${myAgency._id}`)}
-                        className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-xs border border-white/15 shadow-2xs flex items-center gap-1 shrink-0 transition-all"
-                        title="View Public Agency Profile"
-                      >
-                        <span>Public View</span>
-                        <ExternalLinkIcon className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Level Progress Bar */}
-                  <div className="mt-4 pt-3 border-t border-white/10">
-                    <div className="flex items-center justify-between text-[11px] mb-1.5 font-bold">
-                      <span className="text-indigo-200 flex items-center gap-1">
-                        <span>Level Progress</span>
-                        <span className="text-white/40">→ Level {(myAgency?.level || 1) + 1}</span>
-                      </span>
-                      <span className="text-amber-300 font-black">{myAgency?.levelProgress || 0}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden p-0.5">
-                      <div
-                        className="h-full bg-gradient-to-r from-amber-400 via-indigo-400 to-purple-400 rounded-full transition-all duration-700 shadow-xs"
-                        style={{ width: `${Math.max(4, Math.min(100, myAgency?.levelProgress || 0))}%` }}
-                      />
+                    {/* Level Progress Bar */}
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                      <div className="flex items-center justify-between text-[11px] mb-1.5 font-bold">
+                        <span className="text-indigo-200 flex items-center gap-1">
+                          <span>Level Progress</span>
+                          <span className="text-white/40">→ Level {(myAgency?.level || 1) + 1}</span>
+                        </span>
+                        <span className="text-amber-300 font-black">{myAgency?.levelProgress || 0}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden p-0.5">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-400 via-indigo-400 to-purple-400 rounded-full transition-all duration-700 shadow-xs"
+                          style={{ width: `${Math.max(4, Math.min(100, myAgency?.levelProgress || 0))}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : null}
 
                 {/* Comprehensive Full Overview Stats Grid (6 KPI cards) */}
                 <div className="space-y-2">

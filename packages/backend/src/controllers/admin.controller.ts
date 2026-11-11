@@ -467,11 +467,11 @@ export const adminController = {
         { $unset: { agencyId: 1 } }
       );
 
-      // Ensure the agent owner also has agencyId unset
+      // Ensure the agent owner also has agencyId unset and role reset
       if (agentId) {
         await User.updateOne(
           { _id: agentId },
-          { $unset: { agencyId: 1 } }
+          { $unset: { agencyId: 1 }, $set: { role: 'user', isAgent: false } }
         );
       }
 
