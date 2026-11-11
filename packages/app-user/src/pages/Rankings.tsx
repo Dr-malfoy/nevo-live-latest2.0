@@ -81,6 +81,7 @@ const categoryOf = (board: RankingBoard): Category => {
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export const Rankings = () => {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selectedCountries = useCountryStore((s) => s.selected);
   const setSelectedCountries = useCountryStore((s) => s.setSelected);
@@ -247,22 +248,43 @@ export const Rankings = () => {
         <>
           {/* Prize podium — #35's pool card */}
           {config?.prizes && config.prizes.length >= 3 && (
-            <div className="mx-3 -mt-1 mb-3 rounded-card bg-gradient-to-b from-[#C13B7A] to-[#8E2457] p-4">
+            <div className="mx-3 -mt-1 mb-3 rounded-card bg-gradient-to-b from-[#C13B7A] to-[#8E2457] p-4 shadow-sm">
               {config.poolTotal && (
-                <p className="text-center text-white font-bold text-lg tabular-nums mb-3">
-                  🏆 {compactNumber(config.poolTotal)}
+                <p className="text-center text-white font-bold text-lg tabular-nums mb-3 flex items-center justify-center gap-1.5">
+                  <span>🏆</span>
+                  <span>{config.poolTotal.toLocaleString()} Coins Prize Pool</span>
                 </p>
               )}
               <div className="flex items-end justify-center gap-3">
                 {[1, 0, 2].map((slot) => (
                   <div key={slot} className="flex flex-col items-center gap-1">
                     <span className="text-2xl">{MEDALS[slot]}</span>
-                    <span className="h-6 px-2 rounded-full bg-white/20 text-white text-[11px] font-bold flex items-center tabular-nums">
-                      {compactNumber(config.prizes![slot])}
+                    <span className="h-6 px-2.5 rounded-full bg-white/20 text-white text-[11px] font-bold flex items-center gap-1 tabular-nums border border-white/20 shadow-2xs">
+                      <span>🪙</span>
+                      <span>{config.prizes![slot]?.toLocaleString()}</span>
                     </span>
                   </div>
                 ))}
               </div>
+              {config.prizes.length > 3 && (
+                <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-white/20 text-white text-xs font-semibold">
+                  {config.prizes.slice(3, 5).map((prize, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 bg-white/20 px-3 py-1 rounded-full tabular-nums border border-white/10 shadow-2xs">
+                      <span className="text-white/80 font-bold">{idx + 4}th:</span>
+                      <span className="flex items-center gap-0.5">🪙 {prize?.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/income/platform_rewards')}
+                className="mt-3 w-full py-1.5 px-3 rounded-lg bg-black/20 hover:bg-black/30 text-white/90 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-white/10"
+              >
+                <span>🎁</span>
+                <span>Ranking rewards are credited to Platform Rewards</span>
+                <span className="text-white font-bold underline ml-1">View</span>
+              </button>
             </div>
           )}
 
@@ -360,8 +382,9 @@ function RankRow({ row }: { row: RankingResult['rows'][number] }) {
           {compactNumber(row.metric)}
         </span>
         {row.prize != null && (
-          <span className="text-[11px] font-semibold text-primary-600 tabular-nums">
-            {compactNumber(row.prize)}
+          <span className="text-[11px] font-bold text-amber-600 flex items-center gap-1 tabular-nums">
+            <span>🪙</span>
+            <span>+{row.prize.toLocaleString()}</span>
           </span>
         )}
       </div>

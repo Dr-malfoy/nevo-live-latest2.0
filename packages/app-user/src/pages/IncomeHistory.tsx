@@ -64,7 +64,7 @@ const SOURCE_META: Record<IncomeSourceKey, SourceMeta> = {
   },
   platform_rewards: {
     title: 'Platform Rewards',
-    subtitle: 'System coin rewards, daily check-ins, tasks & agency commission',
+    subtitle: 'System coin rewards, ranking prizes, daily check-ins & tasks',
     icon: RewardIcon,
     gradient: 'from-amber-500/10 via-yellow-500/10 to-transparent',
     badgeBg: 'bg-yellow-50 text-amber-800 border-yellow-200',
@@ -172,7 +172,7 @@ export const IncomeHistory = () => {
   const meta = SOURCE_META[validKey];
 
   const [range, setRange] = useState<string>('1y'); // Default: 1 year history
-  const [rewardTab, setRewardTab] = useState<'all' | 'daily' | 'commission' | 'system'>('all');
+  const [rewardTab, setRewardTab] = useState<'all' | 'ranking' | 'daily' | 'commission' | 'system'>('all');
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [totalEarnings, setTotalEarnings] = useState<number>(0);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -318,6 +318,9 @@ export const IncomeHistory = () => {
     return entries.filter((e) => {
       const type = e.type || '';
       const desc = e.description || '';
+      if (rewardTab === 'ranking') {
+        return type === 'ranking_prize';
+      }
       if (rewardTab === 'daily') {
         return ['daily_reward', 'signin_reward', 'task_reward', 'activity_reward'].includes(type);
       }
@@ -326,7 +329,6 @@ export const IncomeHistory = () => {
       }
       if (rewardTab === 'system') {
         return (
-          type === 'ranking_prize' ||
           type === 'host_bonus' ||
           type === 'referral_bonus' ||
           type === 'spin_reward' ||
@@ -460,6 +462,7 @@ export const IncomeHistory = () => {
           <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-slate-200 overflow-x-auto no-scrollbar shadow-xs">
             {[
               { key: 'all', label: 'All Rewards' },
+              { key: 'ranking', label: 'Ranking Prize' },
               { key: 'daily', label: 'Daily & Tasks' },
               { key: 'commission', label: 'Agency Commission' },
               { key: 'system', label: 'System Gifts' },

@@ -10,7 +10,7 @@ import { Schema, model, Document } from 'mongoose';
 export interface IRankingConfigDocument extends Document {
   board: string;
   poolTotal: number;
-  /** Coin prizes for rank 1, 2, 3 — empty for title-only boards (#37). */
+  /** Coin prizes for ranks 1 to 5 (1st: 50k, 2nd: 30k, 3rd/4th/5th: 10k) — empty for title-only boards. */
   prizes: number[];
   condition: string;
   countries: string[];

@@ -99,6 +99,8 @@ export const TransactionDetails = () => {
         return 'Platform Gift Share';
       case 'commission':
         return 'Agency Commission';
+      case 'ranking_prize':
+        return 'Ranking Prize';
       case 'daily_reward':
       case 'task_reward':
       case 'signin_reward':

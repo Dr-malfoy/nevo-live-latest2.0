@@ -74,7 +74,7 @@ interface BoardDef {
   kind: MetricKind;
   /** Title shown on the top three for this board. */
   badge?: string;
-  /** Coin prizes for ranks 1..3 — omitted for title-only boards. */
+  /** Coin prizes for ranks 1..5 — omitted for title-only boards. */
   prizes?: number[];
   poolTotal?: number;
   condition: string;
@@ -95,8 +95,8 @@ const BOARD_LIST: BoardDef[] = [
     metricLabel: 'Host',
     kind: 'gold_received',
     badge: 'DAILY HOST',
-    prizes: [2000000, 800000, 500000],
-    poolTotal: 3300000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'today',
     condition: 'Live Duration ≥ 1 hour, no violations',
     countries: ['IN', 'NP', 'BD', 'BT'],
@@ -107,8 +107,8 @@ const BOARD_LIST: BoardDef[] = [
     metricLabel: 'Rocket',
     kind: 'gold_received',
     badge: 'ROCKET HOST',
-    prizes: [500000, 200000, 100000],
-    poolTotal: 800000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'week',
     condition: 'Live Duration ≥ 3 hours this week, no violations',
     countries: ['IN', 'NP', 'BD', 'BT'],
@@ -131,8 +131,8 @@ const BOARD_LIST: BoardDef[] = [
     metricLabel: 'Alpha',
     kind: 'gold_received',
     badge: 'ALPHA HOST',
-    prizes: [1000000, 500000, 250000],
-    poolTotal: 1750000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'week',
     condition: 'Weekly Male Host: Live Duration ≥ 50h & Earnings ≥ 500k Coins',
     countries: ['IN', 'NP', 'BD', 'BT'],
@@ -143,8 +143,8 @@ const BOARD_LIST: BoardDef[] = [
     metricLabel: 'Aurora',
     kind: 'gold_received',
     badge: 'AURORA HOST',
-    prizes: [1000000, 500000, 250000],
-    poolTotal: 1750000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'week',
     condition: 'Weekly Female Host: Live Duration ≥ 50h & Earnings ≥ 500k Coins',
     countries: ['IN', 'NP', 'BD', 'BT'],
@@ -155,8 +155,8 @@ const BOARD_LIST: BoardDef[] = [
     metricLabel: 'ACU',
     kind: 'acu',
     badge: 'ESPORTS HOST',
-    prizes: [300000, 150000, 75000],
-    poolTotal: 525000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'today',
     condition: 'Ranked by average concurrent viewers',
     countries: ['IN', 'NP', 'BD', 'BT'],
@@ -188,8 +188,8 @@ const BOARD_LIST: BoardDef[] = [
     category: 'earnings',
     metricLabel: 'Earnings',
     kind: 'diamonds_won',
-    prizes: [3000000, 1500000, 500000],
-    poolTotal: 5000000,
+    prizes: [50000, 30000, 10000, 10000, 10000],
+    poolTotal: 110000,
     prizePeriod: 'today',
     condition: 'Diamonds won from gifts',
   },
@@ -502,6 +502,17 @@ async function loadConfig(board: string) {
       if (err?.code !== 11000) throw err;
       config = await RankingConfig.findOne({ board: def.key });
     }
+  } else if (
+    def.prizes &&
+    (config.prizes?.length !== def.prizes.length ||
+      config.prizes[0] !== def.prizes[0] ||
+      config.poolTotal !== def.poolTotal)
+  ) {
+    // Retune DB record if defaults have been updated
+    config.prizes = def.prizes;
+    config.poolTotal = def.poolTotal ?? 0;
+    config.condition = def.condition;
+    await config.save();
   }
   if (!config) throw new AppError('Ranking config unavailable', 500);
 
@@ -747,11 +758,14 @@ export const rankingService = {
       // the other periods' snapshots for the same board are never paid out.
       if (snapshot.period !== (def.prizePeriod ?? 'today')) continue;
 
+      const config = await loadConfig(def.key);
+
       for (const row of snapshot.rows) {
         const isTitle = !!def.titlePrize;
         // A title board has no coin prize to test against, so cap it at the podium.
         if (isTitle && row.rank > 3) continue;
-        if (!isTitle && !row.prize) continue;
+        const prizeAmount = !isTitle && config.prizes?.[row.rank - 1] != null ? config.prizes[row.rank - 1] : row.prize;
+        if (!isTitle && !prizeAmount) continue;
 
         let award;
         try {
@@ -761,7 +775,7 @@ export const rankingService = {
             dateKey: snapshot.dateKey,
             userId: row.userId,
             rank: row.rank,
-            prize: isTitle ? 0 : row.prize,
+            prize: isTitle ? 0 : prizeAmount,
             currency: isTitle ? 'title' : 'coin',
             badge: def.badge || null,
             // #37 — a 7-day title, not coins.
@@ -775,16 +789,16 @@ export const rankingService = {
 
         granted += 1;
 
-        if (!isTitle && row.prize) {
+        if (!isTitle && prizeAmount) {
           const updated = await User.findOneAndUpdate(
             { _id: row.userId },
-            { $inc: { coins: row.prize } },
+            { $inc: { coins: prizeAmount } },
             { new: true }
           );
           await Transaction.create({
             userId: row.userId,
             type: 'ranking_prize',
-            amount: row.prize,
+            amount: prizeAmount,
             currency: 'coin',
             status: 'completed',
             description: `${def.badge || def.key} rank #${row.rank} prize`,
