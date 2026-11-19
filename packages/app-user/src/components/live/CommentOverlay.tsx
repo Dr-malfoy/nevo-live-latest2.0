@@ -11,6 +11,9 @@ interface CommentOverlayProps {
 
 const isGiftMsg = (m: RoomMessage) => m.isGift || !!m.gift;
 
+const getMsgKey = (m: RoomMessage, i?: number) =>
+  m.id || `${m.userId || 'anon'}-${m.message || ''}-${(m as any).createdAt || i || 0}`;
+
 const CommentBubble = ({
   msg,
   onUserClick,
@@ -21,21 +24,6 @@ const CommentBubble = ({
   const nickname = msg.nickname || 'Guest';
   const message = msg.message || '';
   const isJoined = msg.kind === 'join';
-  const isGift = isGiftMsg(msg);
-  const [giftVisible, setGiftVisible] = useState(true);
-
-  useEffect(() => {
-    if (isGift) {
-      const timer = setTimeout(() => {
-        setGiftVisible(false);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [isGift, msg.id]);
-
-  if (isGift && !giftVisible) {
-    return null;
-  }
 
   const handleUserClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -111,12 +99,46 @@ const CommentBubble = ({
 export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) => {
   const listRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'room' | 'chat'>('all');
+  const [dismissedGiftKeys, setDismissedGiftKeys] = useState<Set<string>>(() => new Set());
+  const scheduledTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Track each gift message and auto-remove after exactly 5 seconds
+  useEffect(() => {
+    messages.forEach((msg, idx) => {
+      if (isGiftMsg(msg)) {
+        const key = getMsgKey(msg, idx);
+        if (!scheduledTimersRef.current.has(key)) {
+          const timer = setTimeout(() => {
+            setDismissedGiftKeys((prev) => {
+              const updated = new Set(prev);
+              updated.add(key);
+              return updated;
+            });
+            scheduledTimersRef.current.delete(key);
+          }, 5000);
+          scheduledTimersRef.current.set(key, timer);
+        }
+      }
+    });
+  }, [messages]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    const timers = scheduledTimersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, activeTab]);
 
-  const filteredMessages = messages.filter((m) => {
+  const filteredMessages = messages.filter((m, idx) => {
+    const key = getMsgKey(m, idx);
+    // Auto-remove gift notifications after 5 seconds!
+    if (isGiftMsg(m) && dismissedGiftKeys.has(key)) return false;
     if (activeTab === 'room') return m.kind === 'join' || m.isGift || !!m.gift;
     if (activeTab === 'chat') return m.kind !== 'join' && !m.isGift && !m.gift;
     return true;
@@ -177,7 +199,7 @@ export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) =
           <AnimatePresence initial={false}>
             {filteredMessages.map((msg, i) => (
               <CommentBubble
-                key={msg.id || `${msg.userId}-${msg.message}-${i}`}
+                key={getMsgKey(msg, i)}
                 msg={msg}
                 onUserClick={onUserClick}
               />

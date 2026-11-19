@@ -100,9 +100,11 @@ export const TopGifterSeats = ({
 
   const isHostEntity = (uid?: any, nick?: string): boolean => {
     const cUid = cleanId(uid);
+    const cNick = (nick || '').trim().toLowerCase();
     if (effectiveHostId && cUid && cUid === effectiveHostId) return true;
     if (isHost && currentUserId && cUid && cUid === cleanId(currentUserId)) return true;
-    if (cleanHostNick && nick && nick.trim().toLowerCase() === cleanHostNick) return true;
+    if (cleanHostNick && cNick && cNick === cleanHostNick) return true;
+    if (isHost && cleanHostNick && cNick && (cNick.includes(cleanHostNick) || cleanHostNick.includes(cNick))) return true;
     return false;
   };
 
@@ -213,11 +215,12 @@ export const TopGifterSeats = ({
       {/* 5 Vertical Slots on the Right Side of the screen */}
       <div className="absolute right-2.5 top-28 z-20 flex flex-col gap-2.5 pointer-events-auto select-none">
         {slots.map((slot, i) => {
-          const hasOccupant = !!slot.userId;
-          const hasGifts = (slot.totalGifts || 0) > 0;
-          const isSpeaking = slot.isSpeaker && !slot.isMuted;
+          const isHostSlot = isHostEntity(slot.userId, slot.nickname);
+          const hasOccupant = !!slot.userId && !isHostSlot;
+          const hasGifts = (slot.totalGifts || 0) > 0 && !isHostSlot;
+          const isSpeaking = slot.isSpeaker && !slot.isMuted && !isHostSlot;
 
-          // If the slot is empty, make it completely transparent ("container gula thakbe but ei skull gula thakbe na")
+          // If the slot is empty or belongs to the host, make it completely transparent ("container gula thakbe but ei skull gula thakbe na")
           if (!hasOccupant) {
             return (
               <div

@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PiGiftFill as Gift, PiHeartFill as Heart, PiStarFill as Star, PiUsersFill as Users, PiXBold as X, PiMicrophoneFill, PiMicrophoneSlashFill, PiSlidersFill, PiLockKeyFill as LockIcon } from 'react-icons/pi';
+import { motion } from 'framer-motion';
+import {
+  PiGiftFill as Gift,
+  PiHeartFill as Heart,
+  PiStarFill as Star,
+  PiUsersFill as Users,
+  PiXBold as X,
+  PiMicrophoneFill,
+  PiMicrophoneSlashFill,
+  PiSlidersFill,
+  PiLockKeyFill as LockIcon,
+  PiCaretDownBold as MinimizeIcon,
+  PiArrowsOutSimpleBold as MaximizeIcon,
+} from 'react-icons/pi';
 import { partyApi, type PartyRoomDetail, type RoomSeat } from '../api/party.api';
 import { giftsApi } from '../api/gifts.api';
 import { optional } from '../api/pending';
-import { useAuthStore, useSocketStore, useUIStore } from '../stores';
+import { useAuthStore, useSocketStore, useUIStore, usePartyPlayerStore } from '../stores';
+import { startNativeParty, stopNativeParty } from '../services/nativeParty';
 import { SeatBoard } from '../components/party/SeatBoard';
+import { SeatRequestBanner, type SeatRequester } from '../components/party/SeatRequestBanner';
 import { HostToolsSheet, PARTY_BOTTOM_ICONS } from '../components/party/HostToolsSheet';
 import { PkTypesSheet } from '../components/party/PkTypesSheet';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
@@ -20,20 +35,6 @@ import { useAgora } from '../hooks/useAgora';
 
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a7106ea67a98';
 
-/**
- * Party room — requirements #17 and #18.
- *
- * Deliberately dark: it is a live room, the same way the video live room is.
- *
- * **#18 is satisfied structurally**, not by a setting: the host circle and every
- * seat render that user's own avatar (`ownerId.avatar`, `seats[i].userId.avatar`)
- * with a letter fallback. There is no fixed `[HM]` asset anywhere in this screen
- * or in `SeatBoard`.
- *
- * Seat actions are specified in BACKEND-GUIDE.md §4.9 and not built yet, so
- * tapping a seat reports that rather than appearing to work.
- */
-
 type ChatFilter = 'all' | 'room' | 'chat';
 
 interface RoomMessage {
@@ -45,9 +46,26 @@ interface RoomMessage {
   amount?: number;
 }
 
-export const PartyRoom = () => {
-  const { id } = useParams<{ id: string }>();
+export interface PartyRoomProps {
+  partyIdProp?: string;
+  isMinimized?: boolean;
+  onMaximize?: () => void;
+  onMinimize?: () => void;
+  onClose?: () => void;
+}
+
+export const PartyRoom = ({
+  partyIdProp,
+  isMinimized: isMinimizedProp,
+  onMaximize: onMaximizeProp,
+  onMinimize: onMinimizeProp,
+  onClose: onCloseProp,
+}: PartyRoomProps = {}) => {
+  const { id: paramId } = useParams<{ id: string }>();
+  const id = partyIdProp || paramId;
   const navigate = useNavigate();
+  const { isMinimized: storeMinimized, setMinimized, closeParty, setPartyInfo } = usePartyPlayerStore();
+  const isMinimized = isMinimizedProp ?? storeMinimized;
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const socket = useSocketStore((s) => s.socket);
@@ -76,7 +94,47 @@ export const PartyRoom = () => {
   const [noiseReduction, setNoiseReduction] = useState(true);
   const [roomAudioMuted, setRoomAudioMuted] = useState(false);
 
-  const isHost = !!room && !!user && room.ownerId?._id === user._id;
+  // Seat request state for locked seats
+  const [pendingSeatRequest, setPendingSeatRequest] = useState<SeatRequester | null>(null);
+  const [pendingRequestedSeatIndex, setPendingRequestedSeatIndex] = useState<number | null>(null);
+  const pendingRequestedSeatIndexRef = useRef<number | null>(null);
+  const seatRequestTimerRef = useRef<any>(null);
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    pendingRequestedSeatIndexRef.current = pendingRequestedSeatIndex;
+  }, [pendingRequestedSeatIndex]);
+
+  const isHost = Boolean(
+    room && user && (
+      String(room.ownerId?._id || (room.ownerId as any)?.id || '') === String(user._id || (user as any)?.id || '')
+    )
+  );
+
+  const isHostRef = useRef(isHost);
+  useEffect(() => {
+    isHostRef.current = isHost;
+  }, [isHost]);
+
+  const mySeat = useMemo(() => {
+    if (!user || !room?.seats) return null;
+    const myId = String(user._id || (user as any)?.id || '');
+    if (!myId) return null;
+    return room.seats.find((s) => {
+      if (!s.userId) return false;
+      const sUid = typeof s.userId === 'object' && s.userId !== null
+        ? String(s.userId._id || (s.userId as any)?.id || '')
+        : String(s.userId);
+      return sUid === myId;
+    }) || null;
+  }, [room?.seats, user]);
+
+  const isSeated = isHost || Boolean(mySeat);
+  const isMySeatMuted = Boolean(!isHost && mySeat?.isMuted);
 
   const areSeatsLocked = useMemo(() => {
     if (!room?.seats) return false;
@@ -106,6 +164,12 @@ export const PartyRoom = () => {
           sessionStorage.setItem(`party_pwd_${id}`, effectivePwd);
         }
         partyApi.joinRoom(id, effectivePwd).catch(() => {});
+        setPartyInfo({
+          partyName: res.data.data.name,
+          hostNickname: res.data.data.ownerId?.nickname,
+          hostAvatar: res.data.data.ownerId?.avatar,
+        });
+        startNativeParty(res.data.data.name || 'Party Room');
         return true;
       } else {
         showToast('Party room not found or has been closed', 'info');
@@ -170,6 +234,20 @@ export const PartyRoom = () => {
     };
   }, [room?.agoraChannel, room?.agoraToken, isHost, joinChannel, leaveChannel]);
 
+  // Force mic off if user is not host and not seated, or if their seat is muted by the host
+  useEffect(() => {
+    if (!isHost) {
+      if (!isSeated || isMySeatMuted) {
+        if (micOn) {
+          toggleMic(false).catch(console.error);
+          if (socket && id) {
+            socket.emit('room:mic-toggle', { roomId: id, enabled: false });
+          }
+        }
+      }
+    }
+  }, [isSeated, isMySeatMuted, isHost, micOn, socket, id, toggleMic]);
+
   // Use remoteUsers to reflect active voice speakers in UI if needed
   useEffect(() => {
     console.log('Active remote users in voice chat:', remoteUsers);
@@ -218,6 +296,50 @@ export const PartyRoom = () => {
     const onSeat = (p: any) => {
       if (p?.roomId !== id || !p?.seats) return;
       setRoom((prev) => (prev ? { ...prev, seats: p.seats } : prev));
+
+      if (pendingRequestedSeatIndexRef.current) {
+        const reqSeat = p.seats.find((s: any) => s.index === pendingRequestedSeatIndexRef.current);
+        if (reqSeat?.userId) {
+          setPendingRequestedSeatIndex(null);
+        }
+      }
+
+      const myId = String(user?._id || (user as any)?.id || '');
+      const hostId = String(room?.ownerId?._id || (room?.ownerId as any)?.id || '');
+      if (myId && myId !== hostId) {
+        const foundSeat = p.seats.find((s: any) => {
+          if (!s?.userId) return false;
+          const uid = typeof s.userId === 'object' && s.userId !== null
+            ? String(s.userId._id || s.userId.id || '')
+            : String(s.userId);
+          return uid === myId;
+        });
+
+        if (!foundSeat) {
+          toggleMic(false).catch(console.error);
+        } else if (foundSeat.isMuted) {
+          toggleMic(false).catch(console.error);
+        }
+      }
+    };
+    const onUserKicked = (p: any) => {
+      const myId = String(user?._id || (user as any)?.id || '');
+      if (p?.userId && String(p.userId) === myId) {
+        showToast('You were kicked from the seat by the host', 'info');
+        toggleMic(false).catch(console.error);
+        if (socket && id) {
+          socket.emit('room:mic-toggle', { roomId: id, enabled: false });
+        }
+      }
+    };
+    const onUserStand = (p: any) => {
+      const myId = String(user?._id || (user as any)?.id || '');
+      if (p?.userId && String(p.userId) === myId) {
+        toggleMic(false).catch(console.error);
+        if (socket && id) {
+          socket.emit('room:mic-toggle', { roomId: id, enabled: false });
+        }
+      }
     };
     const onMicChanged = (p: any) => {
       if (!p?.userId) return;
@@ -285,11 +407,45 @@ export const PartyRoom = () => {
       }
     };
 
+    const onSeatRequested = (p: any) => {
+      if (!isHostRef.current) return;
+      if (!p || !p.requester) return;
+      setPendingSeatRequest({
+        userId: p.requester.userId,
+        nickname: p.requester.nickname,
+        avatar: p.requester.avatar,
+        level: p.requester.level,
+        seatIndex: Number(p.seatIndex),
+      });
+
+      if (seatRequestTimerRef.current) clearTimeout(seatRequestTimerRef.current);
+      seatRequestTimerRef.current = setTimeout(() => {
+        setPendingSeatRequest(null);
+      }, 25000);
+    };
+
+    const onSeatResponse = (p: any) => {
+      if (!p) return;
+      const currentUserId = userRef.current?._id || (userRef.current as any)?.id;
+      if (currentUserId && String(p.requesterUserId) === String(currentUserId)) {
+        setPendingRequestedSeatIndex(null);
+        if (p.approved) {
+          showToast(p.message || `Host approved your request for Seat ${p.seatIndex}!`, 'success');
+        } else {
+          showToast(p.message || `Host declined your request to sit on Seat ${p.seatIndex}.`, 'error');
+        }
+      }
+    };
+
     socket.on('room:user-joined', onJoin);
     socket.on('room:message', onMessage);
     socket.on('room:chat-message', onMessage);
     socket.on('room:win', onWin);
     socket.on('room:seat:update', onSeat);
+    socket.on('room:seat:requested', onSeatRequested);
+    socket.on('room:seat:response', onSeatResponse);
+    socket.on('room:user-kicked', onUserKicked);
+    socket.on('room:user-stand', onUserStand);
     socket.on('room:mic-changed', onMicChanged);
     socket.on('room:viewer-count', onViewerCount);
     socket.on('room:gift', onGift);
@@ -304,12 +460,17 @@ export const PartyRoom = () => {
       socket.off('room:chat-message', onMessage);
       socket.off('room:win', onWin);
       socket.off('room:seat:update', onSeat);
+      socket.off('room:seat:requested', onSeatRequested);
+      socket.off('room:seat:response', onSeatResponse);
+      socket.off('room:user-kicked', onUserKicked);
+      socket.off('room:user-stand', onUserStand);
       socket.off('room:mic-changed', onMicChanged);
       socket.off('room:viewer-count', onViewerCount);
       socket.off('room:gift', onGift);
       socket.off('notification:new', onGiftNotif);
       socket.off('room:closed', onClosed);
       socket.off('room:ended', onClosed);
+      if (seatRequestTimerRef.current) clearTimeout(seatRequestTimerRef.current);
     };
   }, [socket, id, joinRoom, leaveRoom]);
 
@@ -324,17 +485,54 @@ export const PartyRoom = () => {
     [messages]
   );
 
+  const handleAcceptSeatRequest = useCallback(
+    (req: SeatRequester) => {
+      if (!socket || !id) return;
+      socket.emit('room:seat:respond', {
+        roomId: id,
+        seatIndex: req.seatIndex,
+        requesterUserId: req.userId,
+        approved: true,
+      });
+      if (seatRequestTimerRef.current) clearTimeout(seatRequestTimerRef.current);
+      setPendingSeatRequest(null);
+      showToast(`Accepted ${req.nickname} for Seat ${req.seatIndex}`, 'success');
+    },
+    [socket, id, showToast]
+  );
+
+  const handleDeclineSeatRequest = useCallback(
+    (req: SeatRequester) => {
+      if (!socket || !id) return;
+      socket.emit('room:seat:respond', {
+        roomId: id,
+        seatIndex: req.seatIndex,
+        requesterUserId: req.userId,
+        approved: false,
+      });
+      if (seatRequestTimerRef.current) clearTimeout(seatRequestTimerRef.current);
+      setPendingSeatRequest(null);
+      showToast(`Declined ${req.nickname}'s request for Seat ${req.seatIndex}`, 'info');
+    },
+    [socket, id, showToast]
+  );
+
   const handleSeatPress = async (seat: RoomSeat) => {
     if (!id) return;
-    if (seat.isLocked) {
-      showToast('This seat is locked', 'info');
-      return;
-    }
+
     const occupant = seat.userId && typeof seat.userId === 'object' ? seat.userId : null;
     if (occupant) {
       if (occupant._id === user?._id) {
         const res = await optional(partyApi.stand(id, seat.index)).catch(() => null);
-        if (!res?.success) showToast(res?.error || 'Failed to leave seat', 'error');
+        if (res?.success) {
+          await toggleMic(false).catch(console.error);
+          if (socket && id) {
+            socket.emit('room:mic-toggle', { roomId: id, enabled: false });
+          }
+          showToast('Left seat', 'info');
+        } else {
+          showToast(res?.error || 'Failed to leave seat', 'error');
+        }
         return;
       }
       
@@ -348,6 +546,53 @@ export const PartyRoom = () => {
       }
 
       navigate(`/user/${occupant._id}`);
+      return;
+    }
+
+    // Seat is empty. Check if locked:
+    if (seat.isLocked) {
+      if (isHost) {
+        const currentPwd = sessionStorage.getItem(`party_pwd_${id}`) || undefined;
+        const res = await optional(partyApi.sit(id, seat.index, currentPwd)).catch(() => null);
+        if (!res?.success) {
+          showToast(res?.error || 'Failed to take seat', 'error');
+        }
+        return;
+      }
+
+      // Guest clicked locked seat:
+      if (!user?.gender || user.gender === 'unspecified') {
+        setPendingSeatIndex(seat.index);
+        setShowGenderModal(true);
+        return;
+      }
+
+      // Check if user is already seated in this room
+      const myId = String(user?._id || (user as any)?.id || '');
+      const alreadySeated = room?.seats?.find((s) => {
+        if (!s.userId) return false;
+        const uid = typeof s.userId === 'object' && s.userId !== null
+          ? String((s.userId as any)._id || (s.userId as any).id || '')
+          : String(s.userId);
+        return uid === myId;
+      });
+      if (alreadySeated) {
+        showToast(`You are already sitting on Seat ${alreadySeated.index}. Leave your current seat first.`, 'info');
+        return;
+      }
+
+      if (pendingRequestedSeatIndex === seat.index) {
+        showToast(`Already requested Seat ${seat.index}. Waiting for host response...`, 'info');
+        return;
+      }
+
+      if (socket) {
+        socket.emit('room:seat:request', { roomId: id, seatIndex: seat.index });
+        setPendingRequestedSeatIndex(seat.index);
+        showToast(`Request sent to host for Seat ${seat.index}`, 'success');
+      } else {
+        showToast('Connecting to room server...', 'error');
+      }
       return;
     }
 
@@ -423,24 +668,53 @@ export const PartyRoom = () => {
     showToast(next ? 'Room audio muted' : 'Room audio unmuted', 'info');
   };
 
-  const handleCloseParty = async () => {
+  const handleMinimize = useCallback(() => {
+    if (onMinimizeProp) {
+      onMinimizeProp();
+    } else {
+      setMinimized(true);
+      navigate(-1);
+    }
+  }, [onMinimizeProp, setMinimized, navigate]);
+
+  const handleMaximize = useCallback(() => {
+    if (onMaximizeProp) {
+      onMaximizeProp();
+    } else {
+      setMinimized(false);
+      navigate(`/party/${id}`);
+    }
+  }, [onMaximizeProp, setMinimized, navigate, id]);
+
+  const handleCloseParty = useCallback(async () => {
     if (!id) return;
     leavingRoomRef.current = true;
+    stopNativeParty();
     if (isHost) {
-      if (window.confirm('Are you sure you want to close this party permanently?')) {
+      if (isMinimized || window.confirm('Are you sure you want to close this party permanently?')) {
         try {
           await partyApi.closeRoom(id);
         } catch {
           await partyApi.leaveRoom(id).catch(() => {});
         }
         showToast('Party room closed permanently', 'success');
-        navigate('/party', { replace: true });
+        closeParty();
+        if (onCloseProp) {
+          onCloseProp();
+        } else {
+          navigate('/party', { replace: true });
+        }
       }
     } else {
       await partyApi.leaveRoom(id).catch(() => {});
-      navigate('/party', { replace: true });
+      closeParty();
+      if (onCloseProp) {
+        onCloseProp();
+      } else {
+        navigate('/party', { replace: true });
+      }
     }
-  };
+  }, [id, isHost, isMinimized, showToast, closeParty, onCloseProp, navigate]);
 
   const handleTool = (key: string, label: string) => {
     if (key === 'pk') {
@@ -514,6 +788,22 @@ export const PartyRoom = () => {
   };
 
   const handleToggleMic = async () => {
+    if (!isSeated) {
+      showToast('Please take a seat on the board to use microphone', 'info');
+      if (micOn) {
+        await toggleMic(false).catch(console.error);
+      }
+      return;
+    }
+
+    if (isMySeatMuted) {
+      showToast('Your seat has been muted by the host', 'info');
+      if (micOn) {
+        await toggleMic(false).catch(console.error);
+      }
+      return;
+    }
+
     try {
       const nextState = !micOn;
       const isEnabled = await toggleMic(nextState);
@@ -678,8 +968,127 @@ export const PartyRoom = () => {
     );
   }
 
+  if (isMinimized) {
+    return (
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragConstraints={{
+          left: typeof window !== 'undefined' ? -(window.innerWidth - 180) : -250,
+          right: 0,
+          top: typeof window !== 'undefined' ? -(window.innerHeight - 200) : -400,
+          bottom: 10,
+        }}
+        onClick={handleMaximize}
+        className="fixed bottom-24 right-3.5 z-50 w-44 rounded-2xl p-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-purple-500/40 bg-gradient-to-br from-[#1F133D]/95 via-[#160B2E]/95 to-[#0D051D]/95 backdrop-blur-xl cursor-pointer select-none touch-none text-white animate-fade-in"
+      >
+        {/* Top bar with mini badge and action buttons */}
+        <div className="flex items-center justify-between gap-1 mb-2 pointer-events-auto">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-600/80 shadow-[0_0_8px_rgba(168,85,247,0.5)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
+            <span className="text-[9px] font-black tracking-widest uppercase">PARTY</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMaximize();
+              }}
+              className="p-1 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-transform"
+              title="Maximize"
+            >
+              <MaximizeIcon className="w-3 h-3 text-white" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseParty();
+              }}
+              className="p-1 rounded-full bg-white/10 hover:bg-red-500/80 active:scale-90 transition-transform"
+              title="Close Party"
+            >
+              <X className="w-3 h-3 text-white" />
+            </button>
+          </div>
+        </div>
+
+        {/* Middle info: Host Avatar + Room Name */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="relative w-10 h-10 rounded-full overflow-hidden bg-white/10 ring-2 ring-yellow-400/80 shrink-0">
+            {room?.ownerId?.avatar ? (
+              <img src={room.ownerId.avatar} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="w-full h-full flex items-center justify-center text-xs font-bold text-white">
+                {initial(room?.ownerId?.nickname)}
+              </span>
+            )}
+            {mySeat && (
+              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border border-black flex items-center justify-center">
+                <span className="w-1 h-1 rounded-full bg-white" />
+              </span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-white truncate leading-tight">
+              {room?.name || room?.ownerId?.nickname || 'Party Room'}
+            </p>
+            <p className="text-[10px] text-white/60 truncate flex items-center gap-1 mt-0.5">
+              <Users className="w-2.5 h-2.5" /> {compactNumber(room?.viewerCount ?? 1)}
+            </p>
+          </div>
+        </div>
+
+        {/* Audio soundwaves / voice equalizer + Quick Mic Toggle button */}
+        <div className="flex items-center justify-between pt-1.5 border-t border-white/10 pointer-events-auto">
+          {/* Soundwave equalizer */}
+          <div className="flex items-center gap-0.5 h-3">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <span
+                key={i}
+                className="w-1 rounded-full bg-gradient-to-t from-pink-500 to-purple-400 animate-pulse"
+                style={{
+                  height: `${6 + (i % 3) * 4}px`,
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            ))}
+            <span className="text-[9px] text-white/50 ml-1 font-mono">Live</span>
+          </div>
+
+          {/* Mic toggle if on seat or host */}
+          {(isHost || mySeat) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleMic();
+              }}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
+                micEnabled
+                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                  : 'bg-red-500/30 text-red-300 border border-red-500/50'
+              }`}
+            >
+              {micEnabled ? <PiMicrophoneFill className="w-2.5 h-2.5" /> : <PiMicrophoneSlashFill className="w-2.5 h-2.5" />}
+              <span>{micEnabled ? 'On' : 'Off'}</span>
+            </button>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#150B2E] flex flex-col relative overflow-hidden">
+      {/* Locked Seat Join Request Banner for Host */}
+      <SeatRequestBanner
+        requester={pendingSeatRequest}
+        onAccept={handleAcceptSeatRequest}
+        onDecline={handleDeclineSeatRequest}
+      />
+
       {/* ── Header (#17.1) ─────────────────────────────────────── */}
       <header className="px-3 pt-3 pb-2">
         <div className="flex items-center gap-2">
@@ -721,9 +1130,19 @@ export const PartyRoom = () => {
           </span>
 
           <button
+            onClick={handleMinimize}
+            aria-label="Minimize party room"
+            title="Minimize to floating window"
+            className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 active:scale-95 transition-transform hover:bg-white/20"
+          >
+            <MinimizeIcon className="w-4 h-4" />
+          </button>
+
+          <button
             onClick={handleCloseParty}
-            aria-label="Close"
-            className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0"
+            aria-label="Close party room"
+            title="Leave party"
+            className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 active:scale-95 transition-transform hover:bg-red-500/30"
           >
             <X className="w-4 h-4" />
           </button>
@@ -763,6 +1182,7 @@ export const PartyRoom = () => {
               ? (room.seats && room.seats.length > 0 ? Math.min(room.seatCount, room.seats.length) : room.seatCount)
               : (room?.seats && room.seats.length > 0 ? room.seats.length : 8)
           }
+          pendingSeatIndex={pendingRequestedSeatIndex}
           onSeatPress={handleSeatPress}
           onHostPress={() => room?.ownerId?._id && navigate(room.ownerId._id === user?._id ? '/profile' : `/user/${room.ownerId._id}`)}
         />
@@ -862,10 +1282,23 @@ export const PartyRoom = () => {
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={handleToggleMic}
-            className={`relative w-9 h-9 rounded-full flex items-center justify-center ${micOn ? 'bg-white/10' : 'bg-red-500/80'}`}
-            aria-label={micOn ? 'Mute' : 'Unmute'}
+            className={`relative w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+              !isSeated
+                ? 'bg-white/5 text-white/30 border border-white/10 opacity-50'
+                : isMySeatMuted
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/40 opacity-70'
+                  : micOn
+                    ? 'bg-white/10 text-white'
+                    : 'bg-red-500/80 text-white'
+            }`}
+            aria-label={!isSeated ? 'Mic Disabled (Not Seated)' : isMySeatMuted ? 'Mic Muted (Host Muted)' : micOn ? 'Mute' : 'Unmute'}
+            title={!isSeated ? 'Take a seat on the board to speak' : isMySeatMuted ? 'Seat muted by host' : (micOn ? 'Mute Mic' : 'Unmute Mic')}
           >
-            {micOn ? <PiMicrophoneFill className="w-[18px] h-[18px] text-white" /> : <PiMicrophoneSlashFill className="w-[18px] h-[18px] text-white" />}
+            {(!isSeated || isMySeatMuted || !micOn) ? (
+              <PiMicrophoneSlashFill className={`w-[18px] h-[18px] ${!isSeated ? 'text-white/30' : 'text-white'}`} />
+            ) : (
+              <PiMicrophoneFill className="w-[18px] h-[18px] text-white" />
+            )}
           </button>
           
           <button
@@ -891,6 +1324,8 @@ export const PartyRoom = () => {
         isOpen={toolsOpen}
         onClose={() => setToolsOpen(false)}
         isHost={isHost}
+        isSeated={isSeated}
+        isMySeatMuted={isMySeatMuted}
         onAction={handleTool}
         room={room}
         micOn={micOn}
@@ -938,8 +1373,17 @@ export const PartyRoom = () => {
         }}
         onSuccess={async () => {
           if (pendingSeatIndex && id) {
-            const currentPwd = sessionStorage.getItem(`party_pwd_${id}`) || undefined;
-            await optional(partyApi.sit(id, pendingSeatIndex, currentPwd)).catch(() => null);
+            const targetSeat = room?.seats?.find((s) => s.index === pendingSeatIndex);
+            if (targetSeat?.isLocked && !isHost) {
+              if (socket) {
+                socket.emit('room:seat:request', { roomId: id, seatIndex: pendingSeatIndex });
+                setPendingRequestedSeatIndex(pendingSeatIndex);
+                showToast(`Request sent to host for Seat ${pendingSeatIndex}`, 'success');
+              }
+            } else {
+              const currentPwd = sessionStorage.getItem(`party_pwd_${id}`) || undefined;
+              await optional(partyApi.sit(id, pendingSeatIndex, currentPwd)).catch(() => null);
+            }
             setPendingSeatIndex(null);
           }
         }}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { App as CapApp } from '@capacitor/app';
-import { useUIStore } from '../stores';
+import { useUIStore, useCallStore, usePartyPlayerStore } from '../stores';
 
 /**
  * Handles Android hardware back button, system navigation gestures,
@@ -25,6 +25,25 @@ export function useAndroidBackHandler() {
     const setupCapacitorBack = async () => {
       try {
         handler = await CapApp.addListener('backButton', ({ canGoBack }) => {
+          // If in an active full-screen call, minimize to floating window instead of disconnecting or navigating!
+          const { activeCall, isMinimized, setMinimized } = useCallStore.getState();
+          if (activeCall && !isMinimized) {
+            setMinimized(true);
+            return;
+          }
+
+          // If in an active full-screen party room, minimize to floating window instead of disconnecting!
+          const { activePartyId, isMinimized: isPartyMin, setMinimized: setPartyMin } = usePartyPlayerStore.getState();
+          if (activePartyId && !isPartyMin) {
+            setPartyMin(true);
+            if (window.history.state && window.history.state.idx > 0) {
+              navigate(-1);
+            } else {
+              navigate('/party', { replace: true });
+            }
+            return;
+          }
+
           const currentPath = window.location.pathname;
 
           // If on the home / root page
@@ -95,6 +114,12 @@ export function useAndroidBackHandler() {
 
       // Swiped right with sufficient distance and primarily horizontal movement within 500ms
       if (deltaX > 75 && deltaY < 60 && deltaTime < 500) {
+        const { activeCall, isMinimized, setMinimized } = useCallStore.getState();
+        if (activeCall && !isMinimized) {
+          setMinimized(true);
+          return;
+        }
+
         if (location.pathname !== '/') {
           navigate(-1);
         }

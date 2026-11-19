@@ -9,11 +9,20 @@ interface SeatBoardProps {
   seatCount: number;
   onSeatPress: (seat: RoomSeat) => void;
   onHostPress?: () => void;
+  pendingSeatIndex?: number | null;
 }
 
 const ROWS = [2, 3, 5, 5];
 
-const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) => {
+const SeatSlot = ({
+  seat,
+  onPress,
+  isPending,
+}: {
+  seat: RoomSeat;
+  onPress: () => void;
+  isPending?: boolean;
+}) => {
   const occupant = seat.userId && typeof seat.userId === 'object' ? seat.userId : null;
   const giftVal = seat.giftValue ?? 0;
 
@@ -21,13 +30,15 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
     <button
       onClick={onPress}
       className="flex flex-col items-center gap-1 w-[56px] shrink-0"
-      aria-label={occupant ? `Seat ${seat.index}: ${occupant.nickname}` : `Empty seat ${seat.index}`}
+      aria-label={occupant ? `Seat ${seat.index}: ${occupant.nickname}` : `Seat ${seat.index}`}
     >
       <span className="relative">
         <span
-          className={`w-[48px] h-[48px] rounded-full flex items-center justify-center overflow-hidden transition-transform active:scale-95 ${
+          className={`w-[48px] h-[48px] rounded-full flex items-center justify-center overflow-hidden transition-all active:scale-95 ${
             occupant
               ? 'bg-white/10 ring-2 ring-purple-400/60 shadow-md'
+              : isPending
+              ? 'bg-amber-500/20 ring-2 ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.6)] animate-pulse'
               : 'bg-white/10 border border-white/20'
           }`}
         >
@@ -39,6 +50,11 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
                 {initial(occupant.nickname)}
               </span>
             )
+          ) : isPending ? (
+            <div className="flex flex-col items-center justify-center">
+              <Lock className="w-3.5 h-3.5 text-amber-300 animate-bounce" />
+              <span className="text-[8px] font-black text-amber-300 uppercase tracking-tighter">Wait</span>
+            </div>
           ) : seat.isLocked ? (
             <Lock className="w-4 h-4 text-white/40" />
           ) : (
@@ -49,7 +65,12 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
           )}
         </span>
 
-        {!occupant && !seat.isLocked && (
+        {!occupant && isPending && (
+          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center shadow">
+            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          </span>
+        )}
+        {!occupant && !seat.isLocked && !isPending && (
           <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-pink-500 flex items-center justify-center shadow">
             <Plus className="w-2.5 h-2.5 text-white" strokeWidth={3} />
           </span>
@@ -66,7 +87,13 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
       </span>
 
       <span className="text-[10px] text-white/90 font-medium truncate w-full text-center leading-tight">
-        {occupant ? occupant.nickname : `Seat ${seat.index}`}
+        {occupant ? (
+          occupant.nickname
+        ) : isPending ? (
+          <span className="text-amber-300 font-bold">Waiting...</span>
+        ) : (
+          `Seat ${seat.index}`
+        )}
       </span>
 
       <span className="text-[9px] text-pink-300 font-bold flex items-center gap-0.5 leading-none">
@@ -77,7 +104,14 @@ const SeatSlot = ({ seat, onPress }: { seat: RoomSeat; onPress: () => void }) =>
   );
 };
 
-export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: SeatBoardProps) => {
+export const SeatBoard = ({
+  host,
+  seats,
+  seatCount,
+  onSeatPress,
+  onHostPress,
+  pendingSeatIndex,
+}: SeatBoardProps) => {
   const is8Seats = seatCount <= 8;
 
   // Fill gaps so the board renders the exact seatCount requested.
@@ -113,7 +147,13 @@ export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: 
     >
       {/* Row 1 — Left Seat, Host (centre), Right Seat */}
       <div className="flex justify-center items-center gap-4 mb-4">
-        {row1Seats[0] && <SeatSlot seat={row1Seats[0]} onPress={() => onSeatPress(row1Seats[0])} />}
+        {row1Seats[0] && (
+          <SeatSlot
+            seat={row1Seats[0]}
+            isPending={pendingSeatIndex === row1Seats[0].index}
+            onPress={() => onSeatPress(row1Seats[0])}
+          />
+        )}
 
         {/* Host — centre, large */}
         <div className="flex flex-col items-center gap-1">
@@ -136,14 +176,25 @@ export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: 
           </span>
         </div>
 
-        {row1Seats[1] && <SeatSlot seat={row1Seats[1]} onPress={() => onSeatPress(row1Seats[1])} />}
+        {row1Seats[1] && (
+          <SeatSlot
+            seat={row1Seats[1]}
+            isPending={pendingSeatIndex === row1Seats[1].index}
+            onPress={() => onSeatPress(row1Seats[1])}
+          />
+        )}
       </div>
 
       {/* Row 2 */}
       {row2Seats.length > 0 && (
         <div className={`flex justify-center ${is8Seats ? 'gap-1.5' : 'gap-3'} ${row3Seats.length > 0 ? 'mb-4' : ''}`}>
           {row2Seats.map((seat) => (
-            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+            <SeatSlot
+              key={seat.index}
+              seat={seat}
+              isPending={pendingSeatIndex === seat.index}
+              onPress={() => onSeatPress(seat)}
+            />
           ))}
         </div>
       )}
@@ -152,7 +203,12 @@ export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: 
       {row3Seats.length > 0 && (
         <div className="flex justify-center gap-1.5 mb-4">
           {row3Seats.map((seat) => (
-            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+            <SeatSlot
+              key={seat.index}
+              seat={seat}
+              isPending={pendingSeatIndex === seat.index}
+              onPress={() => onSeatPress(seat)}
+            />
           ))}
         </div>
       )}
@@ -161,7 +217,12 @@ export const SeatBoard = ({ host, seats, seatCount, onSeatPress, onHostPress }: 
       {row4Seats.length > 0 && (
         <div className="flex justify-center gap-1.5">
           {row4Seats.map((seat) => (
-            <SeatSlot key={seat.index} seat={seat} onPress={() => onSeatPress(seat)} />
+            <SeatSlot
+              key={seat.index}
+              seat={seat}
+              isPending={pendingSeatIndex === seat.index}
+              onPress={() => onSeatPress(seat)}
+            />
           ))}
         </div>
       )}

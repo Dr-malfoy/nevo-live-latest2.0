@@ -41,7 +41,7 @@ import {
 import { chatApi, callApi, giftsApi, uploadApi, reportApi, usersApi, streamsApi } from '../api';
 import { securityApi } from '../api/economy.api';
 import { optional } from '../api/pending';
-import { useAuthStore, useSocketStore, useUIStore } from '../stores';
+import { useAuthStore, useSocketStore, useUIStore, useCallStore } from '../stores';
 import { Avatar } from '../components/user';
 import { GiftPanel } from '../components/stream';
 import { Modal } from '../components/ui';
@@ -1211,7 +1211,7 @@ export const ChatThread = () => {
     const onCallInvite = (payload: any) => {
       if (payload?.initiatorId === otherIdRef.current) {
         socket.emit('call:ringing', { callId: payload.callId });
-        setCall({
+        useCallStore.getState().setActiveCall({
           incoming: {
             callId: payload.callId,
             channel: payload.channel,
@@ -1226,10 +1226,10 @@ export const ChatThread = () => {
     };
     socket.on('call:invite', onCallInvite);
 
-
     const onCallAccept = (payload: any) => {
-      if (payload?.callId && callRef.current?.outgoing?.callId === payload.callId) {
-        setCallAccepted(true);
+      const activeCall = useCallStore.getState().activeCall;
+      if (payload?.callId && activeCall?.outgoing?.callId === payload.callId) {
+        useCallStore.getState().setCallAccepted(true);
         if (payload?.audienceCoins != null) {
           updateUser({ coins: payload.audienceCoins });
         }
@@ -1482,7 +1482,7 @@ export const ChatThread = () => {
         setCallAccepted(false);
         const { data } = await callApi.create(targetIds, type, 'group');
         if (data.success && data.data) {
-          setCall({
+          useCallStore.getState().setActiveCall({
             outgoing: {
               callId: data.data.callId,
               channel: data.data.channel,
@@ -1522,7 +1522,7 @@ export const ChatThread = () => {
       const { data } = await callApi.create([other._id], type, 'messenger');
       if (data.success && data.data) {
         const isOnline = data.data.recipientOnline ?? Boolean(other.online);
-        setCall({
+        useCallStore.getState().setActiveCall({
           outgoing: {
             callId: data.data.callId,
             channel: data.data.channel,
@@ -3293,24 +3293,6 @@ export const ChatThread = () => {
         minBalance={insufficientCoins.minBalance}
         onClose={() => setInsufficientCoins({ visible: false })}
       />
-
-      {/* Call Screen */}
-      {call && (
-        <CallScreen
-          incoming={call.incoming}
-          outgoing={call.outgoing}
-          accepted={callAccepted}
-          coinsPerMinute={call.outgoing?.coinsPerMinute || call.incoming?.coinsPerMinute || 0}
-          isAudience={!!call.outgoing}
-          onClose={(outcome?: 'ended' | 'rejected') => {
-            setCall(null);
-            setCallAccepted(false);
-            if (outcome === 'rejected') showToast('Call declined', 'info');
-            loadChat();
-            setTimeout(loadChat, 500);
-          }}
-        />
-      )}
 
       {/* Gift Animation Burst Overlay */}
       <ChatGiftOverlay burst={giftBurst} onDismiss={() => setGiftBurst(null)} />

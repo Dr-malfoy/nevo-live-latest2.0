@@ -1068,6 +1068,44 @@ export const useCall = () => {
   }, [clearRemoteContainers]);
 
 
+  // Keep microphone stream active and resume AudioContext if backgrounded/visibility changed
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (joinedRef.current && micOnRef.current) {
+        if (localAudioRef.current) {
+          try {
+            localAudioRef.current.setEnabled(true);
+            const mediaTrack = (localAudioRef.current as any)?._mediaStreamTrack ||
+                               (localAudioRef.current as any)?.getMediaStreamTrack?.();
+            if (mediaTrack && !mediaTrack.enabled) {
+              mediaTrack.enabled = true;
+            }
+          } catch {}
+        }
+        if (fallbackStreamRef.current) {
+          try {
+            fallbackStreamRef.current.getAudioTracks().forEach((track) => {
+              if (!track.enabled) track.enabled = true;
+            });
+          } catch {}
+        }
+        try {
+          const audioCtx = (AgoraRTC as any)?.audioContext;
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume?.();
+          }
+        } catch {}
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, []);
+
   return {
     joined,
     remoteUsers,

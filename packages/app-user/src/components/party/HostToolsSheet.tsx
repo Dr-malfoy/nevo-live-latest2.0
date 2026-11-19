@@ -28,6 +28,8 @@ export interface HostToolsSheetProps {
   isOpen: boolean;
   onClose: () => void;
   isHost: boolean;
+  isSeated?: boolean;
+  isMySeatMuted?: boolean;
   onAction: (key: string, label: string) => void;
   room?: PartyRoomDetail | null;
   micOn?: boolean;
@@ -41,6 +43,8 @@ export const HostToolsSheet = ({
   isOpen,
   onClose,
   isHost,
+  isSeated = true,
+  isMySeatMuted = false,
   onAction,
   room,
   micOn = false,
@@ -394,27 +398,49 @@ export const HostToolsSheet = ({
               {/* Mic Toggle */}
               <button
                 type="button"
-                onClick={() => onAction('mic', micOn ? 'Mute Mic' : 'Turn Mic On')}
-                className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 text-center transition-all active:scale-95 ${
-                  micOn
-                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                    : 'bg-white/[0.04] border-white/10 text-white/70'
+                onClick={() => {
+                  if (!isSeated || isMySeatMuted) return;
+                  onAction('mic', micOn ? 'Mute Mic' : 'Turn Mic On');
+                }}
+                disabled={!isSeated || isMySeatMuted}
+                className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 text-center transition-all ${
+                  !isSeated
+                    ? 'bg-white/[0.02] border-white/5 opacity-40 cursor-not-allowed text-white/30'
+                    : isMySeatMuted
+                      ? 'bg-red-500/10 border-red-500/30 opacity-60 cursor-not-allowed text-red-400'
+                      : micOn
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 active:scale-95'
+                        : 'bg-white/[0.04] border-white/10 text-white/70 active:scale-95'
                 }`}
               >
                 <div
                   className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    micOn ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' : 'bg-red-500/20 text-red-400'
+                    !isSeated
+                      ? 'bg-white/5 text-white/30'
+                      : isMySeatMuted
+                        ? 'bg-red-500/20 text-red-400'
+                        : micOn
+                          ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                          : 'bg-red-500/20 text-red-400'
                   }`}
                 >
-                  {micOn ? <PiMicrophoneFill className="w-5 h-5" /> : <PiMicrophoneSlashFill className="w-5 h-5" />}
+                  {micOn && isSeated && !isMySeatMuted ? <PiMicrophoneFill className="w-5 h-5" /> : <PiMicrophoneSlashFill className="w-5 h-5" />}
                 </div>
-                <span className="text-[11px] font-bold text-white">{micOn ? 'Mic: ON' : 'Mic: MUTED'}</span>
+                <span className="text-[11px] font-bold text-white">
+                  {!isSeated ? 'Mic: DISABLED' : isMySeatMuted ? 'Mic: MUTED (Host)' : micOn ? 'Mic: ON' : 'Mic: MUTED'}
+                </span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[8px] font-black ${
-                    micOn ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'
+                    !isSeated
+                      ? 'bg-white/10 text-white/40'
+                      : isMySeatMuted
+                        ? 'bg-red-500/30 text-red-300'
+                        : micOn
+                          ? 'bg-emerald-500 text-black'
+                          : 'bg-red-500 text-white'
                   }`}
                 >
-                  {micOn ? 'TALKING' : 'MUTED'}
+                  {!isSeated ? 'NOT SEATED' : isMySeatMuted ? 'HOST MUTED' : micOn ? 'TALKING' : 'MUTED'}
                 </span>
               </button>
 

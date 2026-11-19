@@ -21,13 +21,15 @@ import {
   PiFastForwardFill as FastForwardIcon,
   PiShieldCheckFill as ShieldCheck,
   PiSmileyFill as SmileyIcon,
+  PiCaretDownBold as MinimizeIcon,
+  PiArrowsOutSimpleBold as MaximizeIcon,
 } from 'react-icons/pi';
 import { Avatar } from '../user';
 import { DiamondIcon } from '../ui/CurrencyIcon';
 import { useCall, type CallChatMessage } from '../../hooks/useCall';
 import { useVideoFilters, FILTERS } from '../../hooks/useVideoFilters';
 import { callApi, type CallParticipant } from '../../api/call.api';
-import { useSocketStore, useAuthStore } from '../../stores';
+import { useSocketStore, useAuthStore, useCallStore } from '../../stores';
 import { CoinsFinishedOverlay } from './CoinsFinishedOverlay';
 import { ringtone, reconnectSound } from '../../lib/ringtone';
 
@@ -41,6 +43,7 @@ interface CallScreenProps {
     token: string;
     initiator: { nickname: string; avatar?: string } | null;
     isFreeMinuteApplied?: boolean;
+    coinsPerMinute?: number;
   };
   /** Outgoing call — caller dials and waits. */
   outgoing?: {
@@ -50,6 +53,7 @@ interface CallScreenProps {
     token: string;
     callee?: { nickname: string; avatar?: string; online?: boolean } | null;
     isFreeMinuteApplied?: boolean;
+    coinsPerMinute?: number;
   };
   /** True when the callee accepted (server emits `call:accept`) — caller stops ringing. */
   accepted?: boolean;
@@ -62,6 +66,11 @@ interface CallScreenProps {
   isAudience?: boolean;
   /** Whether 1st minute free (1:1 Subscription VIP) is applied */
   isFreeMinuteApplied?: boolean;
+  isMinimized?: boolean;
+  isBannerMode?: boolean;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onBannerMode?: (banner: boolean) => void;
 }
 
 interface RosterEntry extends CallParticipant {
@@ -84,7 +93,36 @@ export const CallScreen = ({
   coinsPerMinute = 0,
   isAudience = false,
   isFreeMinuteApplied,
+  isMinimized: isMinimizedProp,
+  isBannerMode: isBannerModeProp,
+  onMinimize: onMinimizeProp,
+  onMaximize: onMaximizeProp,
+  onBannerMode: onBannerModeProp,
 }: CallScreenProps) => {
+  const callStoreMinimized = useCallStore((s) => s.isMinimized);
+  const callStoreBannerMode = useCallStore((s) => s.isBannerMode);
+  const setStoreMinimized = useCallStore((s) => s.setMinimized);
+  const setStoreBannerMode = useCallStore((s) => s.setBannerMode);
+
+  const isMinimized = isMinimizedProp ?? callStoreMinimized;
+  const isBannerMode = isBannerModeProp ?? callStoreBannerMode;
+
+  const handleMinimize = useCallback(() => {
+    onMinimizeProp?.();
+    setStoreMinimized(true);
+  }, [onMinimizeProp, setStoreMinimized]);
+
+  const handleMaximize = useCallback(() => {
+    onMaximizeProp?.();
+    setStoreMinimized(false);
+    setStoreBannerMode(false);
+  }, [onMaximizeProp, setStoreMinimized, setStoreBannerMode]);
+
+  const handleBannerMode = useCallback((banner: boolean) => {
+    onBannerModeProp?.(banner);
+    setStoreBannerMode(banner);
+  }, [onBannerModeProp, setStoreBannerMode]);
+
   const {
     joined,
     remoteUsers,
@@ -168,9 +206,65 @@ export const CallScreen = ({
       reconnectSound.stop();
       try {
         (window as any).NevoNativeBridge?.stopRingtone?.();
+        (window as any).NevoNativeBridge?.stopOngoingCall?.();
       } catch {}
     };
   }, []);
+
+  // Foreground Call Service & WakeLock bridge: keep microphone streaming alive in background
+  useEffect(() => {
+    const bridge = (window as any).NevoNativeBridge;
+    if (callConnected) {
+      const callerName = other?.nickname || 'Friend';
+      const callType = isVideo ? 'video' : 'audio';
+      try {
+        bridge?.startOngoingCall?.(callerName, callType);
+      } catch {}
+
+      let wakeLockSentinel: any = null;
+      if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+        (navigator as any).wakeLock.request('screen').then((lock: any) => {
+          wakeLockSentinel = lock;
+        }).catch(() => {});
+      }
+
+      return () => {
+        try {
+          bridge?.stopOngoingCall?.();
+        } catch {}
+        if (wakeLockSentinel) {
+          wakeLockSentinel.release().catch(() => {});
+        }
+      };
+    } else {
+      try {
+        bridge?.stopOngoingCall?.();
+      } catch {}
+    }
+  }, [callConnected, other?.nickname, isVideo]);
+
+  // Intercept browser / Android back gestures so call minimizes instead of disconnecting
+  useEffect(() => {
+    if (!isMinimized) {
+      try {
+        window.history.pushState({ inCallScreen: true }, '');
+      } catch {}
+
+      const onPopState = () => {
+        if (!useCallStore.getState().isMinimized) {
+          handleMinimize();
+          try {
+            window.history.pushState(null, '');
+          } catch {}
+        }
+      };
+
+      window.addEventListener('popstate', onPopState);
+      return () => {
+        window.removeEventListener('popstate', onPopState);
+      };
+    }
+  }, [isMinimized, handleMinimize]);
 
   // Controls UI state
   const [chatOpen, setChatOpen] = useState(false);
@@ -303,6 +397,9 @@ export const CallScreen = ({
   const handleReject = useCallback(async () => {
     ringtone.stop();
     reconnectSound.stop();
+    try {
+      (window as any).NevoNativeBridge?.stopOngoingCall?.();
+    } catch {}
     if (endedRef.current) return;
     endedRef.current = true;
     if (incoming) await callApi.end(incoming.callId, 'rejected').catch(() => {});
@@ -315,6 +412,9 @@ export const CallScreen = ({
     endedRef.current = true;
     ringtone.stop();
     reconnectSound.stop();
+    try {
+      (window as any).NevoNativeBridge?.stopOngoingCall?.();
+    } catch {}
     if (session) {
       await callApi.end(session.callId, 'ended').catch(() => {});
       if (isAudience && coinsPerMinute > 0) {
@@ -798,6 +898,245 @@ export const CallScreen = ({
     { height: [10, 28, 14, 38, 12], duration: 1.15 },
   ];
 
+  // Mode B: Top Persistent Call Notification Banner (when user cuts/hides mini window)
+  if (isMinimized && isBannerMode) {
+    return (
+      <>
+        {/* Underlying video canvas kept in DOM so Agora audio/video tracks remain alive */}
+        <div id="call-video-area" className="hidden pointer-events-none" />
+
+        <motion.div
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -60, opacity: 0 }}
+          className="fixed top-2 sm:top-4 inset-x-3 sm:inset-x-6 z-[9999] max-w-lg mx-auto bg-neutral-900/95 backdrop-blur-2xl border border-white/20 shadow-[0_12px_45px_rgba(0,0,0,0.8)] text-white rounded-2xl p-2.5 flex items-center justify-between gap-2.5 select-none cursor-pointer"
+          onClick={handleMaximize}
+        >
+          {/* Left: Avatar & Caller Info */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative shrink-0">
+              <Avatar
+                src={other?.avatar}
+                nickname={other?.nickname || '?'}
+                size="xs"
+                frame={(other as any)?.equippedFrame || (other as any)?.equipped?.avatar_frame}
+                className="w-10 h-10 text-sm ring-2 ring-purple-500/60"
+              />
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-neutral-900 ${
+                  callConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400 animate-ping'
+                }`}
+              />
+            </div>
+
+            <div className="flex flex-col min-w-0 text-left">
+              <span className="text-xs font-black text-white truncate max-w-[120px] sm:max-w-[160px]">
+                {other?.nickname || 'In Call'}
+              </span>
+              <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    callConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                  }`}
+                />
+                <span className="text-emerald-400 font-bold">
+                  {callConnected ? fmt(elapsed) : 'Calling…'}
+                </span>
+                {!micOn && (
+                  <span className="text-[9px] font-black text-amber-400 bg-amber-500/20 px-1 py-0.2 rounded border border-amber-400/40">
+                    HOLD
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Quick Actions */}
+          <div className="flex items-center gap-1.5 pointer-events-auto shrink-0">
+            {/* Switch to Floating Mini Window Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleBannerMode(false);
+              }}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 border border-white/10 active:scale-95 transition-all"
+              title="Open Mini Floating Window"
+            >
+              <MaximizeIcon className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Hold / Unhold Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMic();
+              }}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border active:scale-95 transition-all ${
+                micOn
+                  ? 'bg-white/10 hover:bg-white/20 text-white border-white/15'
+                  : 'bg-amber-500/25 text-amber-300 border-amber-400/50 ring-1 ring-amber-400/40'
+              }`}
+              title={micOn ? 'Put call on Hold' : 'Unhold call'}
+            >
+              {micOn ? (
+                <>
+                  <Mic className="w-3.5 h-3.5 text-white" />
+                  <span>Hold</span>
+                </>
+              ) : (
+                <>
+                  <MicOff className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                  <span>Unhold</span>
+                </>
+              )}
+            </button>
+
+            {/* Disconnect Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleHangup();
+              }}
+              className="p-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/60 shadow-[0_0_12px_rgba(244,63,94,0.4)] active:scale-95 transition-all"
+              title="Disconnect Call"
+            >
+              <PhoneOff className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        </motion.div>
+      </>
+    );
+  }
+
+  // Mode A: Floating Mini Call Window (PiP)
+  if (isMinimized && !isBannerMode) {
+    return (
+      <>
+        {/* Underlying video canvas kept in DOM so Agora audio/video tracks remain alive */}
+        <div id="call-video-area" className="hidden pointer-events-none" />
+
+        <motion.div
+          drag
+          dragMomentum={false}
+          initial={{ opacity: 0, scale: 0.85, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.85 }}
+          className="fixed bottom-24 right-4 z-[9999] w-40 sm:w-44 h-56 sm:h-60 rounded-3xl bg-neutral-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-[0_20px_50px_rgba(0,0,0,0.85)] overflow-hidden cursor-grab active:cursor-grabbing flex flex-col justify-between p-3 select-none"
+          onClick={handleMaximize}
+        >
+          {/* Background Video (if video call and remote user exists) */}
+          {joined && isVideo && remoteUsers.length > 0 && (
+            <div
+              id="mini-remote-container"
+              ref={(el) => {
+                if (el && remoteUsers[0]) {
+                  playRemoteVideo(remoteUsers[0], el);
+                }
+              }}
+              className={`absolute inset-0 w-full h-full object-cover ${remoteMirror ? 'video-mirrored' : 'video-unmirrored'}`}
+            />
+          )}
+
+          {/* Dark gradient overlay for readability */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/80 pointer-events-none" />
+
+          {/* Top Header inside Mini Window */}
+          <div className="relative z-10 flex items-center justify-between pointer-events-auto">
+            {/* Status + Timer */}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10">
+              <span className={`w-2 h-2 rounded-full ${callConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'}`} />
+              <span className="text-[10px] font-mono font-black text-white">
+                {callConnected ? fmt(elapsed) : '00:00'}
+              </span>
+            </div>
+
+            {/* Actions: Maximize & Close (minimize to top banner) */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMaximize();
+                }}
+                className="p-1 rounded-full bg-black/60 hover:bg-black/80 text-white/90 border border-white/15 active:scale-90 transition-all"
+                title="Expand to Fullscreen"
+              >
+                <MaximizeIcon className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleBannerMode(true);
+                }}
+                className="p-1 rounded-full bg-black/60 hover:bg-black/80 text-white/90 border border-white/15 active:scale-90 transition-all"
+                title="Close to top notification bar"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Center: Avatar & Name when Audio call or remote video not yet attached */}
+          {(!isVideo || remoteUsers.length === 0) && (
+            <div className="relative z-10 flex flex-col items-center justify-center my-auto pointer-events-none">
+              <Avatar
+                src={other?.avatar}
+                nickname={other?.nickname || '?'}
+                size="sm"
+                frame={(other as any)?.equippedFrame || (other as any)?.equipped?.avatar_frame}
+                className="w-14 h-14 text-xl ring-2 ring-purple-500/50 shadow-md"
+              />
+              <span className="mt-1.5 text-xs font-black text-white truncate max-w-[120px] drop-shadow-md">
+                {other?.nickname || 'Partner'}
+              </span>
+              <span className="text-[9px] font-bold text-purple-300">
+                {isVideo ? 'Video Call' : 'Voice Call'}
+              </span>
+            </div>
+          )}
+
+          {/* Bottom Controls in Mini Window */}
+          <div className="relative z-10 flex items-center justify-center gap-3 mt-auto pointer-events-auto">
+            {/* Mute / Hold Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMic();
+              }}
+              className={`p-2 rounded-full backdrop-blur-md border shadow active:scale-90 transition-all ${
+                micOn
+                  ? 'bg-white/20 text-white border-white/20'
+                  : 'bg-amber-500 text-white border-amber-400 ring-2 ring-amber-500/50'
+              }`}
+              title={micOn ? 'Mute Mic' : 'Unmute Mic'}
+            >
+              {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+            </button>
+
+            {/* Hangup / Disconnect Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleHangup();
+              }}
+              className="p-2 rounded-full bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.5)] active:scale-90 transition-all"
+              title="Disconnect Call"
+            >
+              <PhoneOff className="w-4 h-4" />
+            </button>
+          </div>
+        </motion.div>
+      </>
+    );
+  }
+
+  // Mode C: Fullscreen Call Screen
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -851,6 +1190,19 @@ export const CallScreen = ({
       {/* 3. Audio Call View / Connecting Screen (Creative Atmospheric Soundstage) */}
       {(!isVideo || ringing || !callConnected || (isVideo && callConnected && remoteUsers.length === 0)) && (
         <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#0b0816] via-[#08070e] to-[#040406] flex flex-col items-center justify-between py-12 px-6 overflow-hidden">
+          {/* Top-left Minimize button on Audio screen */}
+          <div className="absolute top-4 left-4 z-20 pointer-events-auto">
+            <button
+              type="button"
+              onClick={handleMinimize}
+              aria-label="Minimize Call"
+              className="p-2.5 rounded-full bg-black/60 backdrop-blur-2xl border border-white/20 text-white shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:bg-black/80 active:scale-95 transition-all cursor-pointer"
+              title="Minimize to small window"
+            >
+              <MinimizeIcon className="w-5 h-5 text-white" />
+            </button>
+          </div>
+
           {/* Ambient cosmic lighting orbs */}
           <div className="absolute top-1/4 -left-20 w-88 h-88 bg-purple-600/25 rounded-full blur-[120px] pointer-events-none" />
           <div className="absolute bottom-1/3 -right-20 w-88 h-88 bg-pink-600/20 rounded-full blur-[120px] pointer-events-none" />
@@ -1083,8 +1435,18 @@ export const CallScreen = ({
       {/* 5. Floating Top Bar HUD (Status, Timer, Billing, Participants) */}
       {joined && (
         <header className="absolute top-4 inset-x-4 z-30 flex items-center justify-between pointer-events-none">
-          {/* Left: Call Timer Capsule & HD Badge */}
+          {/* Left: Minimize Button, Call Timer Capsule & HD Badge */}
           <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              type="button"
+              onClick={handleMinimize}
+              aria-label="Minimize Call"
+              className="p-2.5 rounded-full bg-black/60 backdrop-blur-2xl border border-white/20 text-white shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:bg-black/80 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+              title="Minimize to small window"
+            >
+              <MinimizeIcon className="w-5 h-5 text-white" />
+            </button>
+
             <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-2xl border border-white/15 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
               <span className={`w-2.5 h-2.5 rounded-full ${
                 isReconnecting

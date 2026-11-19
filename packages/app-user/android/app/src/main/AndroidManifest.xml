@@ -20,6 +20,7 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:exported="true">
@@ -97,6 +98,12 @@
                 <action android:name="com.navolive.app.ACCEPT_CALL" />
             </intent-filter>
         </receiver>
+
+        <!-- Ongoing Foreground Call Service to keep microphone active in background -->
+        <service
+            android:name=".OngoingCallService"
+            android:foregroundServiceType="microphone|phoneCall"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->
@@ -116,6 +123,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />

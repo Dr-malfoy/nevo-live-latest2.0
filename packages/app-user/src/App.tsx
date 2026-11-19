@@ -3,10 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { BottomNav, GoLiveFab, Header } from './components/layout';
 import { ToastContainer } from './components/ui';
-import { useAuthStore, useSocketStore, useUIStore } from './stores';
+import { useAuthStore, useSocketStore, useUIStore, useCallStore } from './stores';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import { CallScreen } from './components/call/CallScreen';
 import { GlobalLivePlayer } from './components/live';
+import { GlobalPartyPlayer } from './components/party/GlobalPartyPlayer';
 import { usersApi } from './api';
 import { pushNotificationService } from './services/pushNotification';
 import { handleFirebaseRedirectResult } from './lib/firebase';
@@ -127,16 +128,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [globalIncomingCall, setGlobalIncomingCall] = useState<{
-    callId: string;
-    channel: string;
-    type: 'audio' | 'video';
-    initiatorId: string;
-    token: string;
-    coinsPerMinute?: number;
-    initiator: { nickname: string; avatar?: string } | null;
-  } | null>(null);
-  const [globalCallAccepted, setGlobalCallAccepted] = useState(false);
+  const { activeCall, callAccepted, setActiveCall, setCallAccepted, endActiveCall } = useCallStore();
 
   // Automatically process returning OAuth redirect result (e.g. Facebook / Google login redirect)
   useEffect(() => {
@@ -163,39 +155,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     pushNotificationService.init({
       onIncomingCall: (callData) => {
         if (!callData?.callId || callData.initiatorId === user?._id) return;
-        setGlobalIncomingCall({
-          callId: callData.callId,
-          channel: callData.channel,
-          type: callData.type,
-          initiatorId: callData.initiatorId,
-          token: callData.token,
-          coinsPerMinute: callData.coinsPerMinute,
-          initiator: {
-            nickname: callData.initiatorName || 'Someone',
-            avatar: callData.initiatorAvatar || '',
-          },
-        });
-        setGlobalCallAccepted(false);
-      },
-      onCallCancelled: (callId) => {
-        setGlobalIncomingCall((cur) => (cur?.callId === callId ? null : cur));
-      },
-      onNavigate: (url) => {
-        if (url) navigate(url);
-      },
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated && token) {
-      connect(token);
-      fetchProfile();
-      // Refresh push token association with authenticated user
-      pushNotificationService.syncTokenWithBackend().catch(() => {});
-      pushNotificationService.init({
-        onIncomingCall: (callData) => {
-          if (!callData?.callId || callData.initiatorId === user?._id) return;
-          setGlobalIncomingCall({
+        setActiveCall({
+          incoming: {
             callId: callData.callId,
             channel: callData.channel,
             type: callData.type,
@@ -206,11 +167,50 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
               nickname: callData.initiatorName || 'Someone',
               avatar: callData.initiatorAvatar || '',
             },
+          },
+        });
+      },
+      onCallCancelled: (callId) => {
+        const cur = useCallStore.getState().activeCall;
+        if (cur?.incoming?.callId === callId || cur?.outgoing?.callId === callId) {
+          endActiveCall();
+        }
+      },
+      onNavigate: (url) => {
+        if (url) navigate(url);
+      },
+    }).catch(() => {});
+  }, [user?._id, setActiveCall, endActiveCall, navigate]);
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      connect(token);
+      fetchProfile();
+      // Refresh push token association with authenticated user
+      pushNotificationService.syncTokenWithBackend().catch(() => {});
+      pushNotificationService.init({
+        onIncomingCall: (callData) => {
+          if (!callData?.callId || callData.initiatorId === user?._id) return;
+          setActiveCall({
+            incoming: {
+              callId: callData.callId,
+              channel: callData.channel,
+              type: callData.type,
+              initiatorId: callData.initiatorId,
+              token: callData.token,
+              coinsPerMinute: callData.coinsPerMinute,
+              initiator: {
+                nickname: callData.initiatorName || 'Someone',
+                avatar: callData.initiatorAvatar || '',
+              },
+            },
           });
-          setGlobalCallAccepted(false);
         },
         onCallCancelled: (callId) => {
-          setGlobalIncomingCall((cur) => (cur?.callId === callId ? null : cur));
+          const cur = useCallStore.getState().activeCall;
+          if (cur?.incoming?.callId === callId || cur?.outgoing?.callId === callId) {
+            endActiveCall();
+          }
         },
         onNavigate: (url) => {
           if (url) navigate(url);
@@ -299,21 +299,25 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
         }
       }
 
-      setGlobalIncomingCall({
-        callId: payload.callId,
-        channel: payload.channel,
-        type: payload.type,
-        initiatorId: payload.initiatorId,
-        token: payload.token,
-        coinsPerMinute: payload.coinsPerMinute,
-        initiator: initiatorInfo || { nickname: 'User', avatar: '' },
+      setActiveCall({
+        incoming: {
+          callId: payload.callId,
+          channel: payload.channel,
+          type: payload.type,
+          initiatorId: payload.initiatorId,
+          token: payload.token,
+          coinsPerMinute: payload.coinsPerMinute,
+          initiator: initiatorInfo || { nickname: 'User', avatar: '' },
+        },
       });
-      setGlobalCallAccepted(false);
     };
 
     const onCallEnd = (payload: any) => {
       if (payload?.callId) {
-        setGlobalIncomingCall((cur) => (cur?.callId === payload.callId ? null : cur));
+        const cur = useCallStore.getState().activeCall;
+        if (cur?.incoming?.callId === payload.callId || cur?.outgoing?.callId === payload.callId) {
+          endActiveCall();
+        }
       }
     };
 
@@ -323,7 +327,7 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       socket.off('call:invite', onCallInvite);
       socket.off('call:end', onCallEnd);
     };
-  }, [socket, location.pathname, user?._id]);
+  }, [socket, location.pathname, user?._id, setActiveCall, endActiveCall]);
 
   // Native Android full-screen intent / notification action listener
   useEffect(() => {
@@ -331,12 +335,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       const detail = e.detail;
       if (!detail || !detail.callId) return;
 
-      setGlobalIncomingCall((existing) => {
-        if (existing?.callId === detail.callId) {
-          if (detail.autoAccept) setGlobalCallAccepted(true);
-          return existing;
-        }
-        return {
+      setActiveCall({
+        incoming: {
           callId: detail.callId,
           channel: detail.channel,
           type: detail.type === 'video' ? 'video' : 'audio',
@@ -347,12 +347,9 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
             nickname: detail.initiatorName || 'Someone',
             avatar: detail.initiatorAvatar || '',
           },
-        };
+        },
+        accepted: Boolean(detail.autoAccept),
       });
-
-      if (detail.autoAccept) {
-        setGlobalCallAccepted(true);
-      }
     };
 
     const handleNavigate = (url: string) => {
@@ -421,14 +418,18 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     <>
       {children}
       <GlobalLivePlayer />
-      {globalIncomingCall && (
+      <GlobalPartyPlayer />
+      {activeCall && (
         <CallScreen
-          incoming={globalIncomingCall}
-          accepted={globalCallAccepted}
-          coinsPerMinute={globalIncomingCall.coinsPerMinute}
+          key={activeCall.incoming?.callId || activeCall.outgoing?.callId || 'global-call'}
+          incoming={activeCall.incoming}
+          outgoing={activeCall.outgoing}
+          accepted={callAccepted || activeCall.accepted}
+          coinsPerMinute={activeCall.coinsPerMinute || activeCall.outgoing?.coinsPerMinute || activeCall.incoming?.coinsPerMinute || 0}
+          isAudience={activeCall.isAudience ?? !!activeCall.outgoing}
+          isFreeMinuteApplied={activeCall.isFreeMinuteApplied}
           onClose={(outcome) => {
-            setGlobalIncomingCall(null);
-            setGlobalCallAccepted(false);
+            endActiveCall();
             if (outcome === 'rejected') showToast('Call declined', 'info');
           }}
         />
@@ -684,8 +685,8 @@ export default function App() {
             <Route path="/achievements" element={<ProtectedRoute><Achievements /></ProtectedRoute>} />
 
             {/* Party — #17, #18, #19, #50 */}
-            <Route path="/party/:id" element={<ProtectedRoute><PartyRoom /></ProtectedRoute>} />
-            <Route path="/room/:id" element={<ProtectedRoute><PartyRoom /></ProtectedRoute>} />
+            <Route path="/party/:id" element={<ProtectedRoute><div className="min-h-screen bg-[#150B2E]" /></ProtectedRoute>} />
+            <Route path="/room/:id" element={<ProtectedRoute><div className="min-h-screen bg-[#150B2E]" /></ProtectedRoute>} />
 
             {/* Referral — #26, #27, #58 */}
             <Route path="/invite" element={<ProtectedRoute><InviteFriends /></ProtectedRoute>} />

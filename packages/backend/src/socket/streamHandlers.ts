@@ -142,17 +142,18 @@ export const registerStreamHandlers = (socket: Socket): void => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel, isVip, diamonds, coins } = await getUserProfile(socket.data.user?.userId);
     socket.join(`stream:${streamId}`);
 
-    const currentStream = await LiveStream.findById(streamId).populate('hostId', 'nickname').lean();
+    const currentStream = await LiveStream.findById(streamId).lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
     let hostId = '';
     let hostNickname = '';
     if (currentStream?.hostId) {
-      if (typeof currentStream.hostId === 'object' && (currentStream.hostId as any)._id) {
-        hostId = (currentStream.hostId as any)._id.toString();
-        hostNickname = (currentStream.hostId as any).nickname || '';
-      } else {
-        hostId = currentStream.hostId.toString();
-      }
+      hostId = typeof currentStream.hostId === 'object' && (currentStream.hostId as any)._id
+        ? (currentStream.hostId as any)._id.toString()
+        : currentStream.hostId.toString();
+      try {
+        const hUser = await User.findById(hostId).select('nickname').lean();
+        hostNickname = hUser?.nickname || '';
+      } catch {}
     }
 
     const joinKey = `${userId || socket.id}:${streamId}`;
@@ -291,17 +292,18 @@ export const registerStreamHandlers = (socket: Socket): void => {
       cleanupStreamUser(streamId, userId);
     }
 
-    const currentStream = await LiveStream.findById(streamId).populate('hostId', 'nickname').lean();
+    const currentStream = await LiveStream.findById(streamId).lean();
     const count = Math.max(0, currentStream?.viewerCount ?? 0);
     let hostId = '';
     let hostNickname = '';
     if (currentStream?.hostId) {
-      if (typeof currentStream.hostId === 'object' && (currentStream.hostId as any)._id) {
-        hostId = (currentStream.hostId as any)._id.toString();
-        hostNickname = (currentStream.hostId as any).nickname || '';
-      } else {
-        hostId = currentStream.hostId.toString();
-      }
+      hostId = typeof currentStream.hostId === 'object' && (currentStream.hostId as any)._id
+        ? (currentStream.hostId as any)._id.toString()
+        : currentStream.hostId.toString();
+      try {
+        const hUser = await User.findById(hostId).select('nickname').lean();
+        hostNickname = hUser?.nickname || '';
+      } catch {}
     }
 
     getIO().to(`stream:${streamId}`).emit('stream:viewer-count', { count });
@@ -502,29 +504,36 @@ export const registerStreamHandlers = (socket: Socket): void => {
     });
   });
 
-  socket.on('stream:gift', async ({ streamId, gift, count, receiverId }) => {
+  socket.on('stream:gift', async ({ streamId, gift, count, receiverId, isFromHost: clientIsFromHost }: any) => {
     const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(socket.data.user?.userId);
     if (!streamId) return;
 
-    let isFromHost = false;
+    let isFromHost = Boolean(clientIsFromHost);
     let streamHostId = '';
     let hostNickname = '';
     try {
-      const stream = await LiveStream.findById(streamId).populate('hostId', 'nickname').lean();
+      const stream = await LiveStream.findById(streamId).lean();
       if (stream?.hostId) {
-        if (typeof stream.hostId === 'object' && (stream.hostId as any)._id) {
-          streamHostId = (stream.hostId as any)._id.toString();
-          hostNickname = (stream.hostId as any).nickname || '';
-        } else {
-          streamHostId = stream.hostId.toString();
+        streamHostId = typeof stream.hostId === 'object' && (stream.hostId as any)._id
+          ? (stream.hostId as any)._id.toString()
+          : stream.hostId.toString();
+        const hostUser = await User.findById(streamHostId).select('nickname').lean();
+        hostNickname = hostUser?.nickname || '';
+        if (
+          (userId && streamHostId && String(userId) === streamHostId) ||
+          (hostNickname && nickname && nickname.trim().toLowerCase() === hostNickname.trim().toLowerCase())
+        ) {
+          isFromHost = true;
         }
-        isFromHost = Boolean(userId && streamHostId && String(userId) === streamHostId);
       }
     } catch {}
 
-    // Ensure host is removed from streamGiftersMap if present from a previous event
+    // Ensure host is removed from streamGiftersMap if present from any previous event
     if (streamHostId && streamGiftersMap.has(streamId)) {
       streamGiftersMap.get(streamId)!.delete(streamHostId);
+    }
+    if (isFromHost && userId && streamGiftersMap.has(streamId)) {
+      streamGiftersMap.get(streamId)!.delete(userId);
     }
 
     // Track total gift value for ranking in this stream ONLY if sender is NOT the host!

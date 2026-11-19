@@ -734,12 +734,14 @@ export const LiveRoom = ({
           ? String(host._id)
           : (typeof stream?.hostId === 'object' && stream.hostId
               ? String((stream.hostId as any)._id)
-              : (typeof stream?.hostId === 'string' ? stream.hostId : ''));
-        const cleanHostNick = host?.nickname || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname : '') || '';
+              : (typeof stream?.hostId === 'string' ? stream.hostId : '')) || (isHost && user?._id ? String(user._id) : '');
+        const cleanHostNick = (host?.nickname || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname : '') || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
         const isHostEntity = (uid?: string, nick?: string) => {
-          if (cleanHostId && uid && String(uid) === cleanHostId) return true;
-          if (isHost && user?._id && uid && String(uid) === String(user._id)) return true;
-          if (cleanHostNick && nick && nick.trim().toLowerCase() === cleanHostNick.trim().toLowerCase()) return true;
+          const cUid = uid ? String(uid) : '';
+          const cNick = (nick || '').trim().toLowerCase();
+          if (cleanHostId && cUid && cUid === cleanHostId) return true;
+          if (isHost && user?._id && cUid && cUid === String(user._id)) return true;
+          if (cleanHostNick && cNick && (cNick === cleanHostNick || cNick.includes(cleanHostNick) || cleanHostNick.includes(cNick))) return true;
           return false;
         };
 

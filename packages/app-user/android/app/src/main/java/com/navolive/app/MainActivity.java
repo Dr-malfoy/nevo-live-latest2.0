@@ -16,6 +16,8 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
     private static Bundle pendingCallBundle = null;
     private static String pendingNotificationUrl = null;
+    public static volatile boolean isCallActive = false;
+    public static volatile boolean isPartyActive = false;
 
     public class NativeCallBridge {
         @android.webkit.JavascriptInterface
@@ -52,6 +54,80 @@ public class MainActivity extends BridgeActivity {
         }
 
         @android.webkit.JavascriptInterface
+        public void startOngoingCall(String callerName, String callType) {
+            Log.d(TAG, "NativeCallBridge: startOngoingCall invoked: " + callerName + ", type=" + callType);
+            runOnUiThread(() -> {
+                isCallActive = true;
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_START);
+                intent.putExtra("callerName", callerName);
+                intent.putExtra("callType", callType);
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent);
+                    } else {
+                        startService(intent);
+                    }
+                } catch (Throwable e) {
+                    Log.w(TAG, "Could not start OngoingCallService: " + e.getMessage());
+                }
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public void stopOngoingCall() {
+            Log.d(TAG, "NativeCallBridge: stopOngoingCall invoked");
+            runOnUiThread(() -> {
+                isCallActive = false;
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_STOP);
+                try {
+                    startService(intent);
+                } catch (Throwable ignored) {}
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public void startOngoingParty(String roomName) {
+            Log.d(TAG, "NativeCallBridge: startOngoingParty invoked: " + roomName);
+            runOnUiThread(() -> {
+                isPartyActive = true;
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_START);
+                intent.putExtra("callerName", roomName != null && !roomName.trim().isEmpty() ? roomName : "Party Room");
+                intent.putExtra("callType", "party");
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent);
+                    } else {
+                        startService(intent);
+                    }
+                } catch (Throwable e) {
+                    Log.w(TAG, "Could not start OngoingCallService for Party: " + e.getMessage());
+                }
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public void stopOngoingParty() {
+            Log.d(TAG, "NativeCallBridge: stopOngoingParty invoked");
+            runOnUiThread(() -> {
+                isPartyActive = false;
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_STOP);
+                try {
+                    startService(intent);
+                } catch (Throwable ignored) {}
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public void enterPipMode() {
+            Log.d(TAG, "NativeCallBridge: enterPipMode invoked from JS");
+            runOnUiThread(MainActivity.this::enterPictureInPicture);
+        }
+
+        @android.webkit.JavascriptInterface
         public String getPendingNotificationUrl() {
             String url = pendingNotificationUrl;
             pendingNotificationUrl = null;
@@ -78,6 +154,13 @@ public class MainActivity extends BridgeActivity {
 
         // Register Javascript interface to allow WebView to control ringtone & read deep links
         attachBridgeInterface();
+
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            try {
+                android.webkit.WebSettings ws = getBridge().getWebView().getSettings();
+                ws.setMediaPlaybackRequiresUserGesture(false);
+            } catch (Throwable ignored) {}
+        }
 
         handleIntent(getIntent());
 
@@ -107,6 +190,29 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onPause() {
+        super.onPause();
+        attachBridgeInterface();
+        if (isCallActive && getBridge() != null && getBridge().getWebView() != null) {
+            try {
+                // Keep WebView active during background call so WebRTC audio capturing stays uninterrupted
+                getBridge().getWebView().onResume();
+                getBridge().getWebView().resumeTimers();
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (isCallActive && getBridge() != null && getBridge().getWebView() != null) {
+            try {
+                getBridge().getWebView().resumeTimers();
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
@@ -118,6 +224,14 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         super.onDestroy();
         CallRingtoneManager.stop();
+        if (isCallActive) {
+            isCallActive = false;
+            try {
+                Intent intent = new Intent(this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_STOP);
+                startService(intent);
+            } catch (Throwable ignored) {}
+        }
     }
 
     private void handleWindowFlags() {
@@ -298,5 +412,37 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.w(TAG, "Error evaluating JS: " + e.getMessage());
         }
+    }
+
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (isPartyActive || isCallActive) {
+            enterPictureInPicture();
+        }
+    }
+
+    public void enterPictureInPicture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
+                android.util.Rational aspectRatio = new android.util.Rational(9, 16);
+                builder.setAspectRatio(aspectRatio);
+                enterPictureInPictureMode(builder.build());
+            } catch (Throwable e) {
+                try {
+                    enterPictureInPictureMode();
+                } catch (Throwable ex) {
+                    Log.w(TAG, "enterPictureInPictureMode error: " + ex.getMessage());
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, android.content.res.Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        String js = String.format("try { window.dispatchEvent(new CustomEvent('android:pip-changed', { detail: { isInPip: %b } })); } catch(e){}", isInPictureInPictureMode);
+        dispatchJs(js);
     }
 }

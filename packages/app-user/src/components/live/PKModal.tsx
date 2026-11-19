@@ -35,7 +35,7 @@ export const PKModal: React.FC<PKModalProps> = ({
   socket,
 }) => {
   const showToast = useUIStore((s) => s.showToast);
-  const [tab, setTab] = useState<TabType>('friends');
+  const [tab, setTab] = useState<TabType>('random');
   const [duration, setDuration] = useState<number>(180); // 3 minutes default (180s)
   const [loading, setLoading] = useState(false);
   const [invitingId, setInvitingId] = useState<string | null>(null);
@@ -43,6 +43,7 @@ export const PKModal: React.FC<PKModalProps> = ({
   // Lists
   const [friends, setFriends] = useState<LiveOpponentHost[]>([]);
   const [randomHosts, setRandomHosts] = useState<LiveOpponentHost[]>([]);
+  const [noOpponentFound, setNoOpponentFound] = useState(false);
 
   // Sequential Matchmaking Queue State
   const [isMatchmaking, setIsMatchmaking] = useState(false);
@@ -91,6 +92,7 @@ export const PKModal: React.FC<PKModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       stopMatchmaking();
+      setNoOpponentFound(false);
       return;
     }
 
@@ -123,7 +125,8 @@ export const PKModal: React.FC<PKModalProps> = ({
       const targetQueue = queue || matchQueueRef.current;
 
       if (!targetQueue || index >= targetQueue.length) {
-        stopMatchmaking('No opponents accepted this round. Please try again!');
+        setNoOpponentFound(true);
+        stopMatchmaking('No Opponent Found');
         return;
       }
 
@@ -184,27 +187,48 @@ export const PKModal: React.FC<PKModalProps> = ({
   );
 
   // Start automatic sequential matchmaking queue
-  const handleStartRandomMatchmaking = () => {
+  const handleStartRandomMatchmaking = async () => {
     if (isMatchmaking) {
       stopMatchmaking('Matchmaking stopped');
       return;
     }
 
-    if (randomHosts.length === 0) {
-      showToast('No other live hosts available for random match right now', 'info');
-      return;
+    setSearching(true);
+    setNoOpponentFound(false);
+
+    try {
+      // Actively search for live hosts
+      const res = await pkApi.getLiveOpponents(streamId);
+      const freshRandom = res?.random || [];
+      const freshFriends = res?.friends || [];
+      setRandomHosts(freshRandom);
+      setFriends(freshFriends);
+
+      const pool = freshRandom.length > 0 ? freshRandom : freshFriends;
+
+      if (!pool || pool.length === 0) {
+        setNoOpponentFound(true);
+        showToast('No Opponent Found', 'info');
+        return;
+      }
+
+      // Shuffle live hosts randomly
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      isMatchmakingRef.current = true;
+      setIsMatchmaking(true);
+      matchQueueRef.current = shuffled;
+      setMatchQueue(shuffled);
+      matchIndexRef.current = 0;
+      setMatchIndex(0);
+
+      sendMatchRequestAtIndex(0, shuffled);
+    } catch (err: any) {
+      console.warn('Random matchmaking search error:', err);
+      setNoOpponentFound(true);
+      showToast('No Opponent Found', 'info');
+    } finally {
+      setSearching(false);
     }
-
-    // Shuffle live hosts randomly
-    const shuffled = [...randomHosts].sort(() => Math.random() - 0.5);
-    isMatchmakingRef.current = true;
-    setIsMatchmaking(true);
-    matchQueueRef.current = shuffled;
-    setMatchQueue(shuffled);
-    matchIndexRef.current = 0;
-    setMatchIndex(0);
-
-    sendMatchRequestAtIndex(0, shuffled);
   };
 
   // Skip immediately to next host in queue
@@ -639,15 +663,42 @@ export const PKModal: React.FC<PKModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleStartRandomMatchmaking}
-                  disabled={loading || randomHosts.length === 0}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 active:scale-[0.98] transition-all font-black text-sm text-white shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Swords className="w-5 h-5" />
-                  Find 1v1 Opponent ({randomHosts.length} Live Hosts)
-                </button>
+                <div className="w-full flex flex-col items-center gap-3">
+                  {noOpponentFound && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="w-full p-4 rounded-2xl bg-white/[0.04] border border-pink-500/30 flex flex-col items-center gap-1.5 text-center"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400">
+                        <Search className="w-4 h-4" />
+                      </div>
+                      <h5 className="text-sm font-extrabold text-white">No Opponent Found</h5>
+                      <p className="text-[11px] text-white/50 max-w-xs">
+                        No other live hosts are available right now. Tap Search to try again!
+                      </p>
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleStartRandomMatchmaking}
+                    disabled={searching}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:from-purple-500 hover:to-rose-500 active:scale-[0.98] transition-all font-black text-sm text-white shadow-xl shadow-purple-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    {searching ? (
+                      <>
+                        <Spinner className="w-5 h-5 animate-spin" />
+                        Searching for Live Opponent…
+                      </>
+                    ) : (
+                      <>
+                        <Swords className="w-5 h-5" />
+                        {noOpponentFound ? 'Search Again' : 'Search for Random PK'}
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           ) : (

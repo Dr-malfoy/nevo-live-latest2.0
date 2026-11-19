@@ -169,6 +169,7 @@ export const useAgora = () => {
   const togglingMicRef = useRef(false);
   const isLeavingRef = useRef(false);
   const networkLostRef = useRef(false);
+  const joinedRoleRef = useRef<'host' | 'audience'>('audience');
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
@@ -423,6 +424,7 @@ export const useAgora = () => {
       joiningRef.current = true;
       isLeavingRef.current = false;
       networkLostRef.current = false;
+      joinedRoleRef.current = role;
       setError('');
       const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
       clientRef.current = client;
@@ -719,6 +721,19 @@ export const useAgora = () => {
             }
           } catch (e) {
             console.warn('live mic disable error:', e);
+          }
+        }
+
+        if (clientRef.current) {
+          try {
+            if (localAudioRef.current && clientRef.current.localTracks.includes(localAudioRef.current)) {
+              await clientRef.current.unpublish([localAudioRef.current]);
+            }
+            if (joinedRoleRef.current !== 'host') {
+              await clientRef.current.setClientRole('audience');
+            }
+          } catch (roleErr) {
+            console.warn('[useAgora] setClientRole audience error:', roleErr);
           }
         }
 

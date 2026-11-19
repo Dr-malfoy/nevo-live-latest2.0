@@ -514,6 +514,7 @@ export const roomController = {
 
       const kickedUserId = seat.userId.toString();
       seat.userId = undefined;
+      (seat as any).isMuted = false;
       await room.save();
 
       const populated = await room.populate('seats.userId', 'uid nickname avatar');
@@ -521,6 +522,8 @@ export const roomController = {
       if (io) {
         io.to(`room:${room._id}`).emit('room:seat:update', { roomId: room._id, seats: populated.seats });
         io.to(`room:${room._id}`).emit('room:user-kicked', { roomId: room._id, seatIndex: index, userId: kickedUserId });
+        io.to(`user:${kickedUserId}`).emit('room:user-kicked', { roomId: room._id, seatIndex: index, userId: kickedUserId });
+        io.to(`room:${room._id}`).emit('room:mic-changed', { userId: kickedUserId, enabled: false });
       }
 
       sendSuccess(res, populated, 'Member kicked from seat');
@@ -559,7 +562,7 @@ export const roomController = {
         sendError(res, 'Seat not found', 404);
         return;
       }
-      if (seat.isLocked) {
+      if (seat.isLocked && !isHost) {
         sendError(res, 'Seat is locked', 400);
         return;
       }
@@ -607,7 +610,9 @@ export const roomController = {
         sendError(res, 'Not authorized', 403);
         return;
       }
+      const standingUserId = seat.userId?.toString();
       seat.userId = undefined;
+      (seat as any).isMuted = false;
       await room.save();
 
       const populated = await room.populate('seats.userId', 'uid nickname avatar');
@@ -616,6 +621,10 @@ export const roomController = {
       const io = req.app.get('io');
       if (io) {
         io.to(`room:${room._id}`).emit('room:seat:update', { roomId: room._id, seats: populated.seats });
+        if (standingUserId) {
+          io.to(`room:${room._id}`).emit('room:user-stand', { roomId: room._id, seatIndex: index, userId: standingUserId });
+          io.to(`room:${room._id}`).emit('room:mic-changed', { userId: standingUserId, enabled: false });
+        }
       }
 
       sendSuccess(res, populated, 'Left seat');

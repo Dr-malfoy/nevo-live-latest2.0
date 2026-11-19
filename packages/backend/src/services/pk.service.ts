@@ -166,56 +166,9 @@ export const pkService = {
 
       if (followingIds.includes(hId)) {
         friends.push(item);
-      } else {
-        random.push(item);
       }
-    }
-
-    // 2. If random opponents are fewer than 5, ensure online/test hosts have active LiveStreams for seamless testing
-    if (random.length < 5) {
-      try {
-        const candidateUsers = await User.find({
-          _id: { $nin: Array.from(addedHostIds) as any },
-        })
-          .select('nickname avatar level uid gender isVip')
-          .limit(8)
-          .lean();
-
-        for (const u of candidateUsers) {
-          const uId = u._id.toString();
-          // STRICT RULE: Candidates NEVER go into friends! Only into random for testing.
-          addedHostIds.add(uId);
-
-          let streamDoc: any = await LiveStream.findOne({ hostId: u._id, status: 'live' }).select('_id title cover viewerCount').lean();
-          if (!streamDoc) {
-            streamDoc = await LiveStream.create({
-              hostId: u._id,
-              title: `${u.nickname || 'Host'}'s PK Stream`,
-              status: 'live',
-              agoraChannel: `stream_${uId}_${Date.now()}`,
-              viewerCount: Math.floor(Math.random() * 20) + 1,
-              heartbeatAt: new Date(),
-            });
-          }
-
-          random.push({
-            userId: uId,
-            hostId: uId,
-            streamId: streamDoc._id.toString(),
-            nickname: u.nickname || 'Host',
-            avatar: u.avatar || '',
-            level: u.level || 1,
-            uid: u.uid || '',
-            streamTitle: streamDoc.title || 'Live Stream',
-            title: streamDoc.title || 'Live Stream',
-            cover: streamDoc.cover || u.avatar || '',
-            viewerCount: streamDoc.viewerCount || 5,
-            isLive: true,
-          });
-        }
-      } catch (err) {
-        console.warn('[getLiveOpponents] candidate fetch error:', err);
-      }
+      // In random pool, all active live hosts (except self) can be matched!
+      random.push(item);
     }
 
     return { friends, random, totalAvailable: friends.length + random.length };

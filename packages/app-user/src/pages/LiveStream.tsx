@@ -781,12 +781,21 @@ export const LiveStreamPage = ({
 
     const onTopGifters = (data: any) => {
       if (data?.topGifters && Array.isArray(data.topGifters)) {
-        const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
-        const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
+        const streamHostId = getCleanHostId(streamRef.current, hostRef.current) || (isHostRef.current && userRef.current?._id ? String(userRef.current._id) : '');
+        const hostNick = (getCleanHostNickname(streamRef.current, hostRef.current) || (isHostRef.current && userRef.current?.nickname ? userRef.current.nickname : '') || '').trim().toLowerCase();
+        const myId = userRef.current?._id ? String(userRef.current._id) : '';
+        const myNick = (userRef.current?.nickname || '').trim().toLowerCase();
+
         const filtered = data.topGifters.filter(
           (g: any) => {
-            if (streamHostId && String(g.userId) === streamHostId) return false;
-            if (hostNick && g.nickname && g.nickname.trim().toLowerCase() === hostNick) return false;
+            const gId = String(g.userId || '');
+            const gNick = (g.nickname || '').trim().toLowerCase();
+            if (streamHostId && gId === streamHostId) return false;
+            if (hostNick && (gNick === hostNick || gNick.includes(hostNick) || hostNick.includes(gNick))) return false;
+            if (isHostRef.current) {
+              if (myId && gId === myId) return false;
+              if (myNick && (gNick === myNick || gNick.includes(myNick) || myNick.includes(gNick))) return false;
+            }
             return true;
           }
         );
@@ -1624,17 +1633,29 @@ export const LiveStreamPage = ({
         likeCount={likeCount}
         onLike={handleLike}
         topGifters={topGifters.filter((g) => {
-          const hId = getCleanHostId(stream, host);
-          const hNick = getCleanHostNickname(stream, host);
-          if (hId && String(g.userId) === hId) return false;
-          if (hNick && g.nickname && g.nickname.trim().toLowerCase() === hNick) return false;
+          const hId = getCleanHostId(stream, host) || (isHost && user?._id ? String(user._id) : '');
+          const hNick = (getCleanHostNickname(stream, host) || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
+          const gId = String(g.userId || '');
+          const gNick = (g.nickname || '').trim().toLowerCase();
+          if (hId && gId === hId) return false;
+          if (hNick && (gNick === hNick || gNick.includes(hNick) || hNick.includes(gNick))) return false;
+          if (isHost) {
+            if (user?._id && gId === String(user._id)) return false;
+            if (user?.nickname && (gNick === user.nickname.trim().toLowerCase() || gNick.includes(user.nickname.trim().toLowerCase()))) return false;
+          }
           return true;
         })}
         speakers={speakers.filter((s) => {
-          const hId = getCleanHostId(stream, host);
-          const hNick = getCleanHostNickname(stream, host);
-          if (hId && String(s.userId) === hId) return false;
-          if (hNick && s.nickname && s.nickname.trim().toLowerCase() === hNick) return false;
+          const hId = getCleanHostId(stream, host) || (isHost && user?._id ? String(user._id) : '');
+          const hNick = (getCleanHostNickname(stream, host) || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
+          const sId = String(s.userId || '');
+          const sNick = (s.nickname || '').trim().toLowerCase();
+          if (hId && sId === hId) return false;
+          if (hNick && (sNick === hNick || sNick.includes(hNick) || hNick.includes(sNick))) return false;
+          if (isHost) {
+            if (user?._id && sId === String(user._id)) return false;
+            if (user?.nickname && (sNick === user.nickname.trim().toLowerCase() || sNick.includes(user.nickname.trim().toLowerCase()))) return false;
+          }
           return true;
         })}
         isSpeaker={isHost || isSpeaker}
