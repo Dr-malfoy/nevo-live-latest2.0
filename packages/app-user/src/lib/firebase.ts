@@ -262,6 +262,11 @@ export const handleFirebaseRedirectResult = async (): Promise<{
 };
 
 export const mapFirebaseAuthError = (err: any): string => {
+  const serverError = err?.response?.data?.error || err?.response?.data?.message;
+  if (serverError && typeof serverError === 'string') {
+    return serverError;
+  }
+
   const code = err?.code || '';
   const message = err?.message || '';
 

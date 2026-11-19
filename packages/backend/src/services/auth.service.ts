@@ -194,10 +194,15 @@ export const authService = {
     const decoded = await verifyIdToken(idToken);
     if (!decoded) throw new AppError('Firebase auth unavailable — check FIREBASE_SERVICE_ACCOUNT', 503);
     const googleId = decoded.uid;
-    const email = decoded.email || '';
+    const email = (decoded.email || '').toLowerCase().trim();
     const name = decoded.name || 'User';
 
-    let user = await User.findOne({ googleId });
+    let user = await User.findOne({
+      $or: [
+        { googleId },
+        ...(email ? [{ email }] : []),
+      ],
+    });
 
     let avatar = decoded.picture || '';
     if (avatar && /googleusercontent\.com|ggpht\.com/i.test(avatar)) {
@@ -223,15 +228,22 @@ export const authService = {
     } else {
       if (!user.country && country && country.trim().length === 2) {
         user.country = country.trim().toUpperCase();
-        await user.save().catch(() => {});
       }
-      if (user.avatar && /googleusercontent\.com|ggpht\.com/i.test(user.avatar) && /=[sw]\d+.*$/i.test(user.avatar)) {
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+      if (!user.avatar && avatar) {
+        user.avatar = avatar;
+      } else if (user.avatar && /googleusercontent\.com|ggpht\.com/i.test(user.avatar) && /=[sw]\d+.*$/i.test(user.avatar)) {
         user.avatar = user.avatar.replace(/=[sw]\d+.*$/i, '=s0');
-        await user.save().catch(() => {});
       }
+      if (deviceId && !user.deviceId) {
+        user.deviceId = deviceId;
+      }
+      await user.save().catch(() => {});
     }
 
-    if (user.isBanned) throw new AppError('Account is banned', 403);
+    if (user.isBanned) throw new AppError('This account has been banned. Please contact support.', 403);
 
     await ensureAgentRole(user);
     await referralService.onUserLogin(user._id.toString(), deviceId).catch(() => {});
