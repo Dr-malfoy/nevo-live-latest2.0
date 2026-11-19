@@ -43,11 +43,16 @@ export const pushNotificationService = {
       const userObjId = new mongoose.Types.ObjectId(userId);
       const platform = params.platform || 'android';
 
-      // If a physical device ID is provided, deactivate any old records on this device
-      // for other users so previous accounts don't receive notifications on this phone.
+      // Deactivate stale tokens for this physical device or platform to avoid duplicate pushes
       if (params.deviceId) {
         await DeviceToken.updateMany(
-          { deviceId: params.deviceId, userId: { $ne: userObjId } },
+          { deviceId: params.deviceId, token: { $ne: params.token } },
+          { $set: { isActive: false } }
+        );
+      } else {
+        // If no deviceId provided, deactivate other older tokens for this user on this platform
+        await DeviceToken.updateMany(
+          { userId: userObjId, platform, token: { $ne: params.token } },
           { $set: { isActive: false } }
         );
       }
@@ -114,7 +119,27 @@ export const pushNotificationService = {
         return;
       }
 
-      const tokens = activeTokens.map((t) => t.token);
+      // Deduplicate tokens: prioritize freshest token per physical device/platform to prevent duplicate delivery
+      const sortedTokens = activeTokens.sort((a: any, b: any) => {
+        const timeA = new Date(a.lastActiveAt || a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.lastActiveAt || b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      const seenKeys = new Set<string>();
+      const tokens: string[] = [];
+      for (const t of sortedTokens) {
+        if (!t.token) continue;
+        const key = t.deviceId ? `${t.platform}_${t.deviceId}` : `${t.platform}_${t.token}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          tokens.push(t.token);
+        }
+      }
+
+      if (tokens.length === 0) {
+        return;
+      }
 
       // Convert all data properties to strings (required by FCM)
       const sanitizedData: Record<string, string> = {};
@@ -206,7 +231,25 @@ export const pushNotificationService = {
 
       if (!activeTokens || activeTokens.length === 0) return;
 
-      const tokens = activeTokens.map((t) => t.token);
+      // Deduplicate tokens: keep only the latest active token per physical device/platform
+      const sortedTokens = activeTokens.sort((a: any, b: any) => {
+        const timeA = new Date(a.lastActiveAt || a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.lastActiveAt || b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      const seenKeys = new Set<string>();
+      const tokens: string[] = [];
+      for (const t of sortedTokens) {
+        if (!t.token) continue;
+        const key = t.deviceId ? `${t.platform}_${t.deviceId}` : `${t.platform}_${t.token}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          tokens.push(t.token);
+        }
+      }
+
+      if (tokens.length === 0) return;
 
       const callTypeLabel = callData.type === 'video' ? 'Incoming Video Call' : 'Incoming Audio Call';
       const callIcon = callData.type === 'video' ? '📹' : '📞';
@@ -300,7 +343,25 @@ export const pushNotificationService = {
 
       if (!activeTokens || activeTokens.length === 0) return;
 
-      const tokens = activeTokens.map((t) => t.token);
+      // Deduplicate tokens: keep only the latest active token per physical device/platform
+      const sortedTokens = activeTokens.sort((a: any, b: any) => {
+        const timeA = new Date(a.lastActiveAt || a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.lastActiveAt || b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      const seenKeys = new Set<string>();
+      const tokens: string[] = [];
+      for (const t of sortedTokens) {
+        if (!t.token) continue;
+        const key = t.deviceId ? `${t.platform}_${t.deviceId}` : `${t.platform}_${t.token}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          tokens.push(t.token);
+        }
+      }
+
+      if (tokens.length === 0) return;
 
       const dataPayload: Record<string, string> = {
         type: 'CALL_CANCELLED',

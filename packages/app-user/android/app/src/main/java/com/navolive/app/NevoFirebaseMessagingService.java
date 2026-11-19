@@ -23,12 +23,17 @@ import com.google.firebase.messaging.RemoteMessage;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NevoFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "NevoPushService";
     public static final String CALL_CHANNEL_ID = "nevo_calls_v3";
     public static final String NOTIFICATION_CHANNEL_ID = "nevo_notifications";
     public static final int CALL_NOTIFICATION_ID = 9001;
+
+    // In-memory deduplication caches to guarantee no double notifications
+    private static final ConcurrentHashMap<String, Long> sHandledCallIds = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> sHandledMessageKeys = new ConcurrentHashMap<>();
 
     @Override
     public void onNewToken(@NonNull String token) {
@@ -92,6 +97,25 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
     private void handleIncomingCall(Map<String, String> data) {
         String callId = data.get("callId");
+
+        // De-duplicate incoming call pushes (e.g., from multiple registered tokens or retries)
+        if (callId != null && !callId.isEmpty()) {
+            long now = System.currentTimeMillis();
+            Long lastHandled = sHandledCallIds.get(callId);
+            if (lastHandled != null && (now - lastHandled) < 15000) {
+                Log.w(TAG, "Duplicate incoming call push suppressed for callId: " + callId);
+                return;
+            }
+            sHandledCallIds.put(callId, now);
+            if (sHandledCallIds.size() > 50) {
+                for (Map.Entry<String, Long> entry : sHandledCallIds.entrySet()) {
+                    if (now - entry.getValue() > 60000) {
+                        sHandledCallIds.remove(entry.getKey());
+                    }
+                }
+            }
+        }
+
         String channel = data.get("channel");
         String callType = data.get("callType");
         if (callType == null) callType = "audio";
@@ -182,6 +206,7 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
                 .setTimeoutAfter(45000)
                 .setSound(defaultRingtoneUri)
                 .setVibrate(new long[]{0, 1000, 800, 1000, 800, 1000})
@@ -206,6 +231,9 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
 
     private void handleCallCancelled(String callId) {
         Log.d(TAG, "Call cancelled for callId: " + callId);
+        if (callId != null) {
+            sHandledCallIds.remove(callId);
+        }
         CallRingtoneManager.stop();
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (notificationManager != null) {
@@ -214,9 +242,28 @@ public class NevoFirebaseMessagingService extends FirebaseMessagingService {
     }
 
     private void showStandardNotification(String title, String body, Map<String, String> data) {
-        createGeneralNotificationChannel();
-
         String type = data != null ? data.get("type") : "";
+        String msgKey = (data != null && data.get("notificationId") != null) ? data.get("notificationId") :
+                ((title != null ? title : "") + "_" + (body != null ? body : "") + "_" + type);
+
+        if (!msgKey.isEmpty()) {
+            long now = System.currentTimeMillis();
+            Long lastTime = sHandledMessageKeys.get(msgKey);
+            if (lastTime != null && (now - lastTime) < 6000) {
+                Log.w(TAG, "Duplicate FCM standard notification suppressed: " + msgKey);
+                return;
+            }
+            sHandledMessageKeys.put(msgKey, now);
+            if (sHandledMessageKeys.size() > 50) {
+                for (Map.Entry<String, Long> entry : sHandledMessageKeys.entrySet()) {
+                    if (now - entry.getValue() > 30000) {
+                        sHandledMessageKeys.remove(entry.getKey());
+                    }
+                }
+            }
+        }
+
+        createGeneralNotificationChannel();
         String targetUrl = data != null ? data.get("targetUrl") : "";
         String chatId = data != null ? data.get("chatId") : "";
         String streamId = data != null ? data.get("streamId") : "";

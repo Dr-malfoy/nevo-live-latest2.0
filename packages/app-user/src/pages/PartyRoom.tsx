@@ -1066,13 +1066,13 @@ export const PartyRoom = ({
                 handleToggleMic();
               }}
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
-                micEnabled
+                micOn
                   ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
                   : 'bg-red-500/30 text-red-300 border border-red-500/50'
               }`}
             >
-              {micEnabled ? <PiMicrophoneFill className="w-2.5 h-2.5" /> : <PiMicrophoneSlashFill className="w-2.5 h-2.5" />}
-              <span>{micEnabled ? 'On' : 'Off'}</span>
+              {micOn ? <PiMicrophoneFill className="w-2.5 h-2.5" /> : <PiMicrophoneSlashFill className="w-2.5 h-2.5" />}
+              <span>{micOn ? 'On' : 'Off'}</span>
             </button>
           )}
         </div>

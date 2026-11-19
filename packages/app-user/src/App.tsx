@@ -155,6 +155,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     pushNotificationService.init({
       onIncomingCall: (callData) => {
         if (!callData?.callId || callData.initiatorId === user?._id) return;
+        const cur = useCallStore.getState().activeCall;
+        if (cur?.incoming?.callId === callData.callId) return;
         setActiveCall({
           incoming: {
             callId: callData.callId,
@@ -191,6 +193,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       pushNotificationService.init({
         onIncomingCall: (callData) => {
           if (!callData?.callId || callData.initiatorId === user?._id) return;
+          const cur = useCallStore.getState().activeCall;
+          if (cur?.incoming?.callId === callData.callId) return;
           setActiveCall({
             incoming: {
               callId: callData.callId,
@@ -286,6 +290,8 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
       // If user is currently in that ChatThread, ChatThread handles it locally
       if (location.pathname.startsWith('/chat/')) return;
       if (!payload?.callId || payload.initiatorId === user?._id) return;
+      const curCall = useCallStore.getState().activeCall;
+      if (curCall?.incoming?.callId === payload.callId) return;
 
       let initiatorInfo = payload.initiator || null;
       if (!initiatorInfo && payload.initiatorId) {
@@ -334,6 +340,10 @@ const AuthListener = ({ children }: { children: React.ReactNode }) => {
     const onNativeIncomingCall = (e: any) => {
       const detail = e.detail;
       if (!detail || !detail.callId) return;
+      const curCall = useCallStore.getState().activeCall;
+      if (curCall?.incoming?.callId === detail.callId && Boolean(curCall.accepted) === Boolean(detail.autoAccept)) {
+        return;
+      }
 
       setActiveCall({
         incoming: {

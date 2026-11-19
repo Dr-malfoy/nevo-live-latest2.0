@@ -89,6 +89,7 @@ export const PublicProfile = () => {
     coinsPerMinute: number;
   } | null>(null);
   const [callAccepted, setCallAccepted] = useState(false);
+  const isStartingCallRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -170,15 +171,17 @@ export const PublicProfile = () => {
 
   const startProfileCall = async (type: 'audio' | 'video') => {
     if (!profile?._id) return;
-
-    // Check & request camera/mic permissions
-    const perm = await requestMediaPermissions(type);
-    if (!perm.granted) {
-      showToast(perm.error || 'Media permission denied', 'error');
-      return;
-    }
+    if (isStartingCallRef.current) return;
+    isStartingCallRef.current = true;
 
     try {
+      // Check & request camera/mic permissions
+      const perm = await requestMediaPermissions(type);
+      if (!perm.granted) {
+        showToast(perm.error || 'Media permission denied', 'error');
+        return;
+      }
+
       // 1. Balance Check & Price Quote
       const { data: quoteRes } = await callApi.getQuote(profile._id);
       if (quoteRes.success && quoteRes.data) {
@@ -221,6 +224,10 @@ export const PublicProfile = () => {
       } else {
         showToast(errorData?.error || err.message || 'Could not start call', 'error');
       }
+    } finally {
+      setTimeout(() => {
+        isStartingCallRef.current = false;
+      }, 2500);
     }
   };
 

@@ -958,6 +958,7 @@ export const ChatThread = () => {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callRef = useRef<CallState | null>(null);
   callRef.current = call;
+  const isStartingCallRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1461,47 +1462,49 @@ export const ChatThread = () => {
   /* ── Calls & Gifts ──────────────────────────────────────────────── */
 
   const startCall = async (type: 'audio' | 'video') => {
-    // Check & request camera/mic permissions
-    const perm = await requestMediaPermissions(type);
-    if (!perm.granted) {
-      showToast(perm.error || 'Media permission denied', 'error');
-      return;
-    }
-
-    if (isGroup) {
-      const targetIds = (chatData?.participants || [])
-        .map((p: any) => p._id)
-        .filter((id: string) => id && id !== user?._id);
-
-      if (targetIds.length === 0) {
-        showToast('No other members to call in this group', 'error');
+    if (isStartingCallRef.current) return;
+    isStartingCallRef.current = true;
+    try {
+      // Check & request camera/mic permissions
+      const perm = await requestMediaPermissions(type);
+      if (!perm.granted) {
+        showToast(perm.error || 'Media permission denied', 'error');
         return;
       }
 
-      try {
-        setCallAccepted(false);
-        const { data } = await callApi.create(targetIds, type, 'group');
-        if (data.success && data.data) {
-          useCallStore.getState().setActiveCall({
-            outgoing: {
-              callId: data.data.callId,
-              channel: data.data.channel,
-              type: data.data.type,
-              token: data.data.token,
-              callee: { nickname: chatData?.name || 'Group Call' },
-              coinsPerMinute: 0,
-            },
-          });
+      if (isGroup) {
+        const targetIds = (chatData?.participants || [])
+          .map((p: any) => p._id)
+          .filter((id: string) => id && id !== user?._id);
+
+        if (targetIds.length === 0) {
+          showToast('No other members to call in this group', 'error');
+          return;
         }
-      } catch (err: any) {
-        showToast(err?.response?.data?.message || 'Failed to start group call', 'error');
+
+        try {
+          setCallAccepted(false);
+          const { data } = await callApi.create(targetIds, type, 'group');
+          if (data.success && data.data) {
+            useCallStore.getState().setActiveCall({
+              outgoing: {
+                callId: data.data.callId,
+                channel: data.data.channel,
+                type: data.data.type,
+                token: data.data.token,
+                callee: { nickname: chatData?.name || 'Group Call' },
+                coinsPerMinute: 0,
+              },
+            });
+          }
+        } catch (err: any) {
+          showToast(err?.response?.data?.message || 'Failed to start group call', 'error');
+        }
+        return;
       }
-      return;
-    }
 
-    if (!other?._id) return;
+      if (!other?._id) return;
 
-    try {
       // 1. Balance Check & Price Quote
       const { data: quoteRes } = await callApi.getQuote(other._id);
       if (quoteRes.success && quoteRes.data) {
@@ -1548,6 +1551,10 @@ export const ChatThread = () => {
       } else {
         showToast(err.response?.data?.error || err.message || 'Could not start the call', 'error');
       }
+    } finally {
+      setTimeout(() => {
+        isStartingCallRef.current = false;
+      }, 2500);
     }
   };
 

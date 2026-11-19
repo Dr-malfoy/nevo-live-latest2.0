@@ -166,13 +166,20 @@ export const pushNotificationService = {
     if (!token) return;
 
     try {
+      let deviceId = localStorage.getItem('nevo_device_uuid');
+      if (!deviceId) {
+        deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+        localStorage.setItem('nevo_device_uuid', deviceId);
+      }
+
       const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
       await notificationApi.registerPushToken({
         token,
         platform,
+        deviceId,
         deviceName: navigator.userAgent.slice(0, 100),
       });
-      console.log('[Push] Device token successfully registered on backend for user');
+      console.log('[Push] Device token successfully registered on backend for user, deviceId:', deviceId);
     } catch (err) {
       console.warn('[Push] Error syncing device token with backend:', err);
     }

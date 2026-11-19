@@ -674,26 +674,54 @@ export const useAgora = () => {
             console.warn('[useAgora] setClientRole error:', roleErr);
           }
 
-          if (!localAudioRef.current) {
+          const isTrackEnded =
+            !localAudioRef.current ||
+            (localAudioRef.current as any)._mediaStreamTrack?.readyState === 'ended' ||
+            (localAudioRef.current as any).getMediaStreamTrack?.()?.readyState === 'ended';
+
+          if (isTrackEnded) {
+            if (localAudioRef.current) {
+              try {
+                localAudioRef.current.stop();
+                localAudioRef.current.close();
+              } catch {}
+            }
             const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
               AEC: true,
               ANS: true,
               AGC: true,
             });
             localAudioRef.current = audioTrack;
-            await clientRef.current.publish([audioTrack]);
             await audioTrack.setEnabled(true);
             if (typeof (audioTrack as any).setMuted === 'function') {
               await (audioTrack as any).setMuted(false);
             }
+            await clientRef.current.publish([audioTrack]);
           } else {
-            const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
-            if (!isPublished) {
-              await clientRef.current.publish([localAudioRef.current]);
-            }
+            // Crucial: ALWAYS enable track BEFORE calling client.publish to prevent Agora TRACK_IS_DISABLED error!
             await localAudioRef.current.setEnabled(true);
             if (typeof (localAudioRef.current as any).setMuted === 'function') {
               await (localAudioRef.current as any).setMuted(false);
+            }
+            const isPublished = clientRef.current.localTracks.includes(localAudioRef.current);
+            if (!isPublished) {
+              try {
+                await clientRef.current.publish([localAudioRef.current]);
+              } catch (pubErr) {
+                console.warn('[useAgora] publish existing track failed, recreating audio track:', pubErr);
+                try {
+                  localAudioRef.current.stop();
+                  localAudioRef.current.close();
+                } catch {}
+                const freshTrack = await AgoraRTC.createMicrophoneAudioTrack({
+                  AEC: true,
+                  ANS: true,
+                  AGC: true,
+                });
+                localAudioRef.current = freshTrack;
+                await freshTrack.setEnabled(true);
+                await clientRef.current.publish([freshTrack]);
+              }
             }
           }
         }

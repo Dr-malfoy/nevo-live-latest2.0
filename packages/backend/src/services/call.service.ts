@@ -146,6 +146,28 @@ export const callService = {
       }
     }
 
+    // Debounce duplicate requests: Check for recent ringing call initiated by same user to same recipient
+    if (recipients.length === 1) {
+      const recentExistingCall = await Call.findOne({
+        initiatorId,
+        recipientIds: recipients[0],
+        status: 'ringing',
+        createdAt: { $gte: new Date(Date.now() - 7000) },
+      });
+      if (recentExistingCall) {
+        console.log(`[createCall] Reusing existing ringing call ${recentExistingCall._id} to debounce duplicate call request`);
+        const existingToken = generateAgoraToken(recentExistingCall.channel, 0, 'publisher');
+        return {
+          callId: recentExistingCall._id.toString(),
+          channel: recentExistingCall.channel,
+          type: recentExistingCall.type,
+          token: existingToken,
+          coinsPerMinute: recentExistingCall.coinsPerMinute || 0,
+          freeMinuteUsed: recentExistingCall.freeMinuteUsed || false,
+        };
+      }
+    }
+
     // Close any previous ringing call I initiated (idempotent per initiator) and record them as missed
     try {
       const previousRinging = await Call.find({ initiatorId, status: 'ringing' });
@@ -155,6 +177,9 @@ export const callService = {
         prev.endReason = 'MISSED';
         await prev.save();
         this._recordCallHistoryMessage(prev, 'missed', initiatorId).catch(() => {});
+        for (const rId of (prev.recipientIds || [])) {
+          pushNotificationService.sendCallCancelledPush(String(rId), prev._id.toString()).catch(() => {});
+        }
       }
     } catch {}
 
