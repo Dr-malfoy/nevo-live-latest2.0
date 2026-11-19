@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { RouletteState, RouletteResult, RouletteBetType } from '../types/roulette';
-import { useAuthStore, useSocketStore } from '../stores';
+import { useAuthStore } from '../stores/authStore';
+import { useSocketStore } from '../stores/socketStore';
 
 /**
  * Roulette socket hook — reuses the app's single main Socket.IO connection

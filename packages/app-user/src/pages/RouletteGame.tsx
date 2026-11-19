@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PiCaretLeftBold as ArrowLeft, PiClockCounterClockwiseFill as History, PiGearFill as Settings, PiUsersFill as Users } from 'react-icons/pi';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useAuthStore } from '../stores';
+import { useAuthStore } from '../stores/authStore';
 import { useRoulette, RouletteProvider } from '../game/roulette/context';
 import {
   Wheel,

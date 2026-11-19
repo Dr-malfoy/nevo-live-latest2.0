@@ -162,22 +162,37 @@ export const LiveStreamPage = ({
   }, [micOn]);
 
   // Null-safe: hostId can be null (orphaned user ref), a string, or a populated object.
+  const rawStreamHost = stream && stream.hostId && typeof stream.hostId !== 'string'
+    ? stream.hostId
+    : (stream as any)?.host && typeof (stream as any).host !== 'string'
+      ? (stream as any).host
+      : null;
+
+  const rawStreamHostId = rawStreamHost?._id || rawStreamHost?.id || (typeof stream?.hostId === 'string' ? stream.hostId : null) || (typeof (stream as any)?.host === 'string' ? (stream as any).host : null);
+
   // Prefer the server-reported isHost (from joinStream); fall back to client-side derivation.
   const isHost = Boolean(
     serverIsHost ||
-    (user?._id && host?._id && String(user._id) === String(host._id)) ||
-    (user?._id && stream?.hostId && (
-      typeof stream.hostId === 'object'
-        ? String(user._id) === String(stream.hostId._id || stream.hostId.id || '')
-        : String(user._id) === String(stream.hostId)
-    )) ||
-    (user?._id && stream?.host && (
-      typeof stream.host === 'object'
-        ? String(user._id) === String(stream.host._id || stream.host.id || '')
-        : String(user._id) === String(stream.host)
-    ))
+    (user?._id && rawStreamHostId && String(user._id) === String(rawStreamHostId))
   );
   isHostRef.current = isHost;
+
+  // host is the populated object form; when hostId is null/string (orphaned ref),
+  // fall back to the logged-in user's identity so the host card still shows a name.
+  const host = rawStreamHost || (isHost && user ? {
+    _id: user._id,
+    uid: user.uid,
+    nickname: user.nickname,
+    avatar: user.avatar,
+    level: user.level,
+    isAgent: !!user.isAgent,
+  } : null);
+
+  useEffect(() => {
+    if (host) {
+      hostRef.current = host;
+    }
+  }, [host]);
 
   const [elapsed, setElapsed] = useState(0);
   const elapsedRef = useRef(0);
@@ -1322,21 +1337,6 @@ export const LiveStreamPage = ({
   };
 
   // End/Leave request handlers (show confirmation dialogs)
-  // host is the populated object form; when hostId is null/string (orphaned ref),
-  // fall back to the logged-in user's identity so the host card still shows a name.
-  const host = stream && stream.hostId && typeof stream.hostId !== 'string'
-    ? stream.hostId
-    : (stream as any)?.host && typeof (stream as any).host !== 'string'
-      ? (stream as any).host
-      : isHost && user
-        ? { _id: user._id, uid: user.uid, nickname: user.nickname, avatar: user.avatar, level: user.level, isAgent: !!user.isAgent }
-        : null;
-
-  useEffect(() => {
-    if (host) {
-      hostRef.current = host;
-    }
-  }, [host]);
 
   const confirmLeaveStream = useCallback(() => {
     setShowLeaveConfirm(false);

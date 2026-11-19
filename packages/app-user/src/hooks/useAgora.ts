@@ -549,6 +549,7 @@ export const useAgora = () => {
           micOnRef.current = true;
           setMicOn(true);
 
+          await audioTrack.setEnabled(true);
           const tracksToPublish: any[] = [];
           if (localVideoRef.current) tracksToPublish.push(localVideoRef.current);
           if (audioTrack) tracksToPublish.push(audioTrack);
