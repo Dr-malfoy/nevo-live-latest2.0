@@ -204,6 +204,24 @@ export const LiveStreamPage = ({
     return `0:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
+  // Start native live audio mode to route sound to Speaker / Headphone (prevent Android earpiece routing)
+  useEffect(() => {
+    try {
+      const bridge = (window as any).NevoNativeBridge;
+      if (typeof bridge?.startLiveAudio === 'function') {
+        bridge.startLiveAudio();
+      }
+    } catch {}
+    return () => {
+      try {
+        const bridge = (window as any).NevoNativeBridge;
+        if (typeof bridge?.stopLiveAudio === 'function') {
+          bridge.stopLiveAudio();
+        }
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => {
     streamRef.current = stream;
     if (stream?.hostId && typeof stream.hostId !== 'string') {

@@ -485,6 +485,13 @@ export const useAgora = () => {
           if (mediaType === 'audio') {
             try {
               user.audioTrack?.play();
+              // Route native audio output to Speaker / Headphone (prevent Android routing to earpiece)
+              try {
+                const bridge = (window as any).NevoNativeBridge;
+                if (typeof bridge?.routeAudioToSpeaker === 'function') {
+                  bridge.routeAudioToSpeaker();
+                }
+              } catch {}
             } catch (playErr) {
               console.warn('[useAgora] Audio autoplay failed for remote user:', user.uid, playErr);
             }
@@ -560,6 +567,13 @@ export const useAgora = () => {
         }
 
         setJoined(true);
+        // Start native live audio mode to route audio to Speaker / Headphone
+        try {
+          const bridge = (window as any).NevoNativeBridge;
+          if (typeof bridge?.startLiveAudio === 'function') {
+            bridge.startLiveAudio();
+          }
+        } catch {}
         return client;
       } catch (err: any) {
         console.warn('[useAgora] Agora RTC gateway connection failed:', err?.message || err);
@@ -979,6 +993,13 @@ export const useAgora = () => {
     setMicOn(false);
     setRemoteUsers([]);
     setError('');
+    // Reset native audio routing when leaving channel
+    try {
+      const bridge = (window as any).NevoNativeBridge;
+      if (typeof bridge?.stopLiveAudio === 'function') {
+        bridge.stopLiveAudio();
+      }
+    } catch {}
   }, []);
 
   // Cleanup on unmount
@@ -1017,6 +1038,12 @@ export const useAgora = () => {
       if (remoteVideoElRef.current) {
         remoteVideoElRef.current.remove();
       }
+      try {
+        const bridge = (window as any).NevoNativeBridge;
+        if (typeof bridge?.stopLiveAudio === 'function') {
+          bridge.stopLiveAudio();
+        }
+      } catch {}
     };
   }, []);
 

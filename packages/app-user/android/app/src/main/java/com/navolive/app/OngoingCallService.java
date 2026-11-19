@@ -61,15 +61,13 @@ public class OngoingCallService extends Service {
                 callerName = "Friend";
             }
             String callType = intent.getStringExtra("callType");
-            boolean isVideo = "video".equalsIgnoreCase(callType);
-
-            startCallForeground(callerName, isVideo);
+            startCallForeground(callerName, callType);
         }
 
         return START_NOT_STICKY;
     }
 
-    private void startCallForeground(String callerName, boolean isVideo) {
+    private void startCallForeground(String callerName, String callType) {
         createNotificationChannel();
 
         Intent returnIntent = new Intent(this, MainActivity.class);
@@ -84,6 +82,7 @@ public class OngoingCallService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
         );
 
+        boolean isVideo = "video".equalsIgnoreCase(callType);
         boolean isParty = "party".equalsIgnoreCase(callType);
         String callTypeDesc = isParty ? "Voice Party in progress" : isVideo ? "Video Call in progress" : "Voice Call in progress";
         String notificationTitle = isParty ? ("Party Room · " + callerName) : ("Active Call · " + callerName);
@@ -154,12 +153,9 @@ public class OngoingCallService extends Service {
 
     private void requestCallAudioFocus() {
         try {
+            AudioRouteManager.getInstance(this).applyAudioRouting(true);
             audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
-                audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                try {
-                    audioManager.setSpeakerphoneOn(true);
-                } catch (Throwable ignored) {}
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     AudioAttributes playbackAttributes = new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -186,6 +182,10 @@ public class OngoingCallService extends Service {
         Log.d(TAG, "stopCallService called");
         MainActivity.isCallActive = false;
         MainActivity.isPartyActive = false;
+
+        try {
+            AudioRouteManager.getInstance(this).resetAudioRouting();
+        } catch (Throwable ignored) {}
 
         if (audioManager != null) {
             try {

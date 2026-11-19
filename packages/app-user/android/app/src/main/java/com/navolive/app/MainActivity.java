@@ -122,6 +122,30 @@ public class MainActivity extends BridgeActivity {
         }
 
         @android.webkit.JavascriptInterface
+        public void startLiveAudio() {
+            Log.d(TAG, "NativeCallBridge: startLiveAudio invoked");
+            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).startLiveAudio());
+        }
+
+        @android.webkit.JavascriptInterface
+        public void stopLiveAudio() {
+            Log.d(TAG, "NativeCallBridge: stopLiveAudio invoked");
+            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio());
+        }
+
+        @android.webkit.JavascriptInterface
+        public void routeAudioToSpeaker() {
+            Log.d(TAG, "NativeCallBridge: routeAudioToSpeaker invoked");
+            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).applyAudioRouting(true));
+        }
+
+        @android.webkit.JavascriptInterface
+        public void setSpeakerphone(boolean on) {
+            Log.d(TAG, "NativeCallBridge: setSpeakerphone invoked: " + on);
+            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).setSpeakerphone(on));
+        }
+
+        @android.webkit.JavascriptInterface
         public void enterPipMode() {
             Log.d(TAG, "NativeCallBridge: enterPipMode invoked from JS");
             runOnUiThread(MainActivity.this::enterPictureInPicture);

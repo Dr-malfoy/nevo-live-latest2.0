@@ -207,6 +207,13 @@ export const useCall = () => {
 
     // 3. Hardware device routing via setPlaybackDevice / setSinkId when supported by browser
     try {
+      const bridge = (window as any).NevoNativeBridge;
+      if (typeof bridge?.setSpeakerphone === 'function') {
+        bridge.setSpeakerphone(isLoud);
+      }
+    } catch {}
+
+    try {
       if (typeof AgoraRTC.getPlaybackDevices === 'function') {
         const devices = await AgoraRTC.getPlaybackDevices();
         if (devices && devices.length > 0) {

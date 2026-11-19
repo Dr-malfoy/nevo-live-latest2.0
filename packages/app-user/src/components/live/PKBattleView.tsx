@@ -840,6 +840,12 @@ export const PKBattleView: React.FC<PKBattleViewProps> = ({
             }
             if (mediaType === 'audio') {
               user.audioTrack?.play();
+              try {
+                const bridge = (window as any).NevoNativeBridge;
+                if (typeof bridge?.routeAudioToSpeaker === 'function') {
+                  bridge.routeAudioToSpeaker();
+                }
+              } catch {}
             }
           } catch (e) {
             console.warn('[PKBattleView] Agora subscribe error:', e);
