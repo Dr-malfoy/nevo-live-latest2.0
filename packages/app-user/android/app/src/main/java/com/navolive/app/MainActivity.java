@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
     private static String pendingNotificationUrl = null;
     public static volatile boolean isCallActive = false;
     public static volatile boolean isPartyActive = false;
+    public static volatile boolean isLiveActive = false;
 
     public class NativeCallBridge {
         @android.webkit.JavascriptInterface
@@ -124,13 +125,35 @@ public class MainActivity extends BridgeActivity {
         @android.webkit.JavascriptInterface
         public void startLiveAudio() {
             Log.d(TAG, "NativeCallBridge: startLiveAudio invoked");
-            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).startLiveAudio());
+            runOnUiThread(() -> {
+                isLiveActive = true;
+                updatePictureInPictureParams(true);
+                AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
+            });
         }
 
         @android.webkit.JavascriptInterface
         public void stopLiveAudio() {
             Log.d(TAG, "NativeCallBridge: stopLiveAudio invoked");
-            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio());
+            runOnUiThread(() -> {
+                isLiveActive = false;
+                updatePictureInPictureParams(false);
+                AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
+            });
+        }
+
+        @android.webkit.JavascriptInterface
+        public void setLiveActive(boolean active) {
+            Log.d(TAG, "NativeCallBridge: setLiveActive invoked: " + active);
+            runOnUiThread(() -> {
+                isLiveActive = active;
+                updatePictureInPictureParams(active);
+                if (active) {
+                    AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
+                } else {
+                    AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
+                }
+            });
         }
 
         @android.webkit.JavascriptInterface
@@ -217,9 +240,9 @@ public class MainActivity extends BridgeActivity {
     public void onPause() {
         super.onPause();
         attachBridgeInterface();
-        if (isCallActive && getBridge() != null && getBridge().getWebView() != null) {
+        if ((isCallActive || isLiveActive || isPartyActive) && getBridge() != null && getBridge().getWebView() != null) {
             try {
-                // Keep WebView active during background call so WebRTC audio capturing stays uninterrupted
+                // Keep WebView active during background call, live, or party so WebRTC audio capturing and video playback stay uninterrupted
                 getBridge().getWebView().onResume();
                 getBridge().getWebView().resumeTimers();
             } catch (Throwable ignored) {}
@@ -229,7 +252,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStop() {
         super.onStop();
-        if (isCallActive && getBridge() != null && getBridge().getWebView() != null) {
+        if ((isCallActive || isLiveActive || isPartyActive) && getBridge() != null && getBridge().getWebView() != null) {
             try {
                 getBridge().getWebView().resumeTimers();
             } catch (Throwable ignored) {}
@@ -254,6 +277,12 @@ public class MainActivity extends BridgeActivity {
                 Intent intent = new Intent(this, OngoingCallService.class);
                 intent.setAction(OngoingCallService.ACTION_STOP);
                 startService(intent);
+            } catch (Throwable ignored) {}
+        }
+        if (isLiveActive) {
+            isLiveActive = false;
+            try {
+                AudioRouteManager.getInstance(this).stopLiveAudio();
             } catch (Throwable ignored) {}
         }
     }
@@ -441,8 +470,20 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        if (isPartyActive || isCallActive) {
+        if (isPartyActive || isCallActive || isLiveActive) {
             enterPictureInPicture();
+        }
+    }
+
+    public void updatePictureInPictureParams(boolean active) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
+                android.util.Rational aspectRatio = new android.util.Rational(9, 16);
+                builder.setAspectRatio(aspectRatio);
+                builder.setAutoEnterEnabled(active);
+                setPictureInPictureParams(builder.build());
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -452,6 +493,9 @@ public class MainActivity extends BridgeActivity {
                 android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
                 android.util.Rational aspectRatio = new android.util.Rational(9, 16);
                 builder.setAspectRatio(aspectRatio);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    builder.setAutoEnterEnabled(true);
+                }
                 enterPictureInPictureMode(builder.build());
             } catch (Throwable e) {
                 try {

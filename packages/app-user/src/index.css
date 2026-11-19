@@ -511,4 +511,23 @@
   .animate-diamond-float {
     animation: diamond-gem-float 3s ease-in-out infinite;
   }
+
+  /* Android Picture-in-Picture system window styling */
+  body.android-pip-active {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    background-color: #000000 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.android-pip-active #root {
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    background-color: #000000 !important;
+  }
 }

@@ -103,19 +103,21 @@ export const LiveRoom = ({
   const { hearts, burst } = useFloatingHearts();
   const { items: reactions, trigger: triggerReaction } = useReactions();
 
-  // Mini player drag coordinates — strictly reset to (0, 0) upon returning to full screen
+  const isInPip = useLivePlayerStore((s) => s.isInPip);
+
+  // Mini player drag coordinates — strictly reset to (0, 0) upon returning to full screen or entering PiP
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
 
   useEffect(() => {
-    if (!isMinimized) {
+    if (!isMinimized || isInPip) {
       dragX.set(0);
       dragY.set(0);
       window.scrollTo(0, 0);
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
     }
-  }, [isMinimized, dragX, dragY]);
+  }, [isMinimized, isInPip, dragX, dragY]);
 
   // Tools & Modals State
   const [showLiveData, setShowLiveData] = useState(false);
@@ -496,7 +498,7 @@ export const LiveRoom = ({
 
   return (
     <motion.div
-      drag={isMinimized}
+      drag={isMinimized && !isInPip}
       dragMomentum={false}
       dragConstraints={{
         left: typeof window !== 'undefined' ? -(window.innerWidth - 160) : -300,
@@ -504,14 +506,16 @@ export const LiveRoom = ({
         top: typeof window !== 'undefined' ? -(window.innerHeight - 320) : -500,
         bottom: 10,
       }}
-      style={isMinimized ? { x: dragX, y: dragY } : { x: 0, y: 0 }}
-      animate={isMinimized ? undefined : { x: 0, y: 0 }}
+      style={isInPip ? { x: 0, y: 0 } : (isMinimized ? { x: dragX, y: dragY } : { x: 0, y: 0 })}
+      animate={isInPip || !isMinimized ? { x: 0, y: 0 } : undefined}
       transition={{ duration: 0 }}
-      onClick={isMinimized ? onMaximize : undefined}
+      onClick={isMinimized && !isInPip ? onMaximize : undefined}
       className={
-        isMinimized
-          ? "fixed bottom-20 right-3.5 w-36 h-56 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none touch-none"
-          : "fixed inset-0 w-full h-full overflow-hidden bg-brand-bg z-40"
+        isInPip
+          ? "fixed inset-0 w-full h-full overflow-hidden bg-black z-50 select-none"
+          : (isMinimized
+              ? "fixed bottom-20 right-3.5 w-36 h-56 z-50 rounded-2xl overflow-hidden shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-white/25 bg-[#0B0B0F] cursor-pointer select-none touch-none"
+              : "fixed inset-0 w-full h-full overflow-hidden bg-brand-bg z-40")
       }
       role="region"
       aria-label="Live stream"
@@ -579,8 +583,8 @@ export const LiveRoom = ({
         </div>
       )}
 
-      {/* Floating Mini Window Controls Overlay (shown ONLY when minimized) */}
-      {isMinimized && (
+      {/* Floating Mini Window Controls Overlay (shown ONLY when minimized in-app and NOT in Android PiP) */}
+      {isMinimized && !isInPip && (
         <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/65 via-transparent to-black/85 flex flex-col justify-between p-2 pointer-events-none">
           {/* Top row */}
           <div className="flex items-center justify-between pointer-events-auto">
@@ -624,8 +628,16 @@ export const LiveRoom = ({
         </div>
       )}
 
-      {/* Full-screen UI elements (shown ONLY when NOT minimized) */}
-      {!isMinimized && (
+      {/* Minimal LIVE badge when in Android system PiP */}
+      {isInPip && (
+        <div className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 shadow-md pointer-events-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+          <span className="text-[9px] font-black text-white tracking-widest uppercase">LIVE</span>
+        </div>
+      )}
+
+      {/* Full-screen UI elements (shown ONLY when NOT minimized and NOT in Android PiP) */}
+      {!isMinimized && !isInPip && (
         <>
           {/* Camera-off placeholder for host (video rooms only) */}
           <AnimatePresence>

@@ -68,6 +68,13 @@ export const endLiveSession = async (): Promise<void> => {
       console.warn('[LiveSession] leaveChannel error (ignored):', e);
     }
 
+    try {
+      const bridge = (window as any).NevoNativeBridge;
+      if (typeof bridge?.stopLiveAudio === 'function') {
+        bridge.stopLiveAudio();
+      }
+    } catch {}
+
     // 2. REST: host ends the stream, viewer leaves
     try {
       if (ctx.isHost) {
