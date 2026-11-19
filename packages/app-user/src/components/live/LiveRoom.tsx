@@ -735,7 +735,13 @@ export const LiveRoom = ({
           : (typeof stream?.hostId === 'object' && stream.hostId
               ? String((stream.hostId as any)._id)
               : (typeof stream?.hostId === 'string' ? stream.hostId : '')) || (isHost && user?._id ? String(user._id) : '');
-        const cleanHostNick = (host?.nickname || (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname : '') || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
+        const cleanHostNick = (
+          host?.nickname ||
+          host?.name ||
+          (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname || (stream.hostId as any)?.name : '') ||
+          (isHost && user?.nickname ? user.nickname : '') ||
+          ''
+        ).trim().toLowerCase();
         const isHostEntity = (uid?: string, nick?: string) => {
           const cUid = uid ? String(uid) : '';
           const cNick = (nick || '').trim().toLowerCase();
@@ -770,6 +776,22 @@ export const LiveRoom = ({
       <CommentOverlay
         messages={messages}
         currentUserId={user?._id}
+        hostId={
+          host?._id
+            ? String(host._id)
+            : (typeof stream?.hostId === 'object' && stream.hostId
+                ? String((stream.hostId as any)._id)
+                : (typeof stream?.hostId === 'string' ? stream.hostId : '')) || (isHost && user?._id ? String(user._id) : '')
+        }
+        hostNickname={
+          (
+            host?.nickname ||
+            host?.name ||
+            (typeof stream?.hostId === 'object' ? (stream.hostId as any)?.nickname || (stream.hostId as any)?.name : '') ||
+            (isHost && user?.nickname ? user.nickname : '') ||
+            ''
+          ).trim().toLowerCase()
+        }
         onUserClick={(u) => {
           if (onHostClick && u?._id) onHostClick(u as any);
         }}

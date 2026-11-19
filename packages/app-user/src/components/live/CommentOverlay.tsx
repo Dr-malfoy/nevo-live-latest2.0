@@ -6,6 +6,8 @@ import type { RoomMessage } from './types';
 interface CommentOverlayProps {
   messages: RoomMessage[];
   currentUserId?: string;
+  hostId?: string;
+  hostNickname?: string;
   onUserClick?: (user: { _id: string; nickname: string; avatar?: string }) => void;
 }
 
@@ -96,11 +98,23 @@ const CommentBubble = ({
   );
 };
 
-export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) => {
+export const CommentOverlay = ({ messages, currentUserId, hostId, hostNickname, onUserClick }: CommentOverlayProps) => {
   const listRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'room' | 'chat'>('all');
   const [dismissedGiftKeys, setDismissedGiftKeys] = useState<Set<string>>(() => new Set());
   const scheduledTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const cleanHostId = hostId ? String(hostId).trim() : '';
+  const cleanHostNick = (hostNickname || '').trim().toLowerCase();
+
+  const isHostMsg = (m: RoomMessage) => {
+    if (m.isFromHost) return true;
+    const mUid = m.userId ? String(m.userId).trim() : '';
+    const mNick = (m.nickname || '').trim().toLowerCase();
+    if (cleanHostId && mUid && mUid === cleanHostId) return true;
+    if (cleanHostNick && mNick && (cleanHostNick === mNick || cleanHostNick.includes(mNick) || mNick.includes(cleanHostNick))) return true;
+    return false;
+  };
 
   // Track each gift message and auto-remove after exactly 5 seconds
   useEffect(() => {
@@ -139,6 +153,13 @@ export const CommentOverlay = ({ messages, onUserClick }: CommentOverlayProps) =
     const key = getMsgKey(m, idx);
     // Auto-remove gift notifications after 5 seconds!
     if (isGiftMsg(m) && dismissedGiftKeys.has(key)) return false;
+
+    // "host kono joind user k git korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
+    // Never float host gift messages in live comments overlay!
+    if (isGiftMsg(m) && isHostMsg(m)) {
+      return false;
+    }
+
     if (activeTab === 'room') return m.kind === 'join' || m.isGift || !!m.gift;
     if (activeTab === 'chat') return m.kind !== 'join' && !m.isGift && !m.gift;
     return true;

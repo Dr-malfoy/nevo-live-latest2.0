@@ -71,14 +71,17 @@ const streamFiltersMap = new Map<string, StreamFilterState>();
 const getTopGifters = (streamId: string, hostId?: string, hostNickname?: string): StreamGifter[] => {
   const gifters = streamGiftersMap.get(streamId);
   if (!gifters) return [];
-  if (hostId) {
-    gifters.delete(hostId);
-  }
+  const cleanHId = hostId ? String(hostId).trim() : '';
   const cleanHostNick = (hostNickname || '').trim().toLowerCase();
+  if (cleanHId) {
+    gifters.delete(cleanHId);
+  }
   return Array.from(gifters.values())
     .filter((g) => {
-      if (hostId && String(g.userId) === String(hostId)) return false;
-      if (cleanHostNick && g.nickname && g.nickname.trim().toLowerCase() === cleanHostNick) return false;
+      const gId = String(g.userId || '').trim();
+      const gNick = (g.nickname || '').trim().toLowerCase();
+      if (cleanHId && gId === cleanHId) return false;
+      if (cleanHostNick && gNick && (cleanHostNick === gNick || cleanHostNick.includes(gNick) || gNick.includes(cleanHostNick))) return false;
       return true;
     })
     .sort((a, b) => b.totalGifts - a.totalGifts)
@@ -504,8 +507,11 @@ export const registerStreamHandlers = (socket: Socket): void => {
     });
   });
 
-  socket.on('stream:gift', async ({ streamId, gift, count, receiverId, isFromHost: clientIsFromHost }: any) => {
-    const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(socket.data.user?.userId);
+  socket.on('stream:gift', async ({ streamId, gift, count, receiverId, isFromHost: clientIsFromHost, senderId, senderNickname }: any) => {
+    const rawUserId = socket.data.user?.userId || senderId;
+    const { userId, nickname, avatar, level, wealthLevel, liveLevel } = await getUserProfile(rawUserId);
+    const finalUserId = userId || senderId || socket.data.user?.userId;
+    const finalNickname = (nickname && nickname !== 'Guest') ? nickname : (senderNickname || 'Viewer');
     if (!streamId) return;
 
     let isFromHost = Boolean(clientIsFromHost);
@@ -517,51 +523,53 @@ export const registerStreamHandlers = (socket: Socket): void => {
         streamHostId = typeof stream.hostId === 'object' && (stream.hostId as any)._id
           ? (stream.hostId as any)._id.toString()
           : stream.hostId.toString();
-        const hostUser = await User.findById(streamHostId).select('nickname').lean();
-        hostNickname = hostUser?.nickname || '';
-        if (
-          (userId && streamHostId && String(userId) === streamHostId) ||
-          (hostNickname && nickname && nickname.trim().toLowerCase() === hostNickname.trim().toLowerCase())
-        ) {
-          isFromHost = true;
-        }
+        const hostUser = await User.findById(streamHostId).select('nickname name').lean();
+        hostNickname = hostUser?.nickname || (hostUser as any)?.name || '';
       }
     } catch {}
 
-    // Ensure host is removed from streamGiftersMap if present from any previous event
-    if (streamHostId && streamGiftersMap.has(streamId)) {
-      streamGiftersMap.get(streamId)!.delete(streamHostId);
+    const cleanHostNick = hostNickname.trim().toLowerCase();
+    const cleanSenderNick = finalNickname.trim().toLowerCase();
+
+    if (
+      (finalUserId && streamHostId && String(finalUserId) === streamHostId) ||
+      (socket.data.user?.userId && streamHostId && String(socket.data.user.userId) === streamHostId) ||
+      (cleanHostNick && cleanSenderNick && (cleanHostNick === cleanSenderNick || cleanHostNick.includes(cleanSenderNick) || cleanSenderNick.includes(cleanHostNick)))
+    ) {
+      isFromHost = true;
     }
-    if (isFromHost && userId && streamGiftersMap.has(streamId)) {
-      streamGiftersMap.get(streamId)!.delete(userId);
+
+    // Ensure host is completely removed from streamGiftersMap
+    if (streamGiftersMap.has(streamId)) {
+      if (streamHostId) streamGiftersMap.get(streamId)!.delete(streamHostId);
+      if (finalUserId && isFromHost) streamGiftersMap.get(streamId)!.delete(String(finalUserId));
+      if (socket.data.user?.userId && isFromHost) streamGiftersMap.get(streamId)!.delete(String(socket.data.user.userId));
     }
 
     // Track total gift value for ranking in this stream ONLY if sender is NOT the host!
     // The host should never be ranked in top gifters.
-    if (userId && !isFromHost) {
+    if (finalUserId && !isFromHost) {
       if (!streamGiftersMap.has(streamId)) {
         streamGiftersMap.set(streamId, new Map());
       }
       const gifters = streamGiftersMap.get(streamId)!;
-      const existing = gifters.get(userId) || {
-        userId,
-        nickname,
+      const existing = gifters.get(String(finalUserId)) || {
+        userId: String(finalUserId),
+        nickname: finalNickname,
         avatar,
         totalGifts: 0,
       };
       const giftValue = (Number(gift?.priceDiamonds) || Number(gift?.priceCoins) || 1) * (Number(count) || 1);
       existing.totalGifts += giftValue;
-      existing.nickname = nickname;
+      existing.nickname = finalNickname;
       existing.avatar = avatar;
-      gifters.set(userId, existing);
+      gifters.set(String(finalUserId), existing);
     }
 
-    // Emit to the whole room (including sender) so the sender sees their own
-    // gift message + burst, and the host sees the gift.
-    getIO().to(`stream:${streamId}`).emit('stream:gift-received', {
+    const giftPayload = {
       id: `gift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      userId,
-      nickname,
+      userId: finalUserId,
+      nickname: finalNickname,
       avatar,
       level,
       wealthLevel,
@@ -570,7 +578,18 @@ export const registerStreamHandlers = (socket: Socket): void => {
       count,
       receiverId,
       isFromHost,
-    });
+    };
+
+    // "host kono joind user k git korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
+    if (isFromHost && receiverId) {
+      // Direct host-to-user gift: ONLY emit to the specific recipient user!
+      getIO().to(`user:${receiverId}`).emit('stream:gift-received', giftPayload);
+      // And notify the sender directly so sender sees animation locally without room float
+      socket.emit('stream:gift-received', giftPayload);
+    } else {
+      // Normal audience gift: broadcast to the whole room
+      getIO().to(`stream:${streamId}`).emit('stream:gift-received', giftPayload);
+    }
 
     // Broadcast updated Top 5 gifters to the room (excluding host)
     getIO().to(`stream:${streamId}`).emit('stream:top-gifters', {

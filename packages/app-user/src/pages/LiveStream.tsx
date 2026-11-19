@@ -22,7 +22,8 @@ const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '920b9d6ba006455f84f6a
 const NETWORK_GRACE_MS = 30_000; // 30s grace window before auto-ending on network loss
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-const getCleanHostId = (stream: any, host: any): string => {
+const getCleanHostId = (stream: any, host: any, currentUser?: any, isHostUser?: boolean): string => {
+  if (isHostUser && currentUser?._id) return String(currentUser._id);
   if (host?._id) return String(host._id);
   if (host?.id) return String(host.id);
   if (stream?.hostId) {
@@ -40,8 +41,17 @@ const getCleanHostId = (stream: any, host: any): string => {
   return '';
 };
 
-const getCleanHostNickname = (stream: any, host: any): string => {
-  return String(host?.nickname || stream?.hostId?.nickname || stream?.host?.nickname || '').trim().toLowerCase();
+const getCleanHostNickname = (stream: any, host: any, currentUser?: any, isHostUser?: boolean): string => {
+  return String(
+    (isHostUser && (currentUser?.nickname || currentUser?.name)) ||
+    host?.nickname ||
+    host?.name ||
+    stream?.hostId?.nickname ||
+    stream?.hostId?.name ||
+    stream?.host?.nickname ||
+    stream?.host?.name ||
+    ''
+  ).trim().toLowerCase();
 };
 
 export interface LiveStreamPageProps {
@@ -153,7 +163,20 @@ export const LiveStreamPage = ({
 
   // Null-safe: hostId can be null (orphaned user ref), a string, or a populated object.
   // Prefer the server-reported isHost (from joinStream); fall back to client-side derivation.
-  const isHost = serverIsHost || !!(stream && user && stream.hostId && typeof stream.hostId === 'object' && stream.hostId._id === user._id);
+  const isHost = Boolean(
+    serverIsHost ||
+    (user?._id && host?._id && String(user._id) === String(host._id)) ||
+    (user?._id && stream?.hostId && (
+      typeof stream.hostId === 'object'
+        ? String(user._id) === String(stream.hostId._id || stream.hostId.id || '')
+        : String(user._id) === String(stream.hostId)
+    )) ||
+    (user?._id && stream?.host && (
+      typeof stream.host === 'object'
+        ? String(user._id) === String(stream.host._id || stream.host.id || '')
+        : String(user._id) === String(stream.host)
+    ))
+  );
   isHostRef.current = isHost;
 
   const [elapsed, setElapsed] = useState(0);
@@ -507,17 +530,24 @@ export const LiveStreamPage = ({
     };
     const onGift = (msg: any) => {
       const myId = userRef.current?._id ? String(userRef.current._id) : '';
-      const isSelf = Boolean(myId && String(msg?.userId) === myId);
+      const myNick = (userRef.current?.nickname || '').trim().toLowerCase();
+      const msgUserId = msg?.userId ? String(msg.userId) : '';
+      const msgNick = (msg?.nickname || '').trim().toLowerCase();
+      const isSelf = Boolean(
+        (myId && msgUserId && myId === msgUserId) ||
+        (myNick && msgNick && myNick === msgNick)
+      );
       const giftCount = msg?.count || 1;
       const giftObj = msg?.gift;
       const giftMsgId = msg?.id || `gift-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-      const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
-      const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
+      const streamHostId = getCleanHostId(streamRef.current, hostRef.current, userRef.current, isHostRef.current);
+      const hostNick = getCleanHostNickname(streamRef.current, hostRef.current, userRef.current, isHostRef.current);
       const isFromHost = Boolean(
         msg?.isFromHost ||
-        (streamHostId && msg?.userId && String(msg.userId) === streamHostId) ||
-        (hostNick && msg?.nickname && msg.nickname.trim().toLowerCase() === hostNick)
+        (streamHostId && msgUserId && msgUserId === streamHostId) ||
+        (hostNick && msgNick && (msgNick === hostNick || msgNick.includes(hostNick) || hostNick.includes(msgNick))) ||
+        (isHostRef.current && isSelf)
       );
       const isRecipient = Boolean(
         myId && (
@@ -527,16 +557,16 @@ export const LiveStreamPage = ({
       );
 
       // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
-      // If host gifts a joined user, DO NOT add it to room chat messages for live audience!
+      // If host gifts a joined user, NEVER add it to room chat messages for live audience / comment overlay!
       const isHostToUserGift = Boolean(isFromHost && msg?.receiverId);
 
-      // Append to chat if not self AND (not host-to-user gift OR is recipient)
-      if (!isSelf && (!isHostToUserGift || isRecipient)) {
+      // Append to chat ONLY if NOT self and NOT a host-to-user gift
+      if (!isSelf && !isHostToUserGift) {
         const entry: RoomMessage = {
           ...msg,
           id: giftMsgId,
           isGift: true,
-          nickname: msg?.nickname || (isSelf ? (userRef.current?.nickname || 'You') : 'Guest'),
+          nickname: msg?.nickname || 'Guest',
           level: msg?.level || 1,
           wealthLevel: msg?.wealthLevel || msg?.level || 1,
           liveLevel: msg?.liveLevel || msg?.level || 1,
@@ -547,7 +577,7 @@ export const LiveStreamPage = ({
           const isDup = prev.some(
             (m) =>
               m.id === giftMsgId ||
-              (m.userId && String(m.userId) === String(msg.userId) && m.isGift && m.message === entry.message)
+              (m.userId && String(m.userId) === msgUserId && m.isGift && m.message === entry.message)
           );
           if (isDup) return prev;
           return [...prev, entry];
@@ -561,18 +591,20 @@ export const LiveStreamPage = ({
       // Trigger the pop-up animation and floating gifts
       if (giftObj) {
         if (!isSelf) {
-          setGiftBurst({
-            id: `${Date.now()}-${Math.random()}`,
-            gift: giftObj,
-            count: giftCount,
-            nickname: msg.nickname || 'Someone',
-            receiverId: msg.receiverId,
-            receiverName: msg.receiverName,
-            userId: msg.userId,
-            isFromHost,
-          });
-          if (burstTimer.current) clearTimeout(burstTimer.current);
-          burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
+          if (!isHostToUserGift || isRecipient) {
+            setGiftBurst({
+              id: `${Date.now()}-${Math.random()}`,
+              gift: giftObj,
+              count: giftCount,
+              nickname: msg.nickname || 'Someone',
+              receiverId: msg.receiverId,
+              receiverName: msg.receiverName,
+              userId: msg.userId,
+              isFromHost,
+            });
+            if (burstTimer.current) clearTimeout(burstTimer.current);
+            burstTimer.current = setTimeout(() => setGiftBurst(null), 5000);
+          }
 
           // "host kono joind user k gift korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
           if (isHostToUserGift) {
@@ -781,8 +813,8 @@ export const LiveStreamPage = ({
 
     const onTopGifters = (data: any) => {
       if (data?.topGifters && Array.isArray(data.topGifters)) {
-        const streamHostId = getCleanHostId(streamRef.current, hostRef.current) || (isHostRef.current && userRef.current?._id ? String(userRef.current._id) : '');
-        const hostNick = (getCleanHostNickname(streamRef.current, hostRef.current) || (isHostRef.current && userRef.current?.nickname ? userRef.current.nickname : '') || '').trim().toLowerCase();
+        const streamHostId = getCleanHostId(streamRef.current, hostRef.current, userRef.current, isHostRef.current);
+        const hostNick = (getCleanHostNickname(streamRef.current, hostRef.current, userRef.current, isHostRef.current) || '').trim().toLowerCase();
         const myId = userRef.current?._id ? String(userRef.current._id) : '';
         const myNick = (userRef.current?.nickname || '').trim().toLowerCase();
 
@@ -804,17 +836,24 @@ export const LiveStreamPage = ({
     };
     const onSpeakersUpdate = (data: any) => {
       if (data?.speakers && Array.isArray(data.speakers)) {
-        const streamHostId = getCleanHostId(streamRef.current, hostRef.current);
-        const hostNick = getCleanHostNickname(streamRef.current, hostRef.current);
+        const streamHostId = getCleanHostId(streamRef.current, hostRef.current, userRef.current, isHostRef.current);
+        const hostNick = (getCleanHostNickname(streamRef.current, hostRef.current, userRef.current, isHostRef.current) || '').trim().toLowerCase();
+        const myId = userRef.current?._id ? String(userRef.current._id) : '';
+        const myNick = (userRef.current?.nickname || '').trim().toLowerCase();
         const filtered = data.speakers.filter(
           (s: any) => {
-            if (streamHostId && String(s.userId) === streamHostId) return false;
-            if (hostNick && s.nickname && s.nickname.trim().toLowerCase() === hostNick) return false;
+            const sId = String(s.userId || '');
+            const sNick = (s.nickname || '').trim().toLowerCase();
+            if (streamHostId && sId === streamHostId) return false;
+            if (hostNick && (sNick === hostNick || sNick.includes(hostNick) || hostNick.includes(sNick))) return false;
+            if (isHostRef.current) {
+              if (myId && sId === myId) return false;
+              if (myNick && (sNick === myNick || sNick.includes(myNick) || myNick.includes(sNick))) return false;
+            }
             return true;
           }
         );
         setSpeakers(filtered);
-        const myId = String(userRef.current?._id || (userRef.current as any)?.id || '');
         const meAsSpeaker = filtered.find((s: any) => String(s.userId) === myId);
         if (meAsSpeaker) {
           setIsSpeaker(true);
@@ -1187,14 +1226,33 @@ export const LiveStreamPage = ({
           updateUser({ coins: data.data.senderBalance });
         }
       }
-      if (socket && id) socket.emit('stream:gift', { streamId: id, gift, count: quantity, receiverId });
-      gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
-      // Optimistic local gift message for the sender
       const currentUser = userRef.current;
-      const isHostSender = Boolean(isHostRef.current);
+      const streamHostId = getCleanHostId(streamRef.current, hostRef.current, currentUser, isHostRef.current);
+      const hostNick = (getCleanHostNickname(streamRef.current, hostRef.current, currentUser, isHostRef.current) || '').trim().toLowerCase();
+      const myId = currentUser?._id ? String(currentUser._id) : '';
+      const myNick = (currentUser?.nickname || '').trim().toLowerCase();
+      const isHostSender = Boolean(
+        isHostRef.current ||
+        (streamHostId && myId && streamHostId === myId) ||
+        (hostNick && myNick && (hostNick === myNick || hostNick.includes(myNick) || myNick.includes(hostNick)))
+      );
       const isHostToUserGift = Boolean(isHostSender && receiverId);
 
-      // If host gifts a joined user, DO NOT add to room chat messages on the live screen!
+      if (socket && id) {
+        socket.emit('stream:gift', {
+          streamId: id,
+          gift,
+          count: quantity,
+          receiverId,
+          isFromHost: isHostSender,
+          senderId: currentUser?._id,
+          senderNickname: currentUser?.nickname,
+        });
+      }
+      gamesApi.recordProgress('gift_sent', quantity).catch(() => {});
+
+      // Optimistic local gift message for the sender ONLY if NOT a host-to-user gift:
+      // "host kono joind user k git korle ta live a float hbe na just j user k dewa hbe tar oikhane float korbe"
       if (currentUser && !isHostToUserGift) {
         const selfGiftId = `gift-self-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         setChatMessages((prev) => [
@@ -1633,28 +1691,28 @@ export const LiveStreamPage = ({
         likeCount={likeCount}
         onLike={handleLike}
         topGifters={topGifters.filter((g) => {
-          const hId = getCleanHostId(stream, host) || (isHost && user?._id ? String(user._id) : '');
-          const hNick = (getCleanHostNickname(stream, host) || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
+          const hId = getCleanHostId(stream, host, user, isHost);
+          const hNick = (getCleanHostNickname(stream, host, user, isHost) || '').trim().toLowerCase();
           const gId = String(g.userId || '');
           const gNick = (g.nickname || '').trim().toLowerCase();
           if (hId && gId === hId) return false;
           if (hNick && (gNick === hNick || gNick.includes(hNick) || hNick.includes(gNick))) return false;
           if (isHost) {
             if (user?._id && gId === String(user._id)) return false;
-            if (user?.nickname && (gNick === user.nickname.trim().toLowerCase() || gNick.includes(user.nickname.trim().toLowerCase()))) return false;
+            if (user?.nickname && (gNick === user.nickname.trim().toLowerCase() || gNick.includes(user.nickname.trim().toLowerCase()) || user.nickname.trim().toLowerCase().includes(gNick))) return false;
           }
           return true;
         })}
         speakers={speakers.filter((s) => {
-          const hId = getCleanHostId(stream, host) || (isHost && user?._id ? String(user._id) : '');
-          const hNick = (getCleanHostNickname(stream, host) || (isHost && user?.nickname ? user.nickname : '') || '').trim().toLowerCase();
+          const hId = getCleanHostId(stream, host, user, isHost);
+          const hNick = (getCleanHostNickname(stream, host, user, isHost) || '').trim().toLowerCase();
           const sId = String(s.userId || '');
           const sNick = (s.nickname || '').trim().toLowerCase();
           if (hId && sId === hId) return false;
           if (hNick && (sNick === hNick || sNick.includes(hNick) || hNick.includes(sNick))) return false;
           if (isHost) {
             if (user?._id && sId === String(user._id)) return false;
-            if (user?.nickname && (sNick === user.nickname.trim().toLowerCase() || sNick.includes(user.nickname.trim().toLowerCase()))) return false;
+            if (user?.nickname && (sNick === user.nickname.trim().toLowerCase() || sNick.includes(user.nickname.trim().toLowerCase()) || user.nickname.trim().toLowerCase().includes(sNick))) return false;
           }
           return true;
         })}

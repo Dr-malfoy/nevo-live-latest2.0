@@ -102,9 +102,11 @@ export const TopGifterSeats = ({
     const cUid = cleanId(uid);
     const cNick = (nick || '').trim().toLowerCase();
     if (effectiveHostId && cUid && cUid === effectiveHostId) return true;
+    if (currentUserId && isHost && cUid && cUid === cleanId(currentUserId)) return true;
+    if (cleanHostNick && cNick) {
+      if (cNick === cleanHostNick || cNick.includes(cleanHostNick) || cleanHostNick.includes(cNick)) return true;
+    }
     if (isHost && currentUserId && cUid && cUid === cleanId(currentUserId)) return true;
-    if (cleanHostNick && cNick && cNick === cleanHostNick) return true;
-    if (isHost && cleanHostNick && cNick && (cNick.includes(cleanHostNick) || cleanHostNick.includes(cNick))) return true;
     return false;
   };
 
