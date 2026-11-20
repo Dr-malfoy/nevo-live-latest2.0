@@ -22,7 +22,7 @@ import { agencyApi } from '../api/agency.api';
 import { useAuthStore } from '../stores';
 import { DiamondIcon, CoinIcon } from '../components/ui/CurrencyIcon';
 import { VerificationGateModal } from '../components/ui';
-import { canUseTradeFeatures } from '../services/verification';
+import { canUseLiveFeatures } from '../services/verification';
 import {
   BkashLogo,
   NagadLogo,
@@ -301,7 +301,7 @@ export const Recharge = () => {
   };
 
   const handleSubmit = async () => {
-    if (!canUseTradeFeatures(user?.verification, user?.role)) {
+    if (!canUseLiveFeatures(user?.verification, user?.role)) {
       setShowGate(true);
       return;
     }
@@ -1245,13 +1245,13 @@ export const Recharge = () => {
         </div>
       )}
 
-      {/* NID Verification Gate Modal */}
+      {/* Live Face Verification Gate Modal */}
       <VerificationGateModal
         isOpen={showGate}
         onClose={() => setShowGate(false)}
-        type="nid"
-        title="NID Verification Required"
-        message="NID Verification is required to buy diamonds and recharge. Please verify your Government ID to unlock diamond purchase."
+        type="face"
+        title="Live Face Verification Required"
+        message="Live Face Verification is required to top up and buy diamonds. Please complete your live face verification to continue."
       />
     </div>
   );

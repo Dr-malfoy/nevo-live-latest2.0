@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { paymentService } from '../services/payment.service';
 import { authenticate, optionalAuth } from '../middleware/auth';
-import { requireNidVerified } from '../middleware/roleGuard';
+import { requireFaceVerified } from '../middleware/roleGuard';
 import { sendSuccess, sendPaginated, sendError } from '../utils/response';
 
 const router = Router();
@@ -39,7 +39,7 @@ router.get('/admin-info', async (_req, res, next) => {
 });
 
 // User — create a purchase order (buy diamonds/coins through an agent)
-router.post('/orders', authenticate, requireNidVerified, async (req, res, next) => {
+router.post('/orders', authenticate, requireFaceVerified, async (req, res, next) => {
   try {
     const { paymentMethod, amountBdt, amountUsd, amount, currencyMode, screenshot, transactionId, currency, agentId, accountNumber, isOfficial } = req.body;
     if (!paymentMethod || (!amountBdt && !amountUsd && !amount) || !screenshot || !transactionId) {
@@ -81,7 +81,7 @@ router.put('/user-info', authenticate, async (req, res, next) => {
 });
 
 // User — create withdrawal request (through linked agent)
-router.post('/withdraw', authenticate, requireNidVerified, async (req, res, next) => {
+router.post('/withdraw', authenticate, async (req, res, next) => {
   try {
     const { currency, amount, method, accountNumber, assetPassword } = req.body;
     if (!currency || !amount || !method || !accountNumber) {

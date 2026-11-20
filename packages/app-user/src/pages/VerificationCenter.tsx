@@ -1146,10 +1146,10 @@ export const VerificationCenter = () => {
           {/* Unlocked Features List */}
           <div className="grid grid-cols-2 gap-2 mb-4">
             {[
+              { icon: Diamond, title: 'Top Up & Recharge', desc: 'Buy diamonds & coins' },
               { icon: VideoCamera, title: 'Go Live', desc: 'Broadcast video & audio' },
               { icon: UserCheck, title: 'Party Rooms', desc: 'Host voice chat rooms' },
-              { icon: ChatDots, title: 'Chat & Messages', desc: 'Message hosts & users' },
-              { icon: Images, title: 'Post Moments', desc: 'Share photo posts' },
+              { icon: ChatDots, title: 'Chat & Moments', desc: 'Message & share posts' },
             ].map((feat) => (
               <div key={feat.title} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-soft border border-line">
                 <feat.icon className={`w-4 h-4 shrink-0 ${isFaceVerified ? 'text-purple-600' : 'text-ink-muted'}`} />
@@ -1196,10 +1196,10 @@ export const VerificationCenter = () => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-bold text-sm sm:text-base text-ink truncate">NID / ID Verification</h3>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">
-                    Financial
+                    Official
                   </span>
                 </div>
-                <p className="text-xs text-ink-muted truncate">Trading & Diamond Exchange</p>
+                <p className="text-xs text-ink-muted truncate">Alpha / Aurora Host & Diamond Seller</p>
               </div>
             </div>
 
@@ -1219,16 +1219,16 @@ export const VerificationCenter = () => {
           </div>
 
           <p className="text-xs text-ink-muted leading-relaxed mb-3.5">
-            Submit your official government NID to unlock financial trading and diamond exchange:
+            Submit your official government NID to unlock official host and diamond seller roles:
           </p>
 
           {/* Unlocked Features List */}
           <div className="grid grid-cols-2 gap-2 mb-4">
             {[
-              { icon: ArrowsLeftRight, title: 'Trade Coins', desc: 'Transfer & exchange coins' },
-              { icon: Diamond, title: 'Buy Diamonds', desc: 'Agency & seller purchases' },
-              { icon: Coins, title: 'Sell Diamonds', desc: 'Cash out & agent trading' },
-              { icon: ShieldCheck, title: 'P2P Trading', desc: 'Verified trader access' },
+              { icon: ShieldCheck, title: 'Alpha Host', desc: 'Male official host application' },
+              { icon: Sparkle, title: 'Aurora Host', desc: 'Female official host application' },
+              { icon: Diamond, title: 'Diamond Seller', desc: 'Certified seller application' },
+              { icon: ArrowsLeftRight, title: 'Official Roles', desc: 'Badge & gateway certification' },
             ].map((feat) => (
               <div key={feat.title} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-soft border border-line">
                 <feat.icon className={`w-4 h-4 shrink-0 ${isNidVerified ? 'text-amber-600' : 'text-ink-muted'}`} />

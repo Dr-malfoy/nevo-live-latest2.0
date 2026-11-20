@@ -3,6 +3,7 @@ import { userController } from '../controllers/user.controller';
 import { storeController } from '../controllers/store.controller';
 import { hostApplicationController } from '../controllers/hostApplication.controller';
 import { authenticate, optionalAuth } from '../middleware/auth';
+import { requireNidVerified } from '../middleware/roleGuard';
 import { validate } from '../middleware/validate';
 import { updateProfileSchema, changePasswordSchema } from '@bogolive/shared';
 
@@ -10,7 +11,7 @@ const router = Router();
 
 // Alpha & Aurora Host Application & 7-Day Performance Bonus
 router.get('/host-application/eligibility', authenticate, hostApplicationController.getEligibility);
-router.post('/host-application/apply', authenticate, hostApplicationController.submitApplication);
+router.post('/host-application/apply', authenticate, requireNidVerified, hostApplicationController.submitApplication);
 router.get('/host-application/my', authenticate, hostApplicationController.getMyApplication);
 router.get('/host-application/bonus-cycle', authenticate, hostApplicationController.getBonusCycle);
 

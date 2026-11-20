@@ -2,6 +2,8 @@ import client from './client';
 
 export interface DiamondSellerEligibility {
   isEligible: boolean;
+  isNidVerified?: boolean;
+  hasEnoughDiamonds?: boolean;
   currentDiamonds: number;
   requiredDiamonds: number;
   progressPercent: number;

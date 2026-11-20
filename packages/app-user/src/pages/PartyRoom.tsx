@@ -236,6 +236,7 @@ export const PartyRoom = ({
         return;
       }
       joinedAgoraChannelRef.current = room.agoraChannel;
+      startNativeParty(room.name || 'Party Room');
       joinChannel({
         appId: AGORA_APP_ID,
         channel: room.agoraChannel,

@@ -219,11 +219,14 @@ export const LiveStreamPage = ({
     return `0:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
-  // Start native live audio mode to route sound to Speaker / Headphone (prevent Android earpiece routing)
+  // Start native live audio mode & foreground service to keep mic and speaker running even if screen turns off
   useEffect(() => {
     try {
       const bridge = (window as any).NevoNativeBridge;
-      if (typeof bridge?.startLiveAudio === 'function') {
+      const title = stream?.title || host?.nickname || 'Live Stream';
+      if (typeof bridge?.startLiveAudioWithTitle === 'function') {
+        bridge.startLiveAudioWithTitle(title);
+      } else if (typeof bridge?.startLiveAudio === 'function') {
         bridge.startLiveAudio();
       }
     } catch {}
@@ -234,6 +237,35 @@ export const LiveStreamPage = ({
           bridge.stopLiveAudio();
         }
       } catch {}
+    };
+  }, [stream?.title, host?.nickname]);
+
+  // Prevent unexpected idle screen timeout while actively streaming or watching live
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch {}
+    };
+    requestWakeLock();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (wakeLock) {
+        try {
+          wakeLock.release();
+        } catch {}
+      }
     };
   }, []);
 

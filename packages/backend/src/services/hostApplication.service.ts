@@ -1,11 +1,13 @@
 import { Types } from 'mongoose';
 import { User, LiveStream, Transaction, OfficialHostApplication } from '../models';
 import { notificationService } from './notification.service';
+import { isNidVerified } from './verification.service';
 import { AppError } from '../middleware/errorHandler';
 import { getSkip } from '../utils/pagination';
 
 export interface EligibilityResult {
   isEligible: boolean;
+  isNidVerified: boolean;
   user: {
     _id: string;
     uid: string;
@@ -45,6 +47,10 @@ export interface EligibilityResult {
       percent: number;
       passed: boolean;
     };
+    nidVerification: {
+      passed: boolean;
+      status: string;
+    };
   };
 }
 
@@ -57,7 +63,7 @@ export const hostApplicationService = {
    */
   async getEligibility(userId: string): Promise<EligibilityResult> {
     const user = await User.findById(userId).select(
-      'uid nickname avatar gender level hostBadge hostBadgeType'
+      'uid nickname avatar gender level hostBadge hostBadgeType verification role isAdmin'
     );
     if (!user) throw new AppError('User not found', 404);
 
@@ -147,7 +153,8 @@ export const hostApplicationService = {
     const targetGiftCoins = 80000;
     const meetsGiftCoins = currentGiftCoins >= targetGiftCoins;
 
-    const isEligible = meetsLiveTime && meetsDailyRules && meetsGiftCoins;
+    const userNidVerified = isNidVerified(user);
+    const isEligible = meetsLiveTime && meetsDailyRules && meetsGiftCoins && userNidVerified;
 
     // Target Host Type based on Gender
     // Alpha Host: Male ("chelera"), Aurora Host: Female ("meyera")
@@ -163,6 +170,7 @@ export const hostApplicationService = {
 
     return {
       isEligible,
+      isNidVerified: userNidVerified,
       user: {
         _id: String(user._id),
         uid: user.uid,
@@ -197,6 +205,10 @@ export const hostApplicationService = {
           percent: Math.min(100, Math.round((currentGiftCoins / targetGiftCoins) * 100)),
           passed: meetsGiftCoins,
         },
+        nidVerification: {
+          passed: userNidVerified,
+          status: (user.verification as any)?.nidStatus || (userNidVerified ? 'APPROVED' : 'NONE'),
+        },
       },
     };
   },
@@ -219,6 +231,14 @@ export const hostApplicationService = {
       throw new AppError('Real name and phone number are required', 400);
     }
 
+    const user = await User.findById(userId).select('verification role isAdmin');
+    if (!isNidVerified(user)) {
+      throw new AppError(
+        'Government NID verification is required to apply for Alpha / Aurora Host. Please complete NID verification first.',
+        403
+      );
+    }
+
     const eligibility = await this.getEligibility(userId);
 
     // If user already has a pending application
@@ -226,10 +246,16 @@ export const hostApplicationService = {
       throw new AppError('You already have an application under review', 400);
     }
 
-    // Must meet all 3 criteria to unlock
+    // Must meet all criteria to unlock
     if (!eligibility.isEligible) {
+      if (!eligibility.isNidVerified) {
+        throw new AppError(
+          'Government NID verification is required to apply for Alpha / Aurora Host. Please complete NID verification first.',
+          403
+        );
+      }
       throw new AppError(
-        'You have not completed all requirements yet (14h live, 5 active days >=1.5h, 80,000 gift coins in 7 days).',
+        'You have not completed all requirements yet (14h live, 5 active days >=1.5h, 80,000 gift coins in 7 days, and Government NID verification).',
         400
       );
     }

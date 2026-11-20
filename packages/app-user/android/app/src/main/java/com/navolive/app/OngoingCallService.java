@@ -32,6 +32,7 @@ public class OngoingCallService extends Service {
     public static final int NOTIFICATION_ID = 9005;
 
     private PowerManager.WakeLock wakeLock = null;
+    private android.net.wifi.WifiManager.WifiLock wifiLock = null;
     private AudioFocusRequest audioFocusRequest = null;
     private AudioManager audioManager = null;
 
@@ -84,9 +85,10 @@ public class OngoingCallService extends Service {
 
         boolean isVideo = "video".equalsIgnoreCase(callType);
         boolean isParty = "party".equalsIgnoreCase(callType);
-        String callTypeDesc = isParty ? "Voice Party in progress" : isVideo ? "Video Call in progress" : "Voice Call in progress";
-        String notificationTitle = isParty ? ("Party Room · " + callerName) : ("Active Call · " + callerName);
-        String subText = isParty ? "Party Active" : "Call Active";
+        boolean isLive = "live".equalsIgnoreCase(callType);
+        String callTypeDesc = isLive ? "Live Stream in progress" : isParty ? "Voice Party in progress" : isVideo ? "Video Call in progress" : "Voice Call in progress";
+        String notificationTitle = isLive ? ("Live Stream · " + callerName) : isParty ? ("Party Room · " + callerName) : ("Active Call · " + callerName);
+        String subText = isLive ? "Live Active" : isParty ? "Party Active" : "Call Active";
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
@@ -96,7 +98,7 @@ public class OngoingCallService extends Service {
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setCategory(isLive ? NotificationCompat.CATEGORY_SERVICE : NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
         Notification notification = builder.build();
@@ -104,16 +106,28 @@ public class OngoingCallService extends Service {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+ (API 34+)
                 int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-                try {
-                    serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL;
-                } catch (Throwable ignored) {}
+                if (isLive || isParty) {
+                    try {
+                        serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+                    } catch (Throwable ignored) {}
+                } else {
+                    try {
+                        serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL;
+                    } catch (Throwable ignored) {}
+                }
                 startForeground(NOTIFICATION_ID, notification, serviceType);
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { // Android 10+ (API 29+)
-                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+                int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && (isLive || isParty)) {
+                    try {
+                        serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+                    } catch (Throwable ignored) {}
+                }
+                startForeground(NOTIFICATION_ID, notification, serviceType);
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
-            Log.d(TAG, "startForeground succeeded with type microphone");
+            Log.d(TAG, "startForeground succeeded");
         } catch (Throwable e) {
             Log.w(TAG, "startForeground fallback without types: " + e.getMessage());
             try {
@@ -123,13 +137,15 @@ public class OngoingCallService extends Service {
             }
         }
 
-        // Acquire WakeLock to keep CPU active during call
+        // Acquire WakeLock and WifiLock to keep CPU and networking active during stream/call
         acquireWakeLock();
 
-        // Request AudioFocus for voice communication
-        requestCallAudioFocus();
+        // Request AudioFocus for voice communication / live media
+        requestCallAudioFocus(isLive);
 
-        if (isParty) {
+        if (isLive) {
+            MainActivity.isLiveActive = true;
+        } else if (isParty) {
             MainActivity.isPartyActive = true;
         } else {
             MainActivity.isCallActive = true;
@@ -149,28 +165,60 @@ public class OngoingCallService extends Service {
                 Log.w(TAG, "Could not acquire WakeLock: " + e.getMessage());
             }
         }
+        if (wifiLock == null) {
+            try {
+                android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "NavoLive:OngoingCallWifiLock");
+                    wifiLock.acquire();
+                    Log.d(TAG, "OngoingCall WifiLock acquired");
+                }
+            } catch (Throwable e) {
+                Log.w(TAG, "Could not acquire WifiLock: " + e.getMessage());
+            }
+        }
     }
 
-    private void requestCallAudioFocus() {
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try {
+                wakeLock.release();
+                Log.d(TAG, "WakeLock released");
+            } catch (Throwable ignored) {}
+            wakeLock = null;
+        }
+        if (wifiLock != null && wifiLock.isHeld()) {
+            try {
+                wifiLock.release();
+                Log.d(TAG, "WifiLock released");
+            } catch (Throwable ignored) {}
+            wifiLock = null;
+        }
+    }
+
+    private void requestCallAudioFocus(boolean isLive) {
         try {
             AudioRouteManager.getInstance(this).applyAudioRouting(true);
             audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     AudioAttributes playbackAttributes = new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .setUsage(isLive ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(isLive ? AudioAttributes.CONTENT_TYPE_MUSIC : AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build();
                     audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                             .setAudioAttributes(playbackAttributes)
                             .setAcceptsDelayedFocusGain(true)
                             .setOnAudioFocusChangeListener(focusChange -> {
                                 Log.d(TAG, "AudioFocus change in OngoingCall: " + focusChange);
+                                if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+                                    AudioRouteManager.getInstance(this).applyAudioRouting(true);
+                                }
                             })
                             .build();
                     audioManager.requestAudioFocus(audioFocusRequest);
                 } else {
-                    audioManager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN);
+                    audioManager.requestAudioFocus(null, isLive ? AudioManager.STREAM_MUSIC : AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN);
                 }
             }
         } catch (Throwable e) {
@@ -182,6 +230,9 @@ public class OngoingCallService extends Service {
         Log.d(TAG, "stopCallService called");
         MainActivity.isCallActive = false;
         MainActivity.isPartyActive = false;
+        MainActivity.isLiveActive = false;
+
+        releaseWakeLock();
 
         try {
             AudioRouteManager.getInstance(this).resetAudioRouting();

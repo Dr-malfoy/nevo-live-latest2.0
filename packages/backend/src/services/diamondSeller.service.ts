@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { User, DiamondSellerApplication } from '../models';
 import { notificationService } from './notification.service';
+import { isNidVerified } from './verification.service';
 import { AppError } from '../middleware/errorHandler';
 import { getSkip } from '../utils/pagination';
 
@@ -13,13 +14,15 @@ export const diamondSellerService = {
    */
   async getEligibility(userId: string) {
     const user = await User.findById(userId).select(
-      'uid nickname avatar diamonds role sellerType isDiamondSeller diamondSellerBadge phone paymentInfo'
+      'uid nickname avatar diamonds role sellerType isDiamondSeller diamondSellerBadge phone paymentInfo verification isAdmin'
     );
     if (!user) throw new AppError('User not found', 404);
 
     const currentDiamonds = user.diamonds || 0;
     const requiredDiamonds = DIAMOND_SELLER_MIN_DIAMONDS;
-    const isEligible = currentDiamonds >= requiredDiamonds;
+    const userNidVerified = isNidVerified(user);
+    const hasEnoughDiamonds = currentDiamonds >= requiredDiamonds;
+    const isEligible = hasEnoughDiamonds && userNidVerified;
     const isDiamondSeller = Boolean(
       user.role === 'diamond_seller' ||
       user.sellerType === 'diamond_seller' ||
@@ -34,6 +37,8 @@ export const diamondSellerService = {
 
     return {
       isEligible,
+      isNidVerified: userNidVerified,
+      hasEnoughDiamonds,
       currentDiamonds,
       requiredDiamonds,
       progressPercent: Math.min(100, Math.round((currentDiamonds / requiredDiamonds) * 100)),
@@ -82,6 +87,14 @@ export const diamondSellerService = {
       throw new AppError('Phone number is required', 400);
     }
 
+    const user = await User.findById(userId).select('verification role isAdmin');
+    if (!isNidVerified(user)) {
+      throw new AppError(
+        'Government NID verification is required to apply for Diamond Seller. Please complete NID verification first.',
+        403
+      );
+    }
+
     const eligibility = await this.getEligibility(userId);
 
     if (eligibility.isDiamondSeller) {
@@ -93,6 +106,12 @@ export const diamondSellerService = {
     }
 
     if (!eligibility.isEligible) {
+      if (!eligibility.isNidVerified) {
+        throw new AppError(
+          'Government NID verification is required to apply for Diamond Seller. Please complete NID verification first.',
+          403
+        );
+      }
       throw new AppError(
         `You must have at least ${DIAMOND_SELLER_MIN_DIAMONDS.toLocaleString()} diamonds to apply for Diamond Seller. Current diamonds: ${eligibility.currentDiamonds.toLocaleString()}`,
         400

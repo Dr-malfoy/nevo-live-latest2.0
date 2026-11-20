@@ -53,15 +53,18 @@ export const requireHost = (req: Request, res: Response, next: NextFunction): vo
 };
 
 /**
- * Require Live Face Verification for Live streaming, hosting Party rooms, Chat messages, and posting Moments.
+ * Require Live Face Verification for Top up / Recharge, Live streaming, hosting Party rooms, Chat messages, and posting Moments.
  */
 export const requireFaceVerified = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const user = await User.findById(req.user?.userId).lean();
+    if (user && (user.role === 'admin' || user.isAdmin)) {
+      return next();
+    }
     if (!user || !isFaceVerified(user)) {
       sendError(
         res,
-        'Live Face Verification is required to go Live, create Party rooms, send messages, or post Moments. Please complete live face verification.',
+        'Live Face Verification is required to top up, go Live, create Party rooms, send messages, or post Moments. Please complete live face verification.',
         403
       );
       return;
@@ -73,7 +76,7 @@ export const requireFaceVerified = async (req: Request, res: Response, next: Nex
 };
 
 /**
- * Require NID Verification for Coin Trading, Buying Diamonds, and Selling Diamonds.
+ * Require Government NID Verification for Alpha Host, Aurora Host, and Diamond Seller applications.
  */
 export const requireNidVerified = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -84,7 +87,7 @@ export const requireNidVerified = async (req: Request, res: Response, next: Next
     if (!user || !isNidVerified(user)) {
       sendError(
         res,
-        'NID Verification is required to trade coins and buy/sell diamonds. Please complete NID verification.',
+        'Government NID Verification is required to apply for Alpha / Aurora Host or Diamond Seller. Please complete NID verification.',
         403
       );
       return;

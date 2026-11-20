@@ -2,10 +2,13 @@ package com.navolive.app;
 
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.WindowManager;
 
@@ -19,6 +22,30 @@ public class MainActivity extends BridgeActivity {
     public static volatile boolean isCallActive = false;
     public static volatile boolean isPartyActive = false;
     public static volatile boolean isLiveActive = false;
+    private PowerManager.WakeLock activityWakeLock = null;
+
+    private void acquireActivityWakeLock() {
+        if (activityWakeLock == null) {
+            try {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    activityWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NavoLive:MainActivityWakeLock");
+                    activityWakeLock.acquire(4 * 60 * 60 * 1000L);
+                    Log.d(TAG, "MainActivity WakeLock acquired");
+                }
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private void releaseActivityWakeLock() {
+        if (activityWakeLock != null && activityWakeLock.isHeld()) {
+            try {
+                activityWakeLock.release();
+                Log.d(TAG, "MainActivity WakeLock released");
+            } catch (Throwable ignored) {}
+            activityWakeLock = null;
+        }
+    }
 
     public class NativeCallBridge {
         @android.webkit.JavascriptInterface
@@ -93,6 +120,7 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "NativeCallBridge: startOngoingParty invoked: " + roomName);
             runOnUiThread(() -> {
                 isPartyActive = true;
+                acquireActivityWakeLock();
                 updatePictureInPictureParams(true);
                 AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
@@ -116,6 +144,9 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "NativeCallBridge: stopOngoingParty invoked");
             runOnUiThread(() -> {
                 isPartyActive = false;
+                if (!isCallActive && !isLiveActive) {
+                    releaseActivityWakeLock();
+                }
                 updatePictureInPictureParams(false);
                 AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
@@ -128,11 +159,30 @@ public class MainActivity extends BridgeActivity {
 
         @android.webkit.JavascriptInterface
         public void startLiveAudio() {
-            Log.d(TAG, "NativeCallBridge: startLiveAudio invoked");
+            startLiveAudioWithTitle("Live Stream");
+        }
+
+        @android.webkit.JavascriptInterface
+        public void startLiveAudioWithTitle(String title) {
+            Log.d(TAG, "NativeCallBridge: startLiveAudio invoked: " + title);
             runOnUiThread(() -> {
                 isLiveActive = true;
                 updatePictureInPictureParams(true);
+                keepScreenOn(true);
                 AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_START);
+                intent.putExtra("callerName", title != null && !title.trim().isEmpty() ? title : "Live Stream");
+                intent.putExtra("callType", "live");
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent);
+                    } else {
+                        startService(intent);
+                    }
+                } catch (Throwable e) {
+                    Log.w(TAG, "Could not start OngoingCallService for Live: " + e.getMessage());
+                }
             });
         }
 
@@ -142,7 +192,13 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> {
                 isLiveActive = false;
                 updatePictureInPictureParams(false);
+                keepScreenOn(false);
                 AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
+                Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_STOP);
+                try {
+                    startService(intent);
+                } catch (Throwable ignored) {}
             });
         }
 
@@ -150,12 +206,10 @@ public class MainActivity extends BridgeActivity {
         public void setLiveActive(boolean active) {
             Log.d(TAG, "NativeCallBridge: setLiveActive invoked: " + active);
             runOnUiThread(() -> {
-                isLiveActive = active;
-                updatePictureInPictureParams(active);
                 if (active) {
-                    AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
+                    startLiveAudio();
                 } else {
-                    AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
+                    stopLiveAudio();
                 }
             });
         }
@@ -212,6 +266,11 @@ public class MainActivity extends BridgeActivity {
                 ws.setMediaPlaybackRequiresUserGesture(false);
             } catch (Throwable ignored) {}
         }
+
+        IntentFilter screenFilter = new IntentFilter();
+        screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+        registerReceiver(screenStateReceiver, screenFilter);
 
         handleIntent(getIntent());
 
@@ -276,6 +335,7 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         super.onDestroy();
         CallRingtoneManager.stop();
+        releaseActivityWakeLock();
         if (isCallActive) {
             isCallActive = false;
             try {
@@ -284,13 +344,63 @@ public class MainActivity extends BridgeActivity {
                 startService(intent);
             } catch (Throwable ignored) {}
         }
+        try {
+            unregisterReceiver(screenStateReceiver);
+        } catch (Throwable ignored) {}
         if (isLiveActive) {
             isLiveActive = false;
+            try {
+                Intent intent = new Intent(this, OngoingCallService.class);
+                intent.setAction(OngoingCallService.ACTION_STOP);
+                startService(intent);
+            } catch (Throwable ignored) {}
             try {
                 AudioRouteManager.getInstance(this).stopLiveAudio();
             } catch (Throwable ignored) {}
         }
     }
+
+    public void keepScreenOn(boolean keep) {
+        runOnUiThread(() -> {
+            try {
+                if (keep) {
+                    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                } else {
+                    getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+            } catch (Throwable ignored) {}
+        });
+    }
+
+    private final BroadcastReceiver screenStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            Log.d(TAG, "screenStateReceiver action: " + action);
+            if (Intent.ACTION_SCREEN_OFF.equals(action) || Intent.ACTION_SCREEN_ON.equals(action)) {
+                if ((isLiveActive || isPartyActive || isCallActive) && getBridge() != null && getBridge().getWebView() != null) {
+                    acquireActivityWakeLock();
+                    runOnUiThread(() -> {
+                        try {
+                            getBridge().getWebView().onResume();
+                            getBridge().getWebView().resumeTimers();
+                        } catch (Throwable ignored) {}
+                        try {
+                            AudioRouteManager.getInstance(MainActivity.this).applyAudioRouting(true);
+                        } catch (Throwable ignored) {}
+                        boolean isScreenOff = Intent.ACTION_SCREEN_OFF.equals(action);
+                        dispatchJs("try { " +
+                                "window.dispatchEvent(new CustomEvent('nativeScreenOff', { detail: { isScreenOff: " + isScreenOff + " } })); " +
+                                "if (typeof AgoraRTC !== 'undefined' && AgoraRTC.audioContext && AgoraRTC.audioContext.state === 'suspended') { " +
+                                "  AgoraRTC.audioContext.resume(); " +
+                                "} " +
+                                "} catch (e) {}");
+                    });
+                }
+            }
+        }
+    };
 
     private void handleWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {

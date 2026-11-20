@@ -20,9 +20,10 @@ import {
 } from 'react-icons/pi';
 import { usersApi } from '../api';
 import { useAuthStore, useUIStore } from '../stores';
-import { Loading } from '../components/ui';
+import { Loading, VerificationGateModal } from '../components/ui';
 import { HostBadge } from '../components/user';
 import { DiamondIcon } from '../components/ui/CurrencyIcon';
+import { canUseTradeFeatures } from '../services/verification';
 
 export const HostApplicationPage = () => {
   const navigate = useNavigate();
@@ -32,6 +33,7 @@ export const HostApplicationPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshingBonus, setRefreshingBonus] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showGate, setShowGate] = useState(false);
   const [eligibilityData, setEligibilityData] = useState<any>(null);
   const [bonusData, setBonusData] = useState<any>(null);
 
@@ -136,6 +138,10 @@ export const HostApplicationPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUseTradeFeatures(user?.verification, user?.role)) {
+      setShowGate(true);
+      return;
+    }
     if (!realName.trim()) {
       showToast('Please enter your real name', 'error');
       return;
@@ -176,7 +182,8 @@ export const HostApplicationPage = () => {
   }
 
   const criteria = eligibilityData?.criteria;
-  const isEligible = Boolean(eligibilityData?.isEligible);
+  const isNidPassed = canUseTradeFeatures(user?.verification, user?.role);
+  const isEligible = Boolean(eligibilityData?.isEligible) && isNidPassed;
   const latestApp = eligibilityData?.latestApplication;
   const isPending = latestApp?.status === 'pending';
   const isRejected = latestApp?.status === 'rejected';
@@ -1007,6 +1014,46 @@ export const HostApplicationPage = () => {
                   <span>{criteria?.giftCoins?.passed ? '✓ Completed' : 'Pending'}</span>
                 </div>
               </div>
+
+              {/* Condition 4: Government NID Verification */}
+              <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                        isNidPassed
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-amber-100 text-amber-600'
+                      }`}
+                    >
+                      <ShieldIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-ink">Government NID Verification</h4>
+                      <p className="text-[11px] text-ink-muted">Mandatory identity verification for official hosts</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span
+                      className={`text-xs font-black tabular-nums ${
+                        isNidPassed ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                    >
+                      {isNidPassed ? '✓ Verified' : user?.verification?.nidStatus === 'PENDING' ? '⏳ Under Review' : 'Required'}
+                    </span>
+                  </div>
+                </div>
+
+                {!isNidPassed && (
+                  <button
+                    type="button"
+                    onClick={() => setShowGate(true)}
+                    className="w-full mt-1 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                  >
+                    <span>Verify Government NID</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Application Form */}
@@ -1190,6 +1237,15 @@ export const HostApplicationPage = () => {
           </div>
         )}
       </main>
+
+      {/* Government NID Verification Gate Modal */}
+      <VerificationGateModal
+        isOpen={showGate}
+        onClose={() => setShowGate(false)}
+        type="nid"
+        title="Government NID Verification Required"
+        message="Government NID verification is required to apply for Alpha / Aurora Host. Please verify your Government ID to unlock official host application."
+      />
     </div>
   );
 };

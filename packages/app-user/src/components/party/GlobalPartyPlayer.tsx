@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePartyPlayerStore, useSocketStore } from '../../stores';
 import { PartyRoom } from '../../pages/PartyRoom';
-import { stopNativeParty } from '../../services/nativeParty';
+import { startNativeParty, stopNativeParty } from '../../services/nativeParty';
 
 /**
  * Global Party Room Player.
@@ -20,9 +20,15 @@ import { stopNativeParty } from '../../services/nativeParty';
 export const GlobalPartyPlayer = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { activePartyId, isMinimized, setActivePartyId, setMinimized, closeParty } = usePartyPlayerStore();
+  const { activePartyId, isMinimized, partyName, setActivePartyId, setMinimized, closeParty } = usePartyPlayerStore();
   const socket = useSocketStore((s) => s.socket);
   const closedPartyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (activePartyId) {
+      startNativeParty(partyName || 'Party Room');
+    }
+  }, [activePartyId, partyName]);
 
   const handleCloseParty = useCallback((partyIdToClose?: string | null) => {
     const id = partyIdToClose || activePartyId;

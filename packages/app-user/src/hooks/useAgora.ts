@@ -143,6 +143,54 @@ interface UseAgoraOptions {
   streamId?: string;
 }
 
+let bgAudioKeepAliveEl: HTMLAudioElement | null = null;
+
+const startBgAudioKeepAlive = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!bgAudioKeepAliveEl) {
+      bgAudioKeepAliveEl = document.createElement('audio');
+      bgAudioKeepAliveEl.id = 'agora-bg-audio-keepalive';
+      // Standard 1-second base64 silent WAV
+      bgAudioKeepAliveEl.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      bgAudioKeepAliveEl.loop = true;
+      bgAudioKeepAliveEl.volume = 0.01;
+      bgAudioKeepAliveEl.setAttribute('playsinline', 'true');
+      bgAudioKeepAliveEl.setAttribute('webkit-playsinline', 'true');
+      bgAudioKeepAliveEl.style.position = 'fixed';
+      bgAudioKeepAliveEl.style.width = '1px';
+      bgAudioKeepAliveEl.style.height = '1px';
+      bgAudioKeepAliveEl.style.opacity = '0.01';
+      bgAudioKeepAliveEl.style.pointerEvents = 'none';
+      bgAudioKeepAliveEl.style.zIndex = '-999';
+      document.body.appendChild(bgAudioKeepAliveEl);
+    }
+    bgAudioKeepAliveEl.play().catch(() => {
+      const unlock = () => {
+        bgAudioKeepAliveEl?.play().catch(() => {});
+        window.removeEventListener('click', unlock);
+        window.removeEventListener('touchstart', unlock);
+      };
+      window.addEventListener('click', unlock, { once: true });
+      window.addEventListener('touchstart', unlock, { once: true });
+    });
+  } catch (e) {
+    console.warn('[useAgora] startBgAudioKeepAlive error:', e);
+  }
+};
+
+const stopBgAudioKeepAlive = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (bgAudioKeepAliveEl) {
+      bgAudioKeepAliveEl.pause();
+      bgAudioKeepAliveEl.src = '';
+      bgAudioKeepAliveEl.remove();
+      bgAudioKeepAliveEl = null;
+    }
+  } catch (e) {}
+};
+
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const currentChannelRef = useRef<string | null>(null);
@@ -161,6 +209,7 @@ export const useAgora = () => {
   const socketRef = useRef<any>(null);
   const streamIdRef = useRef<string | null>(null);
   const cleanupSignalingRef = useRef<(() => void) | null>(null);
+  const cleanupVisibilityRef = useRef<(() => void) | null>(null);
 
   const cameraOnRef = useRef(false);
   const micOnRef = useRef(false);
@@ -388,6 +437,7 @@ export const useAgora = () => {
     }
 
     setJoined(true);
+    startBgAudioKeepAlive();
   };
 
   const joinChannel = useCallback(
@@ -455,6 +505,49 @@ export const useAgora = () => {
         };
         window.addEventListener('click', unlockAudio, { once: true });
         window.addEventListener('touchstart', unlockAudio, { once: true });
+
+        // Guard audio playback and microphone capture when screen turns off or locks
+        const handleScreenVisibility = () => {
+          if (clientRef.current) {
+            clientRef.current.remoteUsers.forEach((remoteUser) => {
+              if (remoteUser.audioTrack && !remoteUser.audioTrack.isPlaying) {
+                try {
+                  remoteUser.audioTrack.play();
+                } catch {}
+              }
+            });
+          }
+          if (localAudioRef.current && micOnRef.current) {
+            try {
+              localAudioRef.current.setEnabled(true);
+              if (typeof (localAudioRef.current as any).setMuted === 'function') {
+                (localAudioRef.current as any).setMuted(false);
+              }
+            } catch {}
+          }
+          try {
+            const audioCtx = (AgoraRTC as any)?.audioContext;
+            if (audioCtx && audioCtx.state === 'suspended') {
+              audioCtx.resume?.();
+            }
+          } catch {}
+          try {
+            const bridge = (window as any).NevoNativeBridge;
+            if (typeof bridge?.routeAudioToSpeaker === 'function') {
+              bridge.routeAudioToSpeaker();
+            }
+          } catch {}
+        };
+
+        document.addEventListener('visibilitychange', handleScreenVisibility);
+        window.addEventListener('focus', handleScreenVisibility);
+        window.addEventListener('pageshow', handleScreenVisibility);
+
+        cleanupVisibilityRef.current = () => {
+          document.removeEventListener('visibilitychange', handleScreenVisibility);
+          window.removeEventListener('focus', handleScreenVisibility);
+          window.removeEventListener('pageshow', handleScreenVisibility);
+        };
       }
 
       client.on('connection-state-change', (cur, prev) => {
@@ -576,6 +669,7 @@ export const useAgora = () => {
 
         setJoined(true);
         currentChannelRef.current = channel;
+        startBgAudioKeepAlive();
         // Start native live audio mode to route audio to Speaker / Headphone
         try {
           const bridge = (window as any).NevoNativeBridge;
@@ -979,6 +1073,10 @@ export const useAgora = () => {
     networkLostRef.current = false;
     setError('');
     try {
+      if (cleanupVisibilityRef.current) {
+        cleanupVisibilityRef.current();
+        cleanupVisibilityRef.current = null;
+      }
       if (cleanupSignalingRef.current) {
         cleanupSignalingRef.current();
         cleanupSignalingRef.current = null;
@@ -1025,6 +1123,7 @@ export const useAgora = () => {
     }
     setJoined(false);
     currentChannelRef.current = null;
+    stopBgAudioKeepAlive();
     cameraOnRef.current = false;
     micOnRef.current = false;
     setCameraOn(false);
@@ -1045,6 +1144,7 @@ export const useAgora = () => {
     return () => {
       isLeavingRef.current = true;
       currentChannelRef.current = null;
+      stopBgAudioKeepAlive();
       networkLostRef.current = false;
       setError('');
       if (cleanupSignalingRef.current) {
@@ -1083,6 +1183,73 @@ export const useAgora = () => {
           bridge.stopLiveAudio();
         }
       } catch {}
+    };
+  }, []);
+
+  // Keep microphone stream and speaker playback active when screen turns off or app is backgrounded
+  useEffect(() => {
+    const handleAudioResume = () => {
+      // 1. Resume silent keepalive audio element
+      if (bgAudioKeepAliveEl && bgAudioKeepAliveEl.paused && clientRef.current) {
+        bgAudioKeepAliveEl.play().catch(() => {});
+      }
+
+      // 2. Resume Agora RTC AudioContext if suspended by OS/Chromium during screen off
+      try {
+        const audioCtx = (AgoraRTC as any)?.audioContext;
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume?.().catch(() => {});
+        }
+      } catch {}
+
+      // 3. Ensure local mic track remains enabled and transmitting
+      if (micOnRef.current && localAudioRef.current) {
+        try {
+          localAudioRef.current.setEnabled(true).catch(() => {});
+          const mediaTrack = (localAudioRef.current as any)?._mediaStreamTrack ||
+                             (localAudioRef.current as any)?.getMediaStreamTrack?.();
+          if (mediaTrack && !mediaTrack.enabled) {
+            mediaTrack.enabled = true;
+          }
+        } catch {}
+      }
+
+      // 4. Ensure all remote users' speaker audio tracks remain playing
+      if (clientRef.current) {
+        try {
+          clientRef.current.remoteUsers.forEach((remoteUser) => {
+            if (remoteUser.audioTrack && !remoteUser.audioTrack.isPlaying) {
+              remoteUser.audioTrack.play();
+            }
+          });
+        } catch {}
+      }
+
+      // 5. Ensure native Android speaker routing is active
+      try {
+        const bridge = (window as any).NevoNativeBridge;
+        if (typeof bridge?.routeAudioToSpeaker === 'function') {
+          bridge.routeAudioToSpeaker();
+        }
+      } catch {}
+    };
+
+    document.addEventListener('visibilitychange', handleAudioResume);
+    window.addEventListener('focus', handleAudioResume);
+    window.addEventListener('nativeScreenOff', handleAudioResume);
+
+    // Heartbeat check every 2 seconds while connected to keep audio flowing when screen is off
+    const interval = setInterval(() => {
+      if (clientRef.current) {
+        handleAudioResume();
+      }
+    }, 2000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleAudioResume);
+      window.removeEventListener('focus', handleAudioResume);
+      window.removeEventListener('nativeScreenOff', handleAudioResume);
+      clearInterval(interval);
     };
   }, []);
 

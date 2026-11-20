@@ -16,8 +16,9 @@ import {
 import { IoDiamond } from 'react-icons/io5';
 import { diamondSellerApi, type DiamondSellerEligibility } from '../api/diamondSeller.api';
 import { useAuthStore, useUIStore } from '../stores';
-import { Loading } from '../components/ui';
+import { Loading, VerificationGateModal } from '../components/ui';
 import { SellerBadge } from '../components/user/SellerBadge';
+import { canUseTradeFeatures } from '../services/verification';
 
 export const DiamondSellerApply = () => {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ export const DiamondSellerApply = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showGate, setShowGate] = useState(false);
   const [eligibility, setEligibility] = useState<DiamondSellerEligibility | null>(null);
 
   // Form states
@@ -65,6 +67,10 @@ export const DiamondSellerApply = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUseTradeFeatures(user?.verification, user?.role)) {
+      setShowGate(true);
+      return;
+    }
     if (!realName.trim()) {
       showToast('Please enter your real legal name', 'error');
       return;
@@ -113,7 +119,9 @@ export const DiamondSellerApply = () => {
   const currentDiamonds = eligibility?.currentDiamonds ?? (user?.diamonds || 0);
   const requiredDiamonds = eligibility?.requiredDiamonds || 5000000;
   const progressPercent = eligibility?.progressPercent ?? Math.min(100, Math.round((currentDiamonds / requiredDiamonds) * 100));
-  const isEligible = eligibility?.isEligible ?? (currentDiamonds >= requiredDiamonds);
+  const isNidPassed = canUseTradeFeatures(user?.verification, user?.role);
+  const hasEnoughDiamonds = currentDiamonds >= requiredDiamonds;
+  const isEligible = (eligibility?.isEligible ?? hasEnoughDiamonds) && isNidPassed;
   const isDiamondSeller = eligibility?.isDiamondSeller || user?.sellerType === 'diamond_seller' || user?.role === 'diamond_seller';
   const hasPending = eligibility?.hasPendingApplication;
   const latestApp = eligibility?.latestApplication;
@@ -270,8 +278,41 @@ export const DiamondSellerApply = () => {
           </div>
         )}
 
-        {/* ── Status View 4: Not Eligible (< 5,000,000 diamonds) ───────── */}
-        {!isDiamondSeller && !hasPending && !isEligible && (
+        {/* ── Status View 4a: Has Diamonds but NID Not Verified ─────────── */}
+        {!isDiamondSeller && !hasPending && hasEnoughDiamonds && !isNidPassed && (
+          <div className="p-5 rounded-3xl bg-white border border-amber-200 shadow-md space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                <ShieldIcon className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Government NID Verification Required</h3>
+                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                  You hold {currentDiamonds.toLocaleString()} 💎 diamonds! To unlock Diamond Seller application and badge, your Government NID must be verified.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-amber-800 block">NID Status</span>
+                <span className="text-xs font-bold text-amber-900">
+                  {user?.verification?.nidStatus === 'PENDING' ? 'Documents Under Review ⏳' : 'Not Verified'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGate(true)}
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl active:scale-95 transition-all shadow-xs"
+              >
+                Verify NID Now
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Status View 4b: Not Enough Diamonds (< 5,000,000 diamonds) ─── */}
+        {!isDiamondSeller && !hasPending && !hasEnoughDiamonds && (
           <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
@@ -454,6 +495,15 @@ export const DiamondSellerApply = () => {
           </ul>
         </div>
       </div>
+
+      {/* Government NID Verification Gate Modal */}
+      <VerificationGateModal
+        isOpen={showGate}
+        onClose={() => setShowGate(false)}
+        type="nid"
+        title="Government NID Verification Required"
+        message="Government NID verification is required to apply for Diamond Seller. Please verify your Government ID to unlock diamond seller application."
+      />
     </div>
   );
 };
