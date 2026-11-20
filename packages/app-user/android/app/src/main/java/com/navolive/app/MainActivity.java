@@ -6,10 +6,12 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
@@ -47,6 +49,50 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private View blackOverlayView = null;
+
+    public void setScreenOffOverlay(boolean show) {
+        runOnUiThread(() -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+                if (wm == null) return;
+                if (show) {
+                    if (blackOverlayView == null) {
+                        blackOverlayView = new View(this);
+                        blackOverlayView.setBackgroundColor(0xFF000000);
+                        blackOverlayView.setClickable(true);
+                        blackOverlayView.setFocusable(true);
+                        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                                WindowManager.LayoutParams.MATCH_PARENT,
+                                WindowManager.LayoutParams.MATCH_PARENT,
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                                        ? WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
+                                        : WindowManager.LayoutParams.TYPE_APPLICATION,
+                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                                        | WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                                PixelFormat.OPAQUE
+                        );
+                        params.screenBrightness = 0.0f;
+                        wm.addView(blackOverlayView, params);
+                    }
+                } else {
+                    if (blackOverlayView != null) {
+                        try {
+                            wm.removeView(blackOverlayView);
+                        } catch (Throwable ignored) {}
+                        blackOverlayView = null;
+                        WindowManager.LayoutParams lp = getWindow().getAttributes();
+                        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+                        getWindow().setAttributes(lp);
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "setScreenOffOverlay error: " + t.getMessage());
+            }
+        });
+    }
+
     public class NativeCallBridge {
         @android.webkit.JavascriptInterface
         public void startIncomingRingtone() {
@@ -82,10 +128,26 @@ public class MainActivity extends BridgeActivity {
         }
 
         @android.webkit.JavascriptInterface
+        public void enableProximitySensor(boolean enable) {
+            Log.d(TAG, "NativeCallBridge: enableProximitySensor: " + enable);
+            runOnUiThread(() -> {
+                if (enable) {
+                    ProximitySensorManager.getInstance(MainActivity.this).start(false);
+                } else {
+                    ProximitySensorManager.getInstance(MainActivity.this).stop();
+                    setScreenOffOverlay(false);
+                }
+            });
+        }
+
+        @android.webkit.JavascriptInterface
         public void startOngoingCall(String callerName, String callType) {
             Log.d(TAG, "NativeCallBridge: startOngoingCall invoked: " + callerName + ", type=" + callType);
             runOnUiThread(() -> {
                 isCallActive = true;
+                if ("audio".equalsIgnoreCase(callType)) {
+                    ProximitySensorManager.getInstance(MainActivity.this).start(false);
+                }
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
                 intent.setAction(OngoingCallService.ACTION_START);
                 intent.putExtra("callerName", callerName);
@@ -107,6 +169,8 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "NativeCallBridge: stopOngoingCall invoked");
             runOnUiThread(() -> {
                 isCallActive = false;
+                ProximitySensorManager.getInstance(MainActivity.this).stop();
+                setScreenOffOverlay(false);
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
                 intent.setAction(OngoingCallService.ACTION_STOP);
                 try {
@@ -223,7 +287,10 @@ public class MainActivity extends BridgeActivity {
         @android.webkit.JavascriptInterface
         public void setSpeakerphone(boolean on) {
             Log.d(TAG, "NativeCallBridge: setSpeakerphone invoked: " + on);
-            runOnUiThread(() -> AudioRouteManager.getInstance(MainActivity.this).setSpeakerphone(on));
+            runOnUiThread(() -> {
+                AudioRouteManager.getInstance(MainActivity.this).setSpeakerphone(on);
+                ProximitySensorManager.getInstance(MainActivity.this).setSpeakerphone(on);
+            });
         }
 
         @android.webkit.JavascriptInterface
@@ -271,6 +338,11 @@ public class MainActivity extends BridgeActivity {
         screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
         screenFilter.addAction(Intent.ACTION_SCREEN_ON);
         registerReceiver(screenStateReceiver, screenFilter);
+
+        ProximitySensorManager.getInstance(this).setListener(isNear -> {
+            setScreenOffOverlay(isNear);
+            dispatchJs(String.format("try { window.dispatchEvent(new CustomEvent('proximityStateChange', { detail: { isNear: %b } })); } catch (e) {}", isNear));
+        });
 
         handleIntent(getIntent());
 
@@ -335,6 +407,8 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         super.onDestroy();
         CallRingtoneManager.stop();
+        ProximitySensorManager.getInstance(this).stop();
+        setScreenOffOverlay(false);
         releaseActivityWakeLock();
         if (isCallActive) {
             isCallActive = false;

@@ -185,6 +185,7 @@ export const CallScreen = ({
   const [callConnected, setCallConnected] = useState(Boolean(accepted));
   const [elapsed, setElapsed] = useState(0);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [isNearEar, setIsNearEar] = useState(false);
 
   const [isTargetOnline, setIsTargetOnline] = useState<boolean>(() =>
     Boolean(
@@ -211,6 +212,18 @@ export const CallScreen = ({
     };
   }, []);
 
+  // Listen to native proximity sensor changes (phone brought to ear/body)
+  useEffect(() => {
+    const handleProximity = (e: any) => {
+      const isNear = Boolean(e?.detail?.isNear);
+      setIsNearEar(isNear);
+    };
+    window.addEventListener('proximityStateChange', handleProximity);
+    return () => {
+      window.removeEventListener('proximityStateChange', handleProximity);
+    };
+  }, []);
+
   // Foreground Call Service & WakeLock bridge: keep microphone streaming alive in background
   useEffect(() => {
     const bridge = (window as any).NevoNativeBridge;
@@ -221,6 +234,13 @@ export const CallScreen = ({
         bridge?.startOngoingCall?.(callerName, callType);
       } catch {}
 
+      // Enable proximity sensor for voice calls
+      if (!isVideo) {
+        try {
+          bridge?.enableProximitySensor?.(true);
+        } catch {}
+      }
+
       let wakeLockSentinel: any = null;
       if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
         (navigator as any).wakeLock.request('screen').then((lock: any) => {
@@ -230,6 +250,7 @@ export const CallScreen = ({
 
       return () => {
         try {
+          bridge?.enableProximitySensor?.(false);
           bridge?.stopOngoingCall?.();
         } catch {}
         if (wakeLockSentinel) {
@@ -238,8 +259,10 @@ export const CallScreen = ({
       };
     } else {
       try {
+        bridge?.enableProximitySensor?.(false);
         bridge?.stopOngoingCall?.();
       } catch {}
+      setIsNearEar(false);
     }
   }, [callConnected, other?.nickname, isVideo]);
 
@@ -1146,6 +1169,18 @@ export const CallScreen = ({
       role="dialog"
       aria-label={isVideo ? 'Video call' : 'Audio call'}
     >
+      {/* Ear Proximity Black Screen & Touch Blocker Shield */}
+      {isNearEar && !isVideo && !speakerOn && (
+        <div
+          className="fixed inset-0 z-[99999] bg-black cursor-none select-none pointer-events-auto"
+          aria-hidden="true"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onTouchMove={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        />
+      )}
+
       {/* 1. Underlying Video Canvas Area (Remote video stream attachment) */}
       <div id="call-video-area" className="absolute inset-0 bg-[#050508]" />
 
