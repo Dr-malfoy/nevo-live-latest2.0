@@ -145,6 +145,7 @@ interface UseAgoraOptions {
 
 export const useAgora = () => {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const currentChannelRef = useRef<string | null>(null);
   const localVideoRef = useRef<ICameraVideoTrack | null>(null);
   const localAudioRef = useRef<ILocalAudioTrack | null>(null);
 
@@ -405,6 +406,12 @@ export const useAgora = () => {
     }: UseAgoraOptions) => {
       if (joiningRef.current) return;
 
+      // If already connected to this channel with an active Agora client, preserve session and avoid restarting tracks/mic
+      if (clientRef.current && currentChannelRef.current === channel) {
+        console.log('[useAgora] Already connected to channel:', channel, '- preserving active audio/mic session');
+        return clientRef.current;
+      }
+
       const shouldMicOn = initialMicOn !== undefined ? initialMicOn : (role === 'host');
 
       if (clientRef.current) {
@@ -568,6 +575,7 @@ export const useAgora = () => {
         }
 
         setJoined(true);
+        currentChannelRef.current = channel;
         // Start native live audio mode to route audio to Speaker / Headphone
         try {
           const bridge = (window as any).NevoNativeBridge;
@@ -1016,6 +1024,7 @@ export const useAgora = () => {
       console.warn('leave error:', e);
     }
     setJoined(false);
+    currentChannelRef.current = null;
     cameraOnRef.current = false;
     micOnRef.current = false;
     setCameraOn(false);
@@ -1035,6 +1044,7 @@ export const useAgora = () => {
   useEffect(() => {
     return () => {
       isLeavingRef.current = true;
+      currentChannelRef.current = null;
       networkLostRef.current = false;
       setError('');
       if (cleanupSignalingRef.current) {

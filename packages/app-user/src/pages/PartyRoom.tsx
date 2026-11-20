@@ -65,12 +65,21 @@ export const PartyRoom = ({
   const { id: paramId } = useParams<{ id: string }>();
   const id = partyIdProp || paramId;
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+
   const { isMinimized: storeMinimized, setMinimized, closeParty, setPartyInfo } = usePartyPlayerStore();
   const isMinimized = isMinimizedProp ?? storeMinimized;
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const socket = useSocketStore((s) => s.socket);
   const showToast = useUIStore((s) => s.showToast);
+  const showToastRef = useRef(showToast);
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   const [room, setRoom] = useState<PartyRoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,13 +161,19 @@ export const PartyRoom = ({
   const joinRoom = useSocketStore((s) => s.joinRoom);
   const leaveRoom = useSocketStore((s) => s.leaveRoom);
 
-  const fetchRoomData = useCallback(async (pwd?: string) => {
-    if (!id) return;
+  const hasFetchedRoomRef = useRef<string | null>(null);
+
+  const fetchRoomData = useCallback(async (pwd?: string, force = false) => {
+    if (!id) return false;
+    if (!force && hasFetchedRoomRef.current === id && room) {
+      return true;
+    }
     const effectivePwd = pwd || sessionStorage.getItem(`party_pwd_${id}`) || undefined;
 
     try {
       const res = await partyApi.getRoom(id, effectivePwd);
       if (res?.data?.success && res.data.data) {
+        hasFetchedRoomRef.current = id;
         setRoom(res.data.data);
         setShowPasswordModal(false);
         if (effectivePwd) {
@@ -173,8 +188,8 @@ export const PartyRoom = ({
         startNativeParty(res.data.data.name || 'Party Room');
         return true;
       } else {
-        showToast('Party room not found or has been closed', 'info');
-        navigate('/party', { replace: true });
+        showToastRef.current('Party room not found or has been closed', 'info');
+        navigateRef.current('/party', { replace: true });
         return false;
       }
     } catch (err: any) {
@@ -190,37 +205,37 @@ export const PartyRoom = ({
         return false;
       }
 
-      showToast(err.response?.data?.error || 'Party room has ended or does not exist', 'info');
-      navigate('/party', { replace: true });
+      showToastRef.current(err.response?.data?.error || 'Party room has ended or does not exist', 'info');
+      navigateRef.current('/party', { replace: true });
       return false;
     } finally {
       setLoading(false);
     }
-  }, [id, navigate, showToast]);
+  }, [id, room]);
 
   useEffect(() => {
     if (!id) return;
-    let cancelled = false;
-
-    fetchRoomData();
-
-    return () => {
-      cancelled = true;
-      partyApi.leaveRoom(id).catch(() => {});
-    };
+    if (hasFetchedRoomRef.current !== id) {
+      fetchRoomData();
+    }
   }, [id, fetchRoomData]);
 
   const leavingRoomRef = useRef(false);
+  const joinedAgoraChannelRef = useRef<string | null>(null);
   const { joinChannel, toggleMic, micOn, error: agoraError, leaveChannel, remoteUsers } = useAgora();
 
   useEffect(() => {
     if (agoraError && !leavingRoomRef.current) {
-      showToast(agoraError, 'error');
+      showToastRef.current(agoraError, 'error');
     }
-  }, [agoraError, showToast]);
+  }, [agoraError]);
 
   useEffect(() => {
     if (room?.agoraChannel && room?.agoraToken) {
+      if (joinedAgoraChannelRef.current === room.agoraChannel) {
+        return;
+      }
+      joinedAgoraChannelRef.current = room.agoraChannel;
       joinChannel({
         appId: AGORA_APP_ID,
         channel: room.agoraChannel,
@@ -230,13 +245,18 @@ export const PartyRoom = ({
         initialMicOn: isHost ? true : false,
       }).catch(console.error);
     }
+  }, [room?.agoraChannel, room?.agoraToken, isHost, joinChannel]);
+
+  // Clean up Agora audio session only on unmount of PartyRoom
+  useEffect(() => {
     return () => {
       leaveChannel();
     };
-  }, [room?.agoraChannel, room?.agoraToken, isHost, joinChannel, leaveChannel]);
+  }, [leaveChannel]);
 
   // Force mic off if user is not host and not seated, or if their seat is muted by the host
   useEffect(() => {
+    if (!room || !room.seats) return;
     if (!isHost) {
       if (!isSeated || isMySeatMuted) {
         if (micOn) {
@@ -247,7 +267,7 @@ export const PartyRoom = ({
         }
       }
     }
-  }, [isSeated, isMySeatMuted, isHost, micOn, socket, id, toggleMic]);
+  }, [room, isSeated, isMySeatMuted, isHost, micOn, socket, id, toggleMic]);
 
   // Use remoteUsers to reflect active voice speakers in UI if needed
   useEffect(() => {

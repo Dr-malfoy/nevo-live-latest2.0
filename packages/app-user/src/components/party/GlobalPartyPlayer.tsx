@@ -85,6 +85,20 @@ export const GlobalPartyPlayer = () => {
     }
   }, [location.pathname, activePartyId, isMinimized, setActivePartyId, setMinimized, navigate]);
 
+  const handleMaximize = useCallback(() => {
+    setMinimized(false);
+    navigate(`/party/${activePartyId}`);
+  }, [activePartyId, navigate, setMinimized]);
+
+  const handleMinimize = useCallback(() => {
+    setMinimized(true);
+    navigate(-1);
+  }, [navigate, setMinimized]);
+
+  const handleClose = useCallback(() => {
+    handleCloseParty(activePartyId);
+  }, [activePartyId, handleCloseParty]);
+
   if (!activePartyId) return null;
 
   return (
@@ -93,15 +107,9 @@ export const GlobalPartyPlayer = () => {
         key={activePartyId}
         partyIdProp={activePartyId}
         isMinimized={isMinimized}
-        onMaximize={() => {
-          setMinimized(false);
-          navigate(`/party/${activePartyId}`);
-        }}
-        onMinimize={() => {
-          setMinimized(true);
-          navigate(-1);
-        }}
-        onClose={() => handleCloseParty(activePartyId)}
+        onMaximize={handleMaximize}
+        onMinimize={handleMinimize}
+        onClose={handleClose}
       />
     </div>
   );
