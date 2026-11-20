@@ -21,6 +21,7 @@ import { useAuthStore, useSocketStore, useUIStore, usePartyPlayerStore } from '.
 import { startNativeParty, stopNativeParty } from '../services/nativeParty';
 import { SeatBoard } from '../components/party/SeatBoard';
 import { SeatRequestBanner, type SeatRequester } from '../components/party/SeatRequestBanner';
+import { PartyFloatingWidget } from '../components/party/PartyFloatingWidget';
 import { HostToolsSheet, PARTY_BOTTOM_ICONS } from '../components/party/HostToolsSheet';
 import { PkTypesSheet } from '../components/party/PkTypesSheet';
 import { useFloatingGifts, FloatingGifts } from '../components/party/FloatingGifts';
@@ -970,113 +971,16 @@ export const PartyRoom = ({
 
   if (isMinimized) {
     return (
-      <motion.div
-        drag
-        dragMomentum={false}
-        dragConstraints={{
-          left: typeof window !== 'undefined' ? -(window.innerWidth - 180) : -250,
-          right: 0,
-          top: typeof window !== 'undefined' ? -(window.innerHeight - 200) : -400,
-          bottom: 10,
-        }}
-        onClick={handleMaximize}
-        className="fixed bottom-24 right-3.5 z-50 w-44 rounded-2xl p-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.85)] border-2 border-purple-500/40 bg-gradient-to-br from-[#1F133D]/95 via-[#160B2E]/95 to-[#0D051D]/95 backdrop-blur-xl cursor-pointer select-none touch-none text-white animate-fade-in"
-      >
-        {/* Top bar with mini badge and action buttons */}
-        <div className="flex items-center justify-between gap-1 mb-2 pointer-events-auto">
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-600/80 shadow-[0_0_8px_rgba(168,85,247,0.5)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
-            <span className="text-[9px] font-black tracking-widest uppercase">PARTY</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMaximize();
-              }}
-              className="p-1 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-transform"
-              title="Maximize"
-            >
-              <MaximizeIcon className="w-3 h-3 text-white" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCloseParty();
-              }}
-              className="p-1 rounded-full bg-white/10 hover:bg-red-500/80 active:scale-90 transition-transform"
-              title="Close Party"
-            >
-              <X className="w-3 h-3 text-white" />
-            </button>
-          </div>
-        </div>
-
-        {/* Middle info: Host Avatar + Room Name */}
-        <div className="flex items-center gap-2 mb-2">
-          <div className="relative w-10 h-10 rounded-full overflow-hidden bg-white/10 ring-2 ring-yellow-400/80 shrink-0">
-            {room?.ownerId?.avatar ? (
-              <img src={room.ownerId.avatar} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span className="w-full h-full flex items-center justify-center text-xs font-bold text-white">
-                {initial(room?.ownerId?.nickname)}
-              </span>
-            )}
-            {mySeat && (
-              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border border-black flex items-center justify-center">
-                <span className="w-1 h-1 rounded-full bg-white" />
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-white truncate leading-tight">
-              {room?.name || room?.ownerId?.nickname || 'Party Room'}
-            </p>
-            <p className="text-[10px] text-white/60 truncate flex items-center gap-1 mt-0.5">
-              <Users className="w-2.5 h-2.5" /> {compactNumber(room?.viewerCount ?? 1)}
-            </p>
-          </div>
-        </div>
-
-        {/* Audio soundwaves / voice equalizer + Quick Mic Toggle button */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-white/10 pointer-events-auto">
-          {/* Soundwave equalizer */}
-          <div className="flex items-center gap-0.5 h-3">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <span
-                key={i}
-                className="w-1 rounded-full bg-gradient-to-t from-pink-500 to-purple-400 animate-pulse"
-                style={{
-                  height: `${6 + (i % 3) * 4}px`,
-                  animationDelay: `${i * 150}ms`,
-                }}
-              />
-            ))}
-            <span className="text-[9px] text-white/50 ml-1 font-mono">Live</span>
-          </div>
-
-          {/* Mic toggle if on seat or host */}
-          {(isHost || mySeat) && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleMic();
-              }}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
-                micOn
-                  ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
-                  : 'bg-red-500/30 text-red-300 border border-red-500/50'
-              }`}
-            >
-              {micOn ? <PiMicrophoneFill className="w-2.5 h-2.5" /> : <PiMicrophoneSlashFill className="w-2.5 h-2.5" />}
-              <span>{micOn ? 'On' : 'Off'}</span>
-            </button>
-          )}
-        </div>
-      </motion.div>
+      <PartyFloatingWidget
+        roomName={room?.name}
+        host={room?.ownerId}
+        viewerCount={room?.viewerCount}
+        micOn={micOn}
+        canSpeak={Boolean(isHost || mySeat)}
+        onToggleMic={handleToggleMic}
+        onMaximize={handleMaximize}
+        onClose={handleCloseParty}
+      />
     );
   }
 

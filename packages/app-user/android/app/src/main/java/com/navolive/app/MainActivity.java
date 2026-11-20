@@ -93,6 +93,8 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "NativeCallBridge: startOngoingParty invoked: " + roomName);
             runOnUiThread(() -> {
                 isPartyActive = true;
+                updatePictureInPictureParams(true);
+                AudioRouteManager.getInstance(MainActivity.this).startLiveAudio();
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
                 intent.setAction(OngoingCallService.ACTION_START);
                 intent.putExtra("callerName", roomName != null && !roomName.trim().isEmpty() ? roomName : "Party Room");
@@ -114,6 +116,8 @@ public class MainActivity extends BridgeActivity {
             Log.d(TAG, "NativeCallBridge: stopOngoingParty invoked");
             runOnUiThread(() -> {
                 isPartyActive = false;
+                updatePictureInPictureParams(false);
+                AudioRouteManager.getInstance(MainActivity.this).stopLiveAudio();
                 Intent intent = new Intent(MainActivity.this, OngoingCallService.class);
                 intent.setAction(OngoingCallService.ACTION_STOP);
                 try {
@@ -254,6 +258,7 @@ public class MainActivity extends BridgeActivity {
         super.onStop();
         if ((isCallActive || isLiveActive || isPartyActive) && getBridge() != null && getBridge().getWebView() != null) {
             try {
+                getBridge().getWebView().onResume();
                 getBridge().getWebView().resumeTimers();
             } catch (Throwable ignored) {}
         }
